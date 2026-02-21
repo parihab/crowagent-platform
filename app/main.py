@@ -13,6 +13,7 @@
 from __future__ import annotations
 import base64
 import os
+import sys
 
 import streamlit as st
 import plotly.graph_objects as go
@@ -21,8 +22,16 @@ import numpy as np
 import requests
 from datetime import datetime, timezone
 
-import weather as wx
-import agent as crow_agent
+# ─────────────────────────────────────────────────────────────────────────────
+# PATH SETUP — Ensure core and services modules are accessible
+# ─────────────────────────────────────────────────────────────────────────────
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
+
+import services.weather as wx
+import core.agent as crow_agent
+import core.physics as physics
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LOGO LOADER
