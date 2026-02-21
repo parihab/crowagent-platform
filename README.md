@@ -1,4 +1,4 @@
-# Crowagent Platform
+# CrowAgent Platform
 
 ## Project Overview
 Crowagent Platform is a versatile solution designed for ...
