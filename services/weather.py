@@ -153,6 +153,30 @@ def _fetch_met_office(api_key: str, location_id: str) -> dict:
     }
 
 
+def test_met_office_key(api_key: str, location_id: str = MET_OFFICE_LOCATION) -> tuple[bool, str]:
+    """
+    Test whether a Met Office DataPoint API key is valid by making a lightweight
+    request to the observations endpoint. Returns (True, message) on success
+    or (False, error_message) on failure.
+    """
+    if not api_key:
+        return False, "No API key provided."
+    url = (
+        f"http://datapoint.metoffice.gov.uk/public/data/"
+        f"val/wxobs/all/json/{location_id}?res=hourly&key={api_key}"
+    )
+    try:
+        resp = requests.get(url, timeout=6)
+        if resp.status_code == 200:
+            return True, "Valid Met Office DataPoint key."
+        elif resp.status_code in (401, 403):
+            return False, f"API rejected the key (status {resp.status_code})."
+        else:
+            return False, f"Unexpected response from API (status {resp.status_code})."
+    except Exception as e:
+        return False, f"Network/error: {e}"
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PUBLIC API — call this from app.py
 # ─────────────────────────────────────────────────────────────────────────────
@@ -177,9 +201,9 @@ def get_weather(
         _fetch_open_meteo.clear()
         _fetch_met_office.clear()
 
-    # ── Attempt Met Office (if key supplied and non-default) ──────────────────
+    # ── Attempt Met Office (if key supplied) ───────────────────────────────
     key = (met_office_key or "").strip()
-    if key and key not in ("", "YOUR_KEY_HERE"):
+    if key:
         try:
             return _fetch_met_office(key, met_office_location)
         except Exception:

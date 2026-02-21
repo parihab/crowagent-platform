@@ -752,6 +752,24 @@ with st.sidebar:
         if _mo_key != st.session_state.met_office_key:
             st.session_state.met_office_key = _mo_key
 
+        # Guidance and validation for Met Office DataPoint key
+        if not st.session_state.met_office_key:
+          st.markdown(
+            "<div style='font-size:0.86rem;color:#4A6880;'>"
+            "Met Office DataPoint is optional. To enable UK-observation-level "
+            "weather, register for a free API key at: <a href=\"https://www.metoffice.gov.uk/services/data/datapoint\" target=\"_blank\">metoffice.gov.uk/services/data/datapoint</a>. "
+            "Paste your key into this field and click 'Test Met Office key'."
+            "</div>",
+            unsafe_allow_html=True,
+          )
+        else:
+          if st.button("Test Met Office key", key="test_mo_key", use_container_width=True):
+            ok, msg = wx.test_met_office_key(st.session_state.met_office_key)
+            if ok:
+              st.markdown("<div class='val-ok'>✓ " + msg + "</div>", unsafe_allow_html=True)
+            else:
+              st.markdown("<div class='val-err'>❌ " + msg + "</div>", unsafe_allow_html=True)
+
         _gm_key = st.text_input(
             "Gemini API key (for AI Advisor)",
             type="password", placeholder="AIzaSy... (starts with 'AIza')",
