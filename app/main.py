@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# CrowAgent™ Platform — Sustainability AI Decisioning
+# CrowAgent™ Platform — Sustainability AI Decision Intelligence
 # © 2026 Aparajita Parihar. All rights reserved.
 #
 # Independent research project. Not affiliated with any institution.
@@ -67,9 +67,9 @@ st.set_page_config(
     initial_sidebar_state = "expanded",
     menu_items   = {
         "Get Help":     "mailto:crowagent.platform@gmail.com",
-        "Report a bug": "https://github.com/YOUR_GITHUB/crowagent/issues",
+        "Report a bug": "https://github.com/parihab/crowagent-platform/issues",
         "About": (
-            "**CrowAgent™ Platform — Sustainability AI Decisioning**\n\n"
+            "**CrowAgent™ Platform — Sustainability AI Decision Intelligence**\n\n"
             "© 2026 Aparajita Parihar. All rights reserved.\n\n"
             "⚠️ PROTOTYPE: Results are indicative only and based on simplified "
             "physics models. Not for use as the sole basis for investment decisions.\n\n"
@@ -162,7 +162,7 @@ h1,h2,h3,h4 {
 
 /* ── Status pills ──────────────────────────────────────────────────────── */
 .sp { display:inline-flex; align-items:center; gap:5px; padding:3px 10px;
-      border-radius:20px; font-size:0.7rem; font-weight:700;
+      border-radius:20px; font-size:0.74rem; font-weight:700;
       letter-spacing:0.3px; white-space:nowrap; }
 .sp-live   { background:rgba(29,184,122,.12); color:#1DB87A;
              border:1px solid rgba(29,184,122,.3); }
@@ -218,7 +218,7 @@ h1,h2,h3,h4 {
 .kpi-card.accent-navy   { border-top-color: #071A2F; }
 .kpi-label {
   font-family: 'Rajdhani', sans-serif;
-  font-size: 0.68rem; font-weight: 700; letter-spacing: 1px;
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 1px;
   text-transform: uppercase; color: #5A7A90; margin-bottom: 6px;
 }
 .kpi-value {
@@ -228,12 +228,12 @@ h1,h2,h3,h4 {
 .kpi-unit  { font-size: 0.9rem; font-weight: 500; color: #5A7A90; margin-left: 2px; }
 .kpi-delta-pos { color: #1DB87A; font-size: 0.78rem; font-weight: 700; margin-top: 4px; }
 .kpi-delta-neg { color: #E84C4C; font-size: 0.78rem; font-weight: 700; margin-top: 4px; }
-.kpi-sub   { font-size: 0.72rem; color: #8AACBF; margin-top: 2px; }
+.kpi-sub   { font-size: 0.75rem; color: #8AACBF; margin-top: 2px; }
 
 /* ── Section headers ───────────────────────────────────────────────────── */
 .sec-hdr {
   font-family: 'Rajdhani', sans-serif;
-  font-size: 0.72rem; font-weight: 700; letter-spacing: 1.5px;
+  font-size: 0.78rem; font-weight: 700; letter-spacing: 1.5px;
   text-transform: uppercase; color: #00C2A8;
   border-bottom: 1px solid rgba(0,194,168,.2);
   padding-bottom: 6px; margin-bottom: 14px; margin-top: 4px;
@@ -250,12 +250,12 @@ h1,h2,h3,h4 {
 }
 .chart-title {
   font-family: 'Rajdhani', sans-serif;
-  font-size: 0.82rem; font-weight: 700; letter-spacing: 0.5px;
+  font-size: 0.88rem; font-weight: 700; letter-spacing: 0.5px;
   color: #071A2F; margin-bottom: 4px;
   text-transform: uppercase;
 }
 .chart-caption {
-  font-size: 0.68rem; color: #8AACBF; margin-top: 4px;
+  font-size: 0.72rem; color: #8AACBF; margin-top: 4px;
   font-style: italic;
 }
 
@@ -311,7 +311,7 @@ h1,h2,h3,h4 {
 }
 .contact-label {
   font-family: 'Rajdhani', sans-serif;
-  font-size: 0.7rem; font-weight: 700; letter-spacing: 1px;
+  font-size: 0.74rem; font-weight: 700; letter-spacing: 1px;
   text-transform: uppercase; color: #00C2A8; margin-bottom: 4px;
 }
 .contact-val { font-size: 0.88rem; color: #071A2F; font-weight: 600; }
@@ -357,7 +357,7 @@ h1,h2,h3,h4 {
 /* ── Sidebar section label ─────────────────────────────────────────────── */
 .sb-section {
   font-family: 'Rajdhani', sans-serif;
-  font-size: 0.65rem; font-weight: 700; letter-spacing: 1.5px;
+  font-size: 0.74rem; font-weight: 700; letter-spacing: 1.5px;
   text-transform: uppercase; color: #00C2A8 !important;
   margin: 14px 0 6px 0;
 }
@@ -366,7 +366,7 @@ h1,h2,h3,h4 {
 .chip {
   display: inline-block; background: #0D2640;
   border: 1px solid #1A3A5C; border-radius: 4px;
-  padding: 2px 8px; font-size: 0.7rem; color: #7A9BB5;
+  padding: 2px 8px; font-size: 0.74rem; color: #7A9BB5;
   margin: 2px;
 }
 
@@ -585,7 +585,7 @@ CHART_LAYOUT = dict(
 def _get_secret(key: str, default: str = "") -> str:
     try:
         return st.secrets[key]
-    except Exception:
+    except (KeyError, AttributeError, FileNotFoundError):
         return os.getenv(key, default)
 
 # Initialize session state with defaults or environment values
@@ -613,7 +613,7 @@ with st.sidebar:
     if LOGO_URI:
         st.markdown(
             f"<div style='padding:10px 0 4px;'>"
-            f"<img src='{LOGO_URI}' width='200' style='max-width:100%;'/>"
+            f"<img src='{LOGO_URI}' width='200' style='max-width:100%;' alt='CrowAgent™ Logo'/>"
             f"</div>",
             unsafe_allow_html=True,
         )
@@ -624,8 +624,8 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
     st.markdown(
-        "<div style='font-size:0.68rem;color:#4A6880;margin-bottom:8px;'>"
-        "Sustainability AI Decisioning Platform</div>",
+        "<div style='font-size:0.72rem;color:#4A6880;margin-bottom:8px;'>"
+        "Sustainability AI Decision Intelligence Platform</div>",
         unsafe_allow_html=True,
     )
 
@@ -649,7 +649,7 @@ with st.sidebar:
     st.markdown("---")
 
     # ── Scenario multi-select ─────────────────────────────────────────────────
-    st.markdown("<div class='sb-section'>⚡ Scenarios</div>", unsafe_allow_html=True)
+    st.markdown("<div class='sb-section'>🔧 Scenarios</div>", unsafe_allow_html=True)
     selected_scenario_names = st.multiselect(
         "Scenarios", list(SCENARIOS.keys()),
         default=["Baseline (No Intervention)", "Solar Glass Installation",
@@ -669,7 +669,7 @@ with st.sidebar:
     # ── Weather panel ──────────────────────────────────────────────────────────
     st.markdown("<div class='sb-section'>🌤 Live Weather</div>", unsafe_allow_html=True)
 
-    _force = st.button("⟳ Force Refresh", key="wx_refresh", use_container_width=True)
+    _force = st.button("↻ Refresh Weather", key="wx_refresh", use_container_width=True)
     if _force:
         st.session_state.force_weather_refresh = True
 
@@ -733,7 +733,7 @@ with st.sidebar:
         st.markdown(
             "<div style='background:#FFF3CD;border:1px solid #FFD89B;border-radius:6px;padding:10px;'>"
             "<div style='font-size:0.75rem;color:#664D03;font-weight:700;margin-bottom:6px;'>🔒 Security Notice</div>"
-            "<div style='font-size:0.68rem;color:#664D03;line-height:1.5;'>"
+            "<div style='font-size:0.72rem;color:#664D03;line-height:1.5;'>"
             "• Keys exist in your session only (cleared on browser close)<br/>"
             "• Your keys are <strong>never</strong> stored on the server<br/>"
             "• Each user enters their own key independently<br/>"
@@ -742,12 +742,23 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
         st.markdown("")  # spacing
+        st.markdown(
+          "<div style='font-size:0.9rem;color:#4A6880;margin-bottom:8px;'>"
+          "Provide your own API keys — do not use shared or public keys. "
+          "Met Office DataPoint (free): register at "
+          "<a href=\"https://www.metoffice.gov.uk/services/data/datapoint\" target=\"_blank\">metoffice.gov.uk/services/data/datapoint</a>. "
+          "Gemini API key (for AI Advisor): get one at "
+          "<a href=\"https://aistudio.google.com\" target=\"_blank\">aistudio.google.com</a> or "
+          "<a href=\"https://console.cloud.google.com/apis/credentials\" target=\"_blank\">console.cloud.google.com</a>."
+          "</div>",
+          unsafe_allow_html=True,
+        )
         
         _mo_key = st.text_input(
-            "Met Office DataPoint key",
-            type="password", placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-            value=st.session_state.met_office_key,
-            help="Free at metoffice.gov.uk/services/data/datapoint",
+          "Met Office DataPoint key",
+          type="password", placeholder="",
+          value=st.session_state.met_office_key,
+          help="Free at metoffice.gov.uk/services/data/datapoint",
         )
         if _mo_key != st.session_state.met_office_key:
             st.session_state.met_office_key = _mo_key
@@ -774,7 +785,7 @@ with st.sidebar:
             "Gemini API key (for AI Advisor)",
             type="password", placeholder="AIzaSy... (starts with 'AIza')",
             value=st.session_state.gemini_key,
-            help="Get free at aistudio.google.com | Never share this key | Each user brings their own",
+          help="Get your key at aistudio.google.com or console.cloud.google.com | Never share this key | Each user brings their own",
         )
         if _gm_key != st.session_state.gemini_key:
             st.session_state.gemini_key = _gm_key
@@ -825,9 +836,21 @@ with st.sidebar:
                             unsafe_allow_html=True,
                         )
                         st.session_state.gemini_key_valid = True
+                except requests.exceptions.Timeout:
+                    st.markdown(
+                        "<div class='val-warn'>⚠ Validation timed out — key saved, will test on first use</div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.session_state.gemini_key_valid = True
+                except requests.exceptions.ConnectionError:
+                    st.markdown(
+                        "<div class='val-warn'>⚠ No internet connection — key saved, will test on first use</div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.session_state.gemini_key_valid = True
                 except Exception as e:
                     st.markdown(
-                        "<div class='val-ok'>✓ Key format valid (will test on first use)</div>",
+                        f"<div class='val-warn'>⚠ Validation error — key saved, will test on first use</div>",
                         unsafe_allow_html=True,
                     )
                     st.session_state.gemini_key_valid = True
@@ -843,7 +866,7 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown(
-        "<div style='font-size:0.64rem;color:#334A60;text-align:center;line-height:1.6;'>"
+        "<div style='font-size:0.72rem;color:#7A9BB5;text-align:center;line-height:1.6;'>"
         "© 2026 Aparajita Parihar<br/>CrowAgent™ · All rights reserved<br/>"
         "v2.0.0 · Prototype</div>",
         unsafe_allow_html=True,
@@ -876,7 +899,7 @@ _weather_pill = (
 )
 
 if LOGO_URI:
-    _logo_html = f"<img src='{LOGO_URI}' height='38' style='vertical-align:middle;'/>"
+    _logo_html = f"<img src='{LOGO_URI}' height='38' style='vertical-align:middle;' alt='CrowAgent™ Logo'/>"
 else:
     _logo_html = "<span style='font-family:Rajdhani,sans-serif;font-size:1.2rem;font-weight:700;color:#00C2A8;'>🌿 CrowAgent™</span>"
 
@@ -885,16 +908,16 @@ st.markdown(f"""
   <div style='display:flex;align-items:center;gap:16px;flex-wrap:wrap;'>
     {_logo_html}
     <div>
-      <div style='font-family:Rajdhani,sans-serif;font-size:0.7rem;
+      <div style='font-family:Rajdhani,sans-serif;font-size:0.74rem;
                   letter-spacing:1.5px;text-transform:uppercase;
                   color:#4A6880;line-height:1;margin-top:2px;'>
-        Sustainability AI Decisioning Platform
+        Sustainability AI Decision Intelligence Platform
       </div>
     </div>
   </div>
   <div class='platform-topbar-right'>
     {_weather_pill}
-    <span class='sp sp-warn'>⚗ PROTOTYPE v2.0.0</span>
+    <span class='sp sp-cache'>🚧 PROTOTYPE v2.0.0</span>
     <span class='sp sp-cache'>Reading, Berkshire</span>
   </div>
 </div>
@@ -923,10 +946,10 @@ st.markdown("""
 # MAIN NAVIGATION TABS
 # ─────────────────────────────────────────────────────────────────────────────
 _tab_dash, _tab_fin, _tab_ai, _tab_about = st.tabs([
-    "📊  Dashboard",
-    "📈  Financial Analysis",
-    "🤖  AI Advisor",
-    "ℹ️  About & Contact",
+    "📊 Dashboard",
+    "📈 Financial Analysis",
+    "🤖 AI Advisor",
+    "ℹ️ About & Contact",
 ])
 
 
@@ -1235,8 +1258,7 @@ with _tab_ai:
         compares scenarios and gives evidence-based Net Zero investment recommendations.
       </div>
       <div style='color:#4A6880;font-size:0.72rem;margin-top:4px;'>
-        Google Gemini 1.5 Flash · Free tier · Tool-use agent loop · 1,500 req/day ·
-        © 2026 Aparajita Parihar
+        Powered by Google Gemini · Physics-informed reasoning · © 2026 Aparajita Parihar
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -1265,9 +1287,9 @@ with _tab_ai:
              border-radius:0 8px 8px 8px;padding:10px 14px;margin:4px 0 10px;
              color:#071A2F;font-size:0.88rem;line-height:1.65;}
     .ca-tool{display:inline-block;background:#0D2640;color:#00C2A8;border-radius:4px;
-             padding:2px 8px;font-size:0.68rem;font-weight:700;margin:2px 2px 2px 0;
+             padding:2px 8px;font-size:0.74rem;font-weight:700;margin:2px 2px 2px 0;
              letter-spacing:0.3px;}
-    .ca-meta{font-size:0.68rem;color:#8AACBF;margin-top:4px;}
+    .ca-meta{font-size:0.74rem;color:#8AACBF;margin-top:4px;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -1377,7 +1399,7 @@ with _tab_ai:
                         f"<span class='ca-meta' style='margin-left:6px;'>Powered by Gemini 1.5 Flash</span>"
                         f"<br/><br/>{_msg['content']}<br/>"
                         f"<div style='margin-top:8px;padding-top:6px;border-top:1px solid #E0EBF4;"
-                        f"font-size:0.68rem;color:#8AACBF;'>"
+                        f"font-size:0.72rem;color:#8AACBF;'>"
                         f"⚠️ AI-generated content. Verify all figures independently before acting.</div>"
                         f"</div>",
                         unsafe_allow_html=True,
@@ -1449,7 +1471,7 @@ with _tab_about:
 
         if LOGO_URI:
             st.markdown(
-                f"<img src='{LOGO_URI}' width='300' style='margin-bottom:12px;'/><br/>",
+                f"<img src='{LOGO_URI}' width='300' style='margin-bottom:12px;' alt='CrowAgent™ Logo'/><br/>",
                 unsafe_allow_html=True,
             )
 
@@ -1578,7 +1600,7 @@ with _tab_about:
           </div>
 
           <div style='margin-bottom:14px;'>
-            <div class='contact-label'>Platform Enquiries</div>
+            <div class='contact-label'>Email</div>
             <div class='contact-val'>
               <a href='mailto:crowagent.platform@gmail.com'
                  style='color:#00C2A8;text-decoration:none;font-size:0.85rem;'>
@@ -1588,27 +1610,12 @@ with _tab_about:
           </div>
 
           <div style='margin-bottom:14px;'>
-            <div class='contact-label'>Domains</div>
-            <div style='font-size:0.82rem;color:#3A5268;'>
-              <a href='https://crowagent.co.uk' target='_blank'
-                 style='color:#00C2A8;'>crowagent.co.uk</a><br/>
-              <a href='https://crowagent.ai' target='_blank'
-                 style='color:#00C2A8;'>crowagent.ai</a><br/>
-              <a href='https://crowagentplatform.co.uk' target='_blank'
-                 style='color:#00C2A8;'>crowagentplatform.co.uk</a>
-            </div>
-          </div>
-
-          <div style='margin-bottom:14px;'>
             <div class='contact-label'>GitHub</div>
             <div class='contact-val'>
-              <a href='https://github.com/YOUR_GITHUB/crowagent'
+              <a href='https://github.com/parihab/crowagent-platform'
                  target='_blank' style='color:#00C2A8;font-size:0.85rem;'>
-                github.com/YOUR_GITHUB/crowagent
+                github.com/parihab/crowagent-platform
               </a>
-            </div>
-            <div style='font-size:0.72rem;color:#8AACBF;margin-top:2px;'>
-              Update with your GitHub username
             </div>
           </div>
 
@@ -1634,7 +1641,7 @@ with _tab_about:
 
           <div style='margin-top:14px;background:#F8FAFC;border:1px solid #E0EBF4;
                       border-radius:5px;padding:10px 12px;'>
-            <div style='font-size:0.7rem;color:#8AACBF;font-weight:700;
+            <div style='font-size:0.74rem;color:#8AACBF;font-weight:700;
                         text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px;'>
               Response Time
             </div>
@@ -1650,14 +1657,14 @@ with _tab_about:
         st.markdown(f"""
         <div style='background:#071A2F;border:1px solid #1A3A5C;border-radius:8px;
                     padding:14px 16px;'>
-          <div style='font-family:Rajdhani,sans-serif;font-size:0.7rem;font-weight:700;
+          <div style='font-family:Rajdhani,sans-serif;font-size:0.74rem;font-weight:700;
                       letter-spacing:1px;text-transform:uppercase;color:#00C2A8;
                       margin-bottom:8px;'>Build Information</div>
           <div style='font-size:0.74rem;color:#7A9BB5;line-height:1.8;'>
             <strong style='color:#CBD8E6;'>Version:</strong> v2.0.0<br/>
             <strong style='color:#CBD8E6;'>Released:</strong> 21 February 2026<br/>
             <strong style='color:#CBD8E6;'>Status:</strong>
-            <span style='color:#F0B429;'>⚗ Working Prototype</span><br/>
+            <span style='color:#F0B429;'>🚧 Working Prototype</span><br/>
             <strong style='color:#CBD8E6;'>Weather:</strong>
             <span style='color:#{"1DB87A" if weather["is_live"] else "F0B429"};'>
               {"● Live" if weather["is_live"] else "○ Manual"}</span> — {weather["source"]}<br/>
@@ -1677,15 +1684,15 @@ st.markdown("""
               flex-wrap:wrap;gap:16px;margin-bottom:8px;'>
     <span style='font-family:Rajdhani,sans-serif;font-size:0.9rem;
                  font-weight:700;color:#00C2A8;'>🌿 CrowAgent™</span>
-    <span style='color:#334A60;font-size:0.72rem;'>Sustainability AI Decisioning Platform</span>
-    <span style='color:#334A60;font-size:0.72rem;'>v2.0.0 · Working Prototype</span>
+    <span style='color:#5A7A90;font-size:0.78rem;'>Sustainability AI Decision Intelligence Platform</span>
+    <span style='color:#5A7A90;font-size:0.78rem;'>v2.0.0 · Working Prototype</span>
   </div>
-  <div style='font-size:0.7rem;color:#334A60;line-height:1.6;'>
+  <div style='font-size:0.74rem;color:#7A9BB5;line-height:1.6;'>
     © 2026 Aparajita Parihar · All rights reserved · Independent research project ·
     CrowAgent™ is an unregistered trademark (UK IPO Class 42, registration pending) ·
     Not licensed for commercial use without written permission
   </div>
-  <div style='font-size:0.62rem;color:#253A4A;margin-top:4px;font-style:italic;'>
+  <div style='font-size:0.72rem;color:#5A7A90;margin-top:4px;font-style:italic;'>
     Physics: Raissi et al. (2019) J. Comp. Physics · doi:10.1016/j.jcp.2018.10.045 ·
     Weather: Open-Meteo API + Met Office DataPoint · Carbon: BEIS 2023 ·
     Costs: HESA 2022-23 · AI: Google Gemini 1.5 Flash ·

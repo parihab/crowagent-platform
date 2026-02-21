@@ -116,7 +116,7 @@ def _fetch_met_office(api_key: str, location_id: str) -> dict:
     Cached for 1 hour — respects the free tier usage limit.
     """
     url = (
-        f"http://datapoint.metoffice.gov.uk/public/data/"
+        f"https://datapoint.metoffice.gov.uk/public/data/"
         f"val/wxobs/all/json/{location_id}"
         f"?res=hourly&key={api_key}"
     )
@@ -162,7 +162,7 @@ def test_met_office_key(api_key: str, location_id: str = MET_OFFICE_LOCATION) ->
     if not api_key:
         return False, "No API key provided."
     url = (
-        f"http://datapoint.metoffice.gov.uk/public/data/"
+        f"https://datapoint.metoffice.gov.uk/public/data/"
         f"val/wxobs/all/json/{location_id}?res=hourly&key={api_key}"
     )
     try:
@@ -206,14 +206,14 @@ def get_weather(
     if key:
         try:
             return _fetch_met_office(key, met_office_location)
-        except Exception:
-            pass  # fall through gracefully
+        except Exception as _met_err:
+            st.caption(f"ℹ️ Met Office unavailable ({type(_met_err).__name__}) — falling back to Open-Meteo")
 
     # ── Attempt Open-Meteo (primary free source) ──────────────────────────────
     try:
         return _fetch_open_meteo()
-    except Exception:
-        pass  # fall through gracefully
+    except Exception as _om_err:
+        st.caption(f"ℹ️ Open-Meteo unavailable ({type(_om_err).__name__}) — using manual override")
 
     # ── Manual fallback (offline / API unavailable) ───────────────────────────
     return {
