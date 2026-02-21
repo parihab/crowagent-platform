@@ -37,11 +37,11 @@ import core.physics as physics
 # LOGO LOADER
 # ─────────────────────────────────────────────────────────────────────────────
 def _load_logo_uri() -> str:
-    """Return the square icon logo as a base64 data URI, or '' if file missing."""
+    """Return the horizontal dark logo as a base64 data URI, or '' if file missing."""
     candidates = [
-        os.path.join(os.path.dirname(__file__), "../assets/CrowAgent_Icon_Square.svg"),
-        os.path.join(os.path.dirname(__file__), "assets/CrowAgent_Icon_Square.svg"),
-        "assets/CrowAgent_Icon_Square.svg",
+        os.path.join(os.path.dirname(__file__), "../assets/CrowAgent_Logo_Horizontal_Dark.svg"),
+        os.path.join(os.path.dirname(__file__), "assets/CrowAgent_Logo_Horizontal_Dark.svg"),
+        "assets/CrowAgent_Logo_Horizontal_Dark.svg",
     ]
     for path in candidates:
         if os.path.isfile(path):
