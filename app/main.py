@@ -16,7 +16,9 @@ import os
 import sys
 
 from dotenv import load_dotenv
-load_dotenv()  # Load .env file immediately
+# Load .env from project root (parent directory of app/)
+_env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+load_dotenv(_env_path)
 
 import streamlit as st
 import plotly.graph_objects as go
@@ -1810,20 +1812,6 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
-
-# --- ENTERPRISE PATH & SECRETS CHECK ---
-load_dotenv()
-
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if ROOT_DIR not in sys.path:
-    sys.path.append(ROOT_DIR)
-
-import services.weather as wx
-import core.agent as crow_agent
-import core.physics as physics
-
-# --- AUTO-LOAD SECRETS ---
-# Environment/secrets loading already handled above in initialization
 
 # ═══════════════════════════════════════════════════════════════════════════════════
 # HEADER WITH LOGO
