@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  CrowAgent™ Platform — Icon Mark (standalone)
+  Copyright © 2026 Aparajita Parihar. All rights reserved.
+  Original vector artwork. No font dependencies.
+-->
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 80 80" width="80" height="80"
+     role="img" aria-label="CrowAgent Platform icon">
+  <title>CrowAgent™ Platform Icon</title>
+  <rect width="80" height="80" fill="#071A2F" rx="14"/>
+  <g transform="translate(4,4)">
+    <polygon points="36,4 60,17 60,43 36,56 12,43 12,17"
+             fill="none" stroke="#00C2A8" stroke-width="2"/>
+    <polygon points="36,12 53,21 53,41 36,50 19,41 19,21"
+             fill="#071A2F" stroke="#00C2A8" stroke-width="0.6" opacity="0.4"/>
+    <path d="M27,34 C27,27 31,22 36,20 C41,22 45,27 45,34
+             C45,40 43,43 40,44 L36,45 L32,44
+             C29,43 27,40 27,34 Z" fill="#00C2A8"/>
+    <path d="M27,34 C23,32 18,33 16,37 C19,37 23,36 25,39
+             C23,40 20,43 18,46 C21,44 25,42 27,43 Z"
+          fill="#00C2A8" opacity="0.85"/>
+    <path d="M45,34 C49,32 54,33 56,37 C53,37 49,36 47,39
+             C49,40 52,43 54,46 C51,44 47,42 45,43 Z"
+          fill="#00C2A8" opacity="0.85"/>
+    <circle cx="36" cy="18" r="7" fill="#00C2A8"/>
+    <path d="M40.5,14.5 L49,17 L41,21 Z" fill="#F0B429"/>
+    <circle cx="38" cy="17" r="2.2" fill="#071A2F"/>
+    <circle cx="38.4" cy="16.5" r="0.9" fill="#FFFFFF" opacity="0.85"/>
+    <path d="M36,45 L31,57 L36,52 L41,57 Z"
+          fill="#00C2A8" opacity="0.6"/>
+    <path d="M14,62 Q20,58 26,62 Q32,66 38,62 Q44,58 50,62 Q56,58 62,62"
+          fill="none" stroke="#1DB87A" stroke-width="2"
+          stroke-linecap="round"/>
+    <path d="M16,68 Q22,64 28,68 Q34,72 40,68 Q46,64 52,68"
+          fill="none" stroke="#1DB87A" stroke-width="1.2"
+          stroke-linecap="round" opacity="0.5"/>
+  </g>
+</svg>

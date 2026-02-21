@@ -484,6 +484,7 @@ def run_agent(
                 "tool_calls": tool_calls_log,
                 "error": response["error"],
                 "loops": loops,
+                "updated_history": messages,
             }
 
         candidates = response.get("candidates", [])
@@ -493,6 +494,7 @@ def run_agent(
                 "tool_calls": tool_calls_log,
                 "error": "No candidates in Gemini response",
                 "loops": loops,
+                "updated_history": messages,
             }
 
         content = candidates[0].get("content", {})
@@ -558,6 +560,7 @@ def run_agent(
                 "tool_calls": tool_calls_log,
                 "error": "No text or function_call in response parts",
                 "loops": loops,
+                "updated_history": messages,
             }
 
     # Hit max loops — ask Gemini to summarise what it found so far
@@ -574,6 +577,7 @@ def run_agent(
             "tool_calls": tool_calls_log,
             "error": None,
             "loops": loops,
+            "updated_history": messages,
         }
 
     return {
@@ -581,6 +585,7 @@ def run_agent(
         "tool_calls": tool_calls_log,
         "error": None,
         "loops": loops,
+        "updated_history": messages,
     }
 
 
