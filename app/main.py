@@ -342,6 +342,14 @@ h1,h2,h3,h4 {
   padding: 7px 12px;
   font-size: 0.76rem; color: #0A4A28;
 }
+.val-err {
+  background: rgba(220,53,69,.08);
+  border: 1px solid rgba(220,53,69,.3);
+  border-left: 3px solid #DC3545;
+  border-radius: 0 4px 4px 0;
+  padding: 7px 12px;
+  font-size: 0.76rem; color: #721C24;
+}
 
 /* ── Plotly overrides ──────────────────────────────────────────────────── */
 .js-plotly-plot .plotly .modebar { top: 4px !important; }
@@ -587,6 +595,8 @@ if "agent_history" not in st.session_state:
     st.session_state.agent_history = []
 if "gemini_key" not in st.session_state:
     st.session_state.gemini_key = _get_secret("GEMINI_KEY", "")
+if "gemini_key_valid" not in st.session_state:
+    st.session_state.gemini_key_valid = False
 if "met_office_key" not in st.session_state:
     st.session_state.met_office_key = _get_secret("MET_OFFICE_KEY", "")
 if "manual_temp" not in st.session_state:
@@ -751,7 +761,7 @@ with st.sidebar:
         if _gm_key != st.session_state.gemini_key:
             st.session_state.gemini_key = _gm_key
 
-        # Validation feedback
+        # Validation feedback with actual API test
         if st.session_state.gemini_key:
             if not st.session_state.gemini_key.startswith("AIza"):
                 st.markdown(
@@ -759,10 +769,50 @@ with st.sidebar:
                     unsafe_allow_html=True,
                 )
             else:
-                st.markdown(
-                    "<div class='val-ok'>✓ Gemini AI Advisor ready</div>",
-                    unsafe_allow_html=True,
-                )
+                # Test the API key with a simple request
+                try:
+                    test_url = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent"
+                    test_payload = {
+                        "contents": [{"parts": [{"text": "test"}]}],
+                        "generationConfig": {"maxOutputTokens": 10}
+                    }
+                    test_resp = requests.post(
+                        test_url,
+                        params={"key": st.session_state.gemini_key},
+                        json=test_payload,
+                        timeout=10
+                    )
+                    
+                    if test_resp.status_code == 200:
+                        st.markdown(
+                            "<div class='val-ok'>✓ Gemini AI Advisor ready</div>",
+                            unsafe_allow_html=True,
+                        )
+                        st.session_state.gemini_key_valid = True
+                    elif test_resp.status_code == 401:
+                        st.markdown(
+                            "<div class='val-err'>❌ Invalid API key</div>",
+                            unsafe_allow_html=True,
+                        )
+                        st.session_state.gemini_key_valid = False
+                    elif test_resp.status_code == 403:
+                        st.markdown(
+                            "<div class='val-err'>❌ API key blocked (check permissions in Google Cloud)</div>",
+                            unsafe_allow_html=True,
+                        )
+                        st.session_state.gemini_key_valid = False
+                    else:
+                        st.markdown(
+                            "<div class='val-ok'>✓ Key format valid (will test on first use)</div>",
+                            unsafe_allow_html=True,
+                        )
+                        st.session_state.gemini_key_valid = True
+                except Exception as e:
+                    st.markdown(
+                        "<div class='val-ok'>✓ Key format valid (will test on first use)</div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.session_state.gemini_key_valid = True
 
     st.markdown("---")
 

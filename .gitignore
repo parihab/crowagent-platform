@@ -191,6 +191,9 @@ cython_debug/
 # Ruff stuff:
 .ruff_cache/
 
+# Streamlit Secrets - Never commit!
+.streamlit/secrets.toml
+
 # PyPI configuration file
 .pypirc
 
