@@ -18,15 +18,16 @@ import services.weather as wx
 import core.agent as crow_agent
 import core.physics as physics
  
-# Auto-load secrets if available (Streamlit Cloud deployment)
+# --- AUTO-LOAD SECRETS ---
+# Safely reads secrets — works whether secrets.toml exists or not
 def _get_secret(key: str, default: str = "") -> str:
-    """Safely read a Streamlit secret — returns default if not found."""
     try:
         return st.secrets[key]
     except Exception:
         return os.getenv(key, default)
 
-if not st.session_state.get("gemini_key"):
+if "gemini_key" not in st.session_state:
     st.session_state.gemini_key = _get_secret("GEMINI_KEY", "")
-if not st.session_state.get("met_office_key"):
+
+if "met_office_key" not in st.session_state:
     st.session_state.met_office_key = _get_secret("MET_OFFICE_KEY", "")
