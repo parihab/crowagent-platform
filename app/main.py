@@ -15,6 +15,9 @@ import base64
 import os
 import sys
 
+from dotenv import load_dotenv
+load_dotenv()  # Load .env file immediately
+
 import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
