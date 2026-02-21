@@ -31,3 +31,12 @@ if "gemini_key" not in st.session_state:
 
 if "met_office_key" not in st.session_state:
     st.session_state.met_office_key = _get_secret("MET_OFFICE_KEY", "")
+    import streamlit as st
+
+st.title("CrowAgent™ Platform")
+st.write("If you can see this, the app is running!")
+
+# Display current weather as a test
+import services.weather as wx
+weather = wx.get_weather(manual_temp_c=10.5)
+st.metric("Current Temperature", f"{weather['temperature_c']}°C")
