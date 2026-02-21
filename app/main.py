@@ -18,11 +18,15 @@ import services.weather as wx
 import core.agent as crow_agent
 import core.physics as physics
  
-# --- AUTO-LOAD SECRETS ---
-# This logic prioritizes Environment Variables (Local) or st.secrets (Cloud)
-if "gemini_key" not in st.session_state:
-    # Look for GEMINI_API_KEY in .env or Cloud Secrets
-    st.session_state.gemini_key = os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", "")
- 
-if "met_office_key" not in st.session_state:
-    st.session_state.met_office_key = os.getenv("MET_OFFICE_KEY") or st.secrets.get("MET_OFFICE_KEY", "")
+# Auto-load secrets if available (Streamlit Cloud deployment)
+def _get_secret(key: str, default: str = "") -> str:
+    """Safely read a Streamlit secret — returns default if not found."""
+    try:
+        return st.secrets[key]
+    except Exception:
+        return os.getenv(key, default)
+
+if not st.session_state.get("gemini_key"):
+    st.session_state.gemini_key = _get_secret("GEMINI_KEY", "")
+if not st.session_state.get("met_office_key"):
+    st.session_state.met_office_key = _get_secret("MET_OFFICE_KEY", "")
