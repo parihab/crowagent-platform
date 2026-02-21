@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # ═══════════════════════════════════════════════════════════════════════════════
 # CrowAgent™ Platform — Core Physics Engine
 # © 2026 Aparajita Parihar. All rights reserved.
@@ -173,9 +172,25 @@ def calculate_thermal_load(building: dict, scenario: dict, weather_data: dict) -
         if baseline_raw > 0 else 1.0
     )
 
-    adjusted_mwh  = b["baseline_energy_mwh"] * max(0.35, reduction_ratio)
-    renewable_mwh = s["renewable_kwh"] / 1_000.0
-    final_mwh     = max(0.0, adjusted_mwh - renewable_mwh)
+    # Detect baseline scenario (no changes) and preserve declared baseline energy
+    is_baseline = (
+        float(s.get("u_wall_factor", 1.0)) == 1.0
+        and float(s.get("u_roof_factor", 1.0)) == 1.0
+        and float(s.get("u_glazing_factor", 1.0)) == 1.0
+        and float(s.get("solar_gain_reduction", 0.0)) == 0.0
+        and float(s.get("infiltration_reduction", 0.0)) == 0.0
+        and int(s.get("renewable_kwh", 0)) == 0
+        and int(s.get("install_cost_gbp", 0)) == 0
+    )
+
+    if is_baseline:
+        adjusted_mwh = b["baseline_energy_mwh"]
+        renewable_mwh = 0.0
+        final_mwh = adjusted_mwh
+    else:
+        adjusted_mwh  = b["baseline_energy_mwh"] * max(0.35, reduction_ratio)
+        renewable_mwh = s.get("renewable_kwh", 0) / 1_000.0
+        final_mwh     = max(0.0, adjusted_mwh - renewable_mwh)
 
     # ── Carbon (BEIS 2023: 0.20482 kgCO₂e/kWh) ───────────────────────────────
     ci              = 0.20482
@@ -191,12 +206,14 @@ def calculate_thermal_load(building: dict, scenario: dict, weather_data: dict) -
     cpt = round(install_cost / max(baseline_carbon - scenario_carbon, 0.01), 1) \
           if install_cost > 0 else None
 
+    baseline_mwh = b.get("baseline_energy_mwh", 0.0)
+
     return {
         "baseline_energy_mwh": round(b["baseline_energy_mwh"], 1),
         "scenario_energy_mwh": round(final_mwh, 1),
-        "energy_saving_mwh":   round(b["baseline_energy_mwh"] - final_mwh, 1),
-        "energy_saving_pct":   round((b["baseline_energy_mwh"] - final_mwh)
-                                     / b["baseline_energy_mwh"] * 100.0, 1),
+        "energy_saving_mwh":   round(baseline_mwh - final_mwh, 1),
+        "energy_saving_pct":   round((baseline_mwh - final_mwh)
+                                     / (baseline_mwh if baseline_mwh > 0 else 1.0) * 100.0, 1),
         "baseline_carbon_t":   round(baseline_carbon, 1),
         "scenario_carbon_t":   round(scenario_carbon, 1),
         "carbon_saving_t":     round(baseline_carbon - scenario_carbon, 1),
@@ -209,6 +226,3 @@ def calculate_thermal_load(building: dict, scenario: dict, weather_data: dict) -
         "u_roof":              round(u_roof, 2),
         "u_glazing":           round(u_glazing, 2),
     }
-=======
-$(curl -s https://raw.githubusercontent.com/WonderApri/crowagent-platform/main/core/physics.py)
->>>>>>> 0d19127a5867a8b39d0cb139a0ebca0ae6c50033
