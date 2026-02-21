@@ -72,8 +72,8 @@ selected_scenario = st.sidebar.selectbox(
 st.sidebar.markdown("### 🌡️ Current Conditions")
 temp_c = st.sidebar.slider(
     "Outdoor Temperature (°C)",
-    min_value=-5,
-    max_value=35,
+    min_value=-5.0,
+    max_value=35.0,
     value=10.5,
     step=0.5,
     help="Current outdoor temperature (UK average: 10.5°C)"
