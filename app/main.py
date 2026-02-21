@@ -569,17 +569,25 @@ CHART_LAYOUT = dict(
 # ─────────────────────────────────────────────────────────────────────────────
 # SESSION STATE INITIALISATION
 # ─────────────────────────────────────────────────────────────────────────────
-_defaults = {
-    "chat_history":     [],
-    "agent_history":    [],
-    "gemini_key":       "",
-    "met_office_key":   "",
-    "manual_temp":      10.5,
-    "force_weather_refresh": False,
-}
-for k, v in _defaults.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
+def _get_secret(key: str, default: str = "") -> str:
+    try:
+        return st.secrets[key]
+    except Exception:
+        return os.getenv(key, default)
+
+# Initialize session state with defaults or environment values
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+if "agent_history" not in st.session_state:
+    st.session_state.agent_history = []
+if "gemini_key" not in st.session_state:
+    st.session_state.gemini_key = _get_secret("GEMINI_KEY", "")
+if "met_office_key" not in st.session_state:
+    st.session_state.met_office_key = _get_secret("MET_OFFICE_KEY", "")
+if "manual_temp" not in st.session_state:
+    st.session_state.manual_temp = 10.5
+if "force_weather_refresh" not in st.session_state:
+    st.session_state.force_weather_refresh = False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1812,16 +1820,7 @@ import core.agent as crow_agent
 import core.physics as physics
 
 # --- AUTO-LOAD SECRETS ---
-def _get_secret(key: str, default: str = "") -> str:
-    try:
-        return st.secrets[key]
-    except Exception:
-        return os.getenv(key, default)
-
-if "gemini_key" not in st.session_state:
-    st.session_state.gemini_key = _get_secret("GEMINI_KEY", "")
-if "met_office_key" not in st.session_state:
-    st.session_state.met_office_key = _get_secret("MET_OFFICE_KEY", "")
+# Environment/secrets loading already handled above in initialization
 
 # ═══════════════════════════════════════════════════════════════════════════════════
 # HEADER WITH LOGO
