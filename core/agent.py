@@ -16,20 +16,11 @@ import requests
 from typing import Any
 
 # ─────────────────────────────────────────────────────────────────────────────
-# GEMINI API CONSTANTS
-# Model: gemini-1.5-flash-latest — Free tier with best availability for tool-use tasks
-# API Version: v1 (stable) instead of v1beta
+# API & MODEL CONSTANTS
 # ─────────────────────────────────────────────────────────────────────────────
-GEMINI_MODEL   = "gemini-1.5-flash-latest"
-GEMINI_API_VERSION = "v1"  # Use stable v1 instead of v1beta
-GEMINI_URL     = (
-    f"https://generativelanguage.googleapis.com/{GEMINI_API_VERSION}/"
-    f"models/{GEMINI_MODEL}:generateContent"
-)
-MAX_AGENT_LOOPS = 6      # prevent runaway tool-call chains (cost control)
-MAX_OUTPUT_TOKENS = 900  # keep responses concise (cost control)
-RATE_LIMIT_DELAY_S  = 0.5  # small delay between loops to avoid rate limit spikes
-
+GEMINI_URL           = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+MAX_OUTPUT_TOKENS    = 2000
+MAX_AGENT_LOOPS      = 10
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SYSTEM PROMPT
