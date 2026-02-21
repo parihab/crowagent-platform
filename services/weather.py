@@ -206,14 +206,14 @@ def get_weather(
     if key:
         try:
             return _fetch_met_office(key, met_office_location)
-        except Exception:
-            pass  # fall through gracefully
+        except Exception as _met_err:
+            st.caption(f"ℹ️ Met Office unavailable ({type(_met_err).__name__}) — falling back to Open-Meteo")
 
     # ── Attempt Open-Meteo (primary free source) ──────────────────────────────
     try:
         return _fetch_open_meteo()
-    except Exception:
-        pass  # fall through gracefully
+    except Exception as _om_err:
+        st.caption(f"ℹ️ Open-Meteo unavailable ({type(_om_err).__name__}) — using manual override")
 
     # ── Manual fallback (offline / API unavailable) ───────────────────────────
     return {

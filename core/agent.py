@@ -405,19 +405,27 @@ def _call_gemini(api_key: str, messages: list, use_tools: bool = True) -> dict:
             "function_calling_config": {"mode": "AUTO"}
         }
 
-    resp = requests.post(
-        GEMINI_URL,
-        params={"key": api_key},
-        headers={"Content-Type": "application/json"},
-        json=payload,
-        timeout=30,
-    )
+    try:
+        resp = requests.post(
+            GEMINI_URL,
+            params={"key": api_key},
+            headers={"Content-Type": "application/json"},
+            json=payload,
+            timeout=30,
+        )
+    except requests.exceptions.Timeout:
+        return {"error": "Gemini API request timed out (30 s). Check your connection and retry."}
+    except requests.exceptions.ConnectionError:
+        return {"error": "Could not connect to Gemini API. Check your internet connection."}
+    except requests.exceptions.RequestException as exc:
+        return {"error": f"Gemini API request failed: {exc}"}
+
     if resp.status_code != 200:
         error_msg = "Unknown error"
         try:
             error_data = resp.json()
             error_msg = error_data.get('error', {}).get('message', resp.text[:200])
-        except:
+        except Exception:
             error_msg = resp.text[:200]
         
         # Enhanced error messages for common issues

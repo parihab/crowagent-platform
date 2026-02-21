@@ -585,7 +585,7 @@ CHART_LAYOUT = dict(
 def _get_secret(key: str, default: str = "") -> str:
     try:
         return st.secrets[key]
-    except Exception:
+    except (KeyError, AttributeError, FileNotFoundError):
         return os.getenv(key, default)
 
 # Initialize session state with defaults or environment values
@@ -836,9 +836,21 @@ with st.sidebar:
                             unsafe_allow_html=True,
                         )
                         st.session_state.gemini_key_valid = True
+                except requests.exceptions.Timeout:
+                    st.markdown(
+                        "<div class='val-warn'>⚠ Validation timed out — key saved, will test on first use</div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.session_state.gemini_key_valid = True
+                except requests.exceptions.ConnectionError:
+                    st.markdown(
+                        "<div class='val-warn'>⚠ No internet connection — key saved, will test on first use</div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.session_state.gemini_key_valid = True
                 except Exception as e:
                     st.markdown(
-                        "<div class='val-ok'>✓ Key format valid (will test on first use)</div>",
+                        f"<div class='val-warn'>⚠ Validation error — key saved, will test on first use</div>",
                         unsafe_allow_html=True,
                     )
                     st.session_state.gemini_key_valid = True

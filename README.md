@@ -1,32 +1,135 @@
-# CrowAgent Platform
+# CrowAgent™ Platform
 
-## Project Overview
-Crowagent Platform is a versatile solution designed for ...
+**Sustainability AI Decision Intelligence for University Estate Management**
+
+> ⚠️ **Working Prototype — Results Are Indicative Only.**
+> Not for use as the sole basis for capital investment decisions.
+
+---
+
+## Overview
+
+CrowAgent™ Platform is a physics-informed campus thermal intelligence system that helps
+university estate managers and sustainability professionals make evidence-based,
+cost-effective decisions for achieving Net Zero targets.
+
+The platform combines:
+- **Physics-Informed Thermal Model** (PINN methodology — Raissi et al., 2019)
+- **Agentic AI Advisor** powered by Google Gemini 1.5 Flash
+- **Live Weather Integration** via Open-Meteo API and Met Office DataPoint
+- **Structured Scenario Comparison** across retrofit interventions
+
+---
 
 ## Features
-- Feature 1
-- Feature 2
-- Feature 3
 
-## Installation Instructions
-To install Crowagent Platform, follow these steps:
-1. Step 1
-2. Step 2
-3. Step 3
+- 📊 **Dashboard** — Energy, carbon, and financial KPIs for multiple building scenarios
+- 📈 **Financial Analysis** — Payback period, ROI, and cost-per-tonne CO₂ comparisons
+- 🤖 **AI Advisor** — Agentic LLM with physics tool-use for expert recommendations
+- 🌤 **Live Weather** — Real-time temperature integration for accurate thermal calculations
+- 🏢 **Multi-Building Portfolio** — Compare interventions across your campus estate
 
-## Usage Examples
-Here are some examples of how to use the platform:
+---
+
+## Quick Start
+
+### Prerequisites
+
+- Python 3.11+
+- A free [Gemini API key](https://aistudio.google.com) (for AI Advisor)
+- Optionally, a free [Met Office DataPoint key](https://www.metoffice.gov.uk/services/data/datapoint)
+
+### Installation
+
 ```bash
-# command to start the service
+git clone https://github.com/WonderApri/crowagent-platform.git
+cd crowagent-platform
+pip install -r requirements.txt
 ```
 
-## API Setup
-Instructions on how to set up the API:
-1. Step 1
-2. Step 2
+### Running the App
 
-## Contributing
-Guidelines for contributing to the project.
+```bash
+streamlit run app/main.py
+```
 
-## License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+### Running Tests
+
+```bash
+pytest tests/ -v
+```
+
+---
+
+## API Keys
+
+API keys are **never stored server-side**. They live in your browser session only.
+
+| Key | Required | Where to get |
+|-----|----------|--------------|
+| Gemini API key | For AI Advisor | [aistudio.google.com](https://aistudio.google.com) |
+| Met Office DataPoint | Optional (better UK weather) | [metoffice.gov.uk/services/data/datapoint](https://www.metoffice.gov.uk/services/data/datapoint) |
+
+---
+
+## Data Sources & Citations
+
+| Source | Usage |
+|--------|-------|
+| BEIS GHG Conversion Factors 2023 | Carbon intensity: 0.20482 kgCO₂e/kWh |
+| HESA Estates Management Statistics 2022-23 | UK HE electricity cost: £0.28/kWh |
+| CIBSE Guide A Environmental Design | U-values, heating season 5,800 hrs/yr |
+| PVGIS (EC Joint Research Centre) | Solar irradiance Reading: 950 kWh/m²/yr |
+| Raissi, Perdikaris & Karniadakis (2019) | PINN thermal methodology |
+| Open-Meteo API | Free live weather data |
+| Met Office DataPoint | Optional UK weather data |
+
+---
+
+## Disclaimer
+
+CrowAgent™ Platform is a **working research prototype**. All energy, carbon, and financial
+results are based on simplified steady-state physics models calibrated against published
+UK higher education sector averages. They do not reflect the specific characteristics of
+any real building or institution.
+
+**Greenfield University is a fictional institution** created for demonstration purposes.
+Any resemblance to any real institution is coincidental.
+
+Results **must not** be used as the sole basis for any capital investment, procurement,
+or planning decision. Commission a site-specific energy assessment by a suitably qualified
+energy surveyor before undertaking any retrofit programme.
+
+---
+
+## Intellectual Property & Legal
+
+**Copyright © 2026 Aparajita Parihar. All rights reserved.**
+
+CrowAgent™ Platform — including all source code, physics models, UI design, and brand
+assets — is the original work of Aparajita Parihar.
+
+**CrowAgent™** is an unregistered trademark of Aparajita Parihar. A UK Intellectual
+Property Office (UK IPO) Class 42 trademark application is currently pending. Use of
+the CrowAgent name or logo without permission is prohibited.
+
+This project is an **independent research project** and is **not affiliated with the
+University of Reading** or any other institution.
+
+This software is **not licensed for commercial use** without written permission of the
+author. Redistribution, modification, and non-commercial use for research and educational
+purposes are permitted provided this copyright notice and trademark statement are retained.
+
+For licensing enquiries: crowagent.platform@gmail.com
+
+---
+
+## Contact
+
+- **Email:** crowagent.platform@gmail.com
+- **GitHub:** [github.com/WonderApri/crowagent-platform](https://github.com/WonderApri/crowagent-platform)
+- **Issues:** [github.com/WonderApri/crowagent-platform/issues](https://github.com/WonderApri/crowagent-platform/issues)
+
+---
+
+*v2.0.0 · 21 February 2026 · Working Prototype*
