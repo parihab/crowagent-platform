@@ -19,14 +19,9 @@ import core.agent as crow_agent
 import core.physics as physics
  
 # --- AUTO-LOAD SECRETS ---
-def _get_secret(key: str, default: str = "") -> str:
-    try:
-        return st.secrets[key]
-    except Exception:
-        return os.getenv(key, default)
-
+# This logic prioritizes Environment Variables (Local) or st.secrets (Cloud)
 if "gemini_key" not in st.session_state:
     st.session_state.gemini_key = _get_secret("GEMINI_KEY", "")
 
 if "met_office_key" not in st.session_state:
-    st.session_state.met_office_key = _get_secret("MET_OFFICE_KEY", "")
+    st.session_state.met_office_key = os.getenv("MET_OFFICE_KEY") or st.secrets.get("MET_OFFICE_KEY", "")
