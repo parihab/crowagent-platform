@@ -6,8 +6,8 @@
 # Not licensed for commercial use without written permission of the author.
 # Trademark rights reserved pending UK IPO registration — Class 42.
 #
-# Agentic AI module: tool-use loop powered by Google Gemini 1.5 Flash
-# Free tier: 15 requests/min · 1,500 requests/day · No credit card required
+# Agentic AI module: tool-use loop powered by Google Gemini 1.5 Pro
+# Free tier: 10 requests/min · 1,500 requests/day · No credit card required
 # Get API key free at: https://aistudio.google.com
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -17,11 +17,13 @@ from typing import Any
 
 # ─────────────────────────────────────────────────────────────────────────────
 # GEMINI API CONSTANTS
-# Model: gemini-1.5-flash — free tier, best for agentic tool-use tasks
+# Model: gemini-1.5-pro — Free tier with best availability for tool-use tasks
+# API Version: v1 (stable) instead of v1beta
 # ─────────────────────────────────────────────────────────────────────────────
-GEMINI_MODEL   = "gemini-1.5-flash"
+GEMINI_MODEL   = "gemini-1.5-pro"
+GEMINI_API_VERSION = "v1"  # Use stable v1 instead of v1beta
 GEMINI_URL     = (
-    f"https://generativelanguage.googleapis.com/v1beta/"
+    f"https://generativelanguage.googleapis.com/{GEMINI_API_VERSION}/"
     f"models/{GEMINI_MODEL}:generateContent"
 )
 MAX_AGENT_LOOPS = 6      # prevent runaway tool-call chains (cost control)
@@ -420,10 +422,25 @@ def _call_gemini(api_key: str, messages: list, use_tools: bool = True) -> dict:
         timeout=30,
     )
     if resp.status_code != 200:
-        return {
-            "error": f"Gemini API error {resp.status_code}: "
-                     f"{resp.json().get('error', {}).get('message', resp.text[:200])}"
-        }
+        error_msg = "Unknown error"
+        try:
+            error_data = resp.json()
+            error_msg = error_data.get('error', {}).get('message', resp.text[:200])
+        except:
+            error_msg = resp.text[:200]
+        
+        # Enhanced error messages for common issues
+        if "404" in str(resp.status_code) or "not found" in error_msg.lower():
+            error_msg = (
+                f"Model not available. Please ensure your API key is valid. "
+                f"Error: {error_msg}"
+            )
+        elif "401" in str(resp.status_code) or "unauthorized" in error_msg.lower():
+            error_msg = "Invalid API key. Please check and try again."
+        elif "403" in str(resp.status_code) or "permission" in error_msg.lower():
+            error_msg = "API key doesn't have permission. Check your Google Cloud Console."
+        
+        return {"error": f"Gemini API error {resp.status_code}: {error_msg}"}
     return resp.json()
 
 
