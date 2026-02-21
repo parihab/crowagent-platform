@@ -19,7 +19,6 @@ import core.agent as crow_agent
 import core.physics as physics
  
 # --- AUTO-LOAD SECRETS ---
-# Safely reads secrets — works whether secrets.toml exists or not
 def _get_secret(key: str, default: str = "") -> str:
     try:
         return st.secrets[key]
@@ -28,6 +27,5 @@ def _get_secret(key: str, default: str = "") -> str:
 
 if "gemini_key" not in st.session_state:
     st.session_state.gemini_key = _get_secret("GEMINI_KEY", "")
-
 if "met_office_key" not in st.session_state:
     st.session_state.met_office_key = _get_secret("MET_OFFICE_KEY", "")
