@@ -17,10 +17,10 @@ from typing import Any
 
 # ─────────────────────────────────────────────────────────────────────────────
 # GEMINI API CONSTANTS
-# Model: gemini-1.5-pro — Free tier with best availability for tool-use tasks
+# Model: gemini-1.5-flash-latest — Free tier with best availability for tool-use tasks
 # API Version: v1 (stable) instead of v1beta
 # ─────────────────────────────────────────────────────────────────────────────
-GEMINI_MODEL   = "gemini-1.5-pro"
+GEMINI_MODEL   = "gemini-1.5-flash-latest"
 GEMINI_API_VERSION = "v1"  # Use stable v1 instead of v1beta
 GEMINI_URL     = (
     f"https://generativelanguage.googleapis.com/{GEMINI_API_VERSION}/"
