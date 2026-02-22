@@ -769,26 +769,18 @@ with st.sidebar:
           unsafe_allow_html=True,
         )
         
+        _show_mo = st.checkbox("Show Met Office key", key="show_mo_key", value=False)
         _mo_key = st.text_input(
           "Met Office DataPoint key",
-          type="password", placeholder="",
+          type="default" if _show_mo else "password", placeholder="",
           value=st.session_state.met_office_key,
           help="Free at metoffice.gov.uk/services/data/datapoint",
         )
         if _mo_key != st.session_state.met_office_key:
             st.session_state.met_office_key = _mo_key
 
-        # Guidance and validation for Met Office DataPoint key
-        if not st.session_state.met_office_key:
-          st.markdown(
-            "<div style='font-size:0.86rem;color:#8FBCCE;'>"
-            "Met Office DataPoint is optional. To enable UK-observation-level "
-            "weather, register for a free API key at: <a href=\"https://www.metoffice.gov.uk/services/data/datapoint\" target=\"_blank\">metoffice.gov.uk/services/data/datapoint</a>. "
-            "Paste your key into this field and click 'Test Met Office key'."
-            "</div>",
-            unsafe_allow_html=True,
-          )
-        else:
+        # Validation for Met Office DataPoint key
+        if st.session_state.met_office_key:
           if st.button("Test Met Office key", key="test_mo_key", use_container_width=True):
             ok, msg = wx.test_met_office_key(st.session_state.met_office_key)
             if ok:
@@ -796,11 +788,12 @@ with st.sidebar:
             else:
               st.markdown("<div class='val-err'>❌ " + msg + "</div>", unsafe_allow_html=True)
 
+        _show_gm = st.checkbox("Show Gemini key", key="show_gm_key", value=False)
         _gm_key = st.text_input(
             "Gemini API key (for AI Advisor)",
-            type="password", placeholder="AIzaSy... (starts with 'AIza')",
+            type="default" if _show_gm else "password", placeholder="AIzaSy... (starts with 'AIza')",
             value=st.session_state.gemini_key,
-          help="Get your key at aistudio.google.com or console.cloud.google.com | Never share this key | Each user brings their own",
+            help="Get your key at aistudio.google.com or console.cloud.google.com | Never share this key | Each user brings their own",
         )
         if _gm_key != st.session_state.gemini_key:
             st.session_state.gemini_key = _gm_key
