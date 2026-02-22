@@ -55,14 +55,29 @@ def _load_logo_uri() -> str:
             return f"data:image/svg+xml;base64,{b64}"
     return ""
 
+def _load_icon_uri() -> str:
+    """Return the square icon mark as a base64 data URI for the browser tab, or '' if missing."""
+    candidates = [
+        os.path.join(os.path.dirname(__file__), "../assets/CrowAgent_Icon_Square.svg"),
+        os.path.join(os.path.dirname(__file__), "assets/CrowAgent_Icon_Square.svg"),
+        "assets/CrowAgent_Icon_Square.svg",
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            with open(path, "rb") as fh:
+                b64 = base64.b64encode(fh.read()).decode()
+            return f"data:image/svg+xml;base64,{b64}"
+    return ""
+
 LOGO_URI = _load_logo_uri()
+ICON_URI = _load_icon_uri()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PAGE CONFIGURATION
 # ─────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title   = "CrowAgent™ Platform",
-    page_icon    = "🌿",
+    page_icon    = ICON_URI or "🌿",
     layout       = "wide",
     initial_sidebar_state = "expanded",
     menu_items   = {
