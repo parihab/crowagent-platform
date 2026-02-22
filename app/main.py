@@ -55,19 +55,34 @@ def _load_logo_uri() -> str:
             return f"data:image/svg+xml;base64,{b64}"
     return ""
 
+def _load_icon_uri() -> str:
+    """Return the square icon mark as a base64 data URI for the browser tab, or '' if missing."""
+    candidates = [
+        os.path.join(os.path.dirname(__file__), "../assets/CrowAgent_Icon_Square.svg"),
+        os.path.join(os.path.dirname(__file__), "assets/CrowAgent_Icon_Square.svg"),
+        "assets/CrowAgent_Icon_Square.svg",
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            with open(path, "rb") as fh:
+                b64 = base64.b64encode(fh.read()).decode()
+            return f"data:image/svg+xml;base64,{b64}"
+    return ""
+
 LOGO_URI = _load_logo_uri()
+ICON_URI = _load_icon_uri()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PAGE CONFIGURATION
 # ─────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title   = "CrowAgent™ Platform",
-    page_icon    = "🌿",
+    page_icon    = ICON_URI or "🌿",
     layout       = "wide",
     initial_sidebar_state = "expanded",
     menu_items   = {
         "Get Help":     "mailto:crowagent.platform@gmail.com",
-        "Report a bug": "https://github.com/parihab/crowagent-platform/issues",
+        "Report a bug": "https://github.com/WonderApri/crowagent-platform/issues",
         "About": (
             "**CrowAgent™ Platform — Sustainability AI Decision Intelligence**\n\n"
             "© 2026 Aparajita Parihar. All rights reserved.\n\n"
@@ -132,7 +147,7 @@ h1,h2,h3,h4 {
   background: #0D2640 !important;
   border: 1px solid #00C2A8 !important;
   color: #00C2A8 !important;
-  font-size: 0.78rem !important;
+  font-size: 0.82rem !important;
   font-weight: 600 !important;
   padding: 4px 10px !important;
 }
@@ -162,13 +177,13 @@ h1,h2,h3,h4 {
 
 /* ── Status pills ──────────────────────────────────────────────────────── */
 .sp { display:inline-flex; align-items:center; gap:5px; padding:3px 10px;
-      border-radius:20px; font-size:0.74rem; font-weight:700;
+      border-radius:20px; font-size:0.78rem; font-weight:700;
       letter-spacing:0.3px; white-space:nowrap; }
 .sp-live   { background:rgba(29,184,122,.12); color:#1DB87A;
              border:1px solid rgba(29,184,122,.3); }
 .sp-cache  { background:rgba(240,180,41,.1);  color:#F0B429;
              border:1px solid rgba(240,180,41,.25); }
-.sp-manual { background:rgba(90,122,144,.12); color:#8AACBF;
+.sp-manual { background:rgba(90,122,144,.12); color:#A8C8D8;
              border:1px solid rgba(90,122,144,.2); }
 .sp-warn   { background:rgba(232,76,76,.1);   color:#E84C4C;
              border:1px solid rgba(232,76,76,.25); }
@@ -186,7 +201,7 @@ h1,h2,h3,h4 {
 }
 .stTabs [data-baseweb="tab"] {
   background: transparent !important;
-  color: #5A7A90 !important;
+  color: #3A576B !important;
   font-family: 'Rajdhani', sans-serif !important;
   font-size: 0.88rem !important;
   font-weight: 600 !important;
@@ -218,22 +233,22 @@ h1,h2,h3,h4 {
 .kpi-card.accent-navy   { border-top-color: #071A2F; }
 .kpi-label {
   font-family: 'Rajdhani', sans-serif;
-  font-size: 0.72rem; font-weight: 700; letter-spacing: 1px;
-  text-transform: uppercase; color: #5A7A90; margin-bottom: 6px;
+  font-size: 0.78rem; font-weight: 700; letter-spacing: 1px;
+  text-transform: uppercase; color: #3A576B; margin-bottom: 6px;
 }
 .kpi-value {
   font-family: 'Rajdhani', sans-serif;
   font-size: 2rem; font-weight: 700; color: #071A2F; line-height: 1.1;
 }
-.kpi-unit  { font-size: 0.9rem; font-weight: 500; color: #5A7A90; margin-left: 2px; }
-.kpi-delta-pos { color: #1DB87A; font-size: 0.78rem; font-weight: 700; margin-top: 4px; }
-.kpi-delta-neg { color: #E84C4C; font-size: 0.78rem; font-weight: 700; margin-top: 4px; }
-.kpi-sub   { font-size: 0.75rem; color: #8AACBF; margin-top: 2px; }
+.kpi-unit  { font-size: 0.9rem; font-weight: 500; color: #3A576B; margin-left: 2px; }
+.kpi-delta-pos { color: #1DB87A; font-size: 0.80rem; font-weight: 700; margin-top: 4px; }
+.kpi-delta-neg { color: #E84C4C; font-size: 0.80rem; font-weight: 700; margin-top: 4px; }
+.kpi-sub   { font-size: 0.78rem; color: #5A7A90; margin-top: 2px; }
 
 /* ── Section headers ───────────────────────────────────────────────────── */
 .sec-hdr {
   font-family: 'Rajdhani', sans-serif;
-  font-size: 0.78rem; font-weight: 700; letter-spacing: 1.5px;
+  font-size: 0.84rem; font-weight: 700; letter-spacing: 1.5px;
   text-transform: uppercase; color: #00C2A8;
   border-bottom: 1px solid rgba(0,194,168,.2);
   padding-bottom: 6px; margin-bottom: 14px; margin-top: 4px;
@@ -255,7 +270,7 @@ h1,h2,h3,h4 {
   text-transform: uppercase;
 }
 .chart-caption {
-  font-size: 0.72rem; color: #8AACBF; margin-top: 4px;
+  font-size: 0.77rem; color: #6A92AA; margin-top: 4px;
   font-style: italic;
 }
 
@@ -265,7 +280,7 @@ h1,h2,h3,h4 {
   border: 1px solid rgba(240,180,41,.3);
   border-left: 4px solid #F0B429;
   border-radius: 0 6px 6px 0;
-  padding: 10px 16px; font-size: 0.78rem;
+  padding: 10px 16px; font-size: 0.82rem;
   color: #6A5010; line-height: 1.55; margin: 10px 0;
 }
 .disc-ai {
@@ -273,7 +288,7 @@ h1,h2,h3,h4 {
   border: 1px solid rgba(0,194,168,.2);
   border-left: 4px solid #00C2A8;
   border-radius: 0 6px 6px 0;
-  padding: 10px 16px; font-size: 0.78rem;
+  padding: 10px 16px; font-size: 0.82rem;
   color: #1A5A50; line-height: 1.55; margin: 10px 0;
 }
 .disc-data {
@@ -281,7 +296,7 @@ h1,h2,h3,h4 {
   border: 1px solid rgba(7,26,47,.12);
   border-left: 4px solid #071A2F;
   border-radius: 0 6px 6px 0;
-  padding: 10px 16px; font-size: 0.78rem;
+  padding: 10px 16px; font-size: 0.82rem;
   color: #3A5268; line-height: 1.55; margin: 10px 0;
 }
 
@@ -298,8 +313,8 @@ h1,h2,h3,h4 {
   font-size: 2rem; font-weight: 700; color: #ffffff;
   display: inline-block; line-height: 1;
 }
-.wx-desc { font-size: 0.78rem; color: #7A9BB5; margin-top: 2px; }
-.wx-row  { font-size: 0.74rem; color: #CBD8E6; margin-top: 5px; }
+.wx-desc { font-size: 0.82rem; color: #A8C8D8; margin-top: 2px; }
+.wx-row  { font-size: 0.78rem; color: #CBD8E6; margin-top: 5px; }
 
 /* ── Contact cards ─────────────────────────────────────────────────────── */
 .contact-card {
@@ -311,7 +326,7 @@ h1,h2,h3,h4 {
 }
 .contact-label {
   font-family: 'Rajdhani', sans-serif;
-  font-size: 0.74rem; font-weight: 700; letter-spacing: 1px;
+  font-size: 0.80rem; font-weight: 700; letter-spacing: 1px;
   text-transform: uppercase; color: #00C2A8; margin-bottom: 4px;
 }
 .contact-val { font-size: 0.88rem; color: #071A2F; font-weight: 600; }
@@ -332,7 +347,7 @@ h1,h2,h3,h4 {
   border-left: 3px solid #E84C4C;
   border-radius: 0 4px 4px 0;
   padding: 7px 12px;
-  font-size: 0.76rem; color: #8B1A1A;
+  font-size: 0.80rem; color: #8B1A1A;
 }
 .val-ok {
   background: rgba(29,184,122,.06);
@@ -340,7 +355,7 @@ h1,h2,h3,h4 {
   border-left: 3px solid #1DB87A;
   border-radius: 0 4px 4px 0;
   padding: 7px 12px;
-  font-size: 0.76rem; color: #0A4A28;
+  font-size: 0.80rem; color: #0A4A28;
 }
 .val-err {
   background: rgba(220,53,69,.08);
@@ -348,7 +363,7 @@ h1,h2,h3,h4 {
   border-left: 3px solid #DC3545;
   border-radius: 0 4px 4px 0;
   padding: 7px 12px;
-  font-size: 0.76rem; color: #721C24;
+  font-size: 0.80rem; color: #721C24;
 }
 
 /* ── Plotly overrides ──────────────────────────────────────────────────── */
@@ -357,7 +372,7 @@ h1,h2,h3,h4 {
 /* ── Sidebar section label ─────────────────────────────────────────────── */
 .sb-section {
   font-family: 'Rajdhani', sans-serif;
-  font-size: 0.74rem; font-weight: 700; letter-spacing: 1.5px;
+  font-size: 0.80rem; font-weight: 700; letter-spacing: 1.5px;
   text-transform: uppercase; color: #00C2A8 !important;
   margin: 14px 0 6px 0;
 }
@@ -366,7 +381,7 @@ h1,h2,h3,h4 {
 .chip {
   display: inline-block; background: #0D2640;
   border: 1px solid #1A3A5C; border-radius: 4px;
-  padding: 2px 8px; font-size: 0.74rem; color: #7A9BB5;
+  padding: 2px 8px; font-size: 0.78rem; color: #9ABDD0;
   margin: 2px;
 }
 
@@ -624,7 +639,7 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
     st.markdown(
-        "<div style='font-size:0.72rem;color:#4A6880;margin-bottom:8px;'>"
+        "<div style='font-size:0.82rem;color:#8FBCCE;margin-bottom:8px;'>"
         "Sustainability AI Decision Intelligence Platform</div>",
         unsafe_allow_html=True,
     )
@@ -638,7 +653,7 @@ with st.sidebar:
     )
     sb = BUILDINGS[selected_building_name]
     st.markdown(
-        f"<div style='font-size:0.72rem;color:#7A9BB5;line-height:1.5;'>"
+        f"<div style='font-size:0.76rem;color:#9ABDD0;line-height:1.5;'>"
         f"<span class='chip'>{sb['building_type']}</span> "
         f"<span class='chip'>{sb['built_year']}</span> "
         f"<span class='chip'>{sb['floor_area_m2']:,} m²</span>"
@@ -710,7 +725,7 @@ with st.sidebar:
       <div class='wx-desc'>{weather['condition']}</div>
     </div>
     <div style='text-align:right;'>
-      <div style='font-size:0.72rem;color:#4A6880;'>{weather['location_name']}</div>
+      <div style='font-size:0.76rem;color:#8FBCCE;'>{weather['location_name']}</div>
     </div>
   </div>
   <div class='wx-row'>
@@ -733,7 +748,7 @@ with st.sidebar:
         st.markdown(
             "<div style='background:#FFF3CD;border:1px solid #FFD89B;border-radius:6px;padding:10px;'>"
             "<div style='font-size:0.75rem;color:#664D03;font-weight:700;margin-bottom:6px;'>🔒 Security Notice</div>"
-            "<div style='font-size:0.72rem;color:#664D03;line-height:1.5;'>"
+            "<div style='font-size:0.78rem;color:#664D03;line-height:1.5;'>"
             "• Keys exist in your session only (cleared on browser close)<br/>"
             "• Your keys are <strong>never</strong> stored on the server<br/>"
             "• Each user enters their own key independently<br/>"
@@ -743,7 +758,7 @@ with st.sidebar:
         )
         st.markdown("")  # spacing
         st.markdown(
-          "<div style='font-size:0.9rem;color:#4A6880;margin-bottom:8px;'>"
+          "<div style='font-size:0.9rem;color:#8FBCCE;margin-bottom:8px;'>"
           "Provide your own API keys — do not use shared or public keys. "
           "Met Office DataPoint (free): register at "
           "<a href=\"https://www.metoffice.gov.uk/services/data/datapoint\" target=\"_blank\">metoffice.gov.uk/services/data/datapoint</a>. "
@@ -766,7 +781,7 @@ with st.sidebar:
         # Guidance and validation for Met Office DataPoint key
         if not st.session_state.met_office_key:
           st.markdown(
-            "<div style='font-size:0.86rem;color:#4A6880;'>"
+            "<div style='font-size:0.86rem;color:#8FBCCE;'>"
             "Met Office DataPoint is optional. To enable UK-observation-level "
             "weather, register for a free API key at: <a href=\"https://www.metoffice.gov.uk/services/data/datapoint\" target=\"_blank\">metoffice.gov.uk/services/data/datapoint</a>. "
             "Paste your key into this field and click 'Test Met Office key'."
@@ -866,7 +881,7 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown(
-        "<div style='font-size:0.72rem;color:#7A9BB5;text-align:center;line-height:1.6;'>"
+        "<div style='font-size:0.76rem;color:#9ABDD0;text-align:center;line-height:1.6;'>"
         "© 2026 Aparajita Parihar<br/>CrowAgent™ · All rights reserved<br/>"
         "v2.0.0 · Prototype</div>",
         unsafe_allow_html=True,
@@ -908,9 +923,9 @@ st.markdown(f"""
   <div style='display:flex;align-items:center;gap:16px;flex-wrap:wrap;'>
     {_logo_html}
     <div>
-      <div style='font-family:Rajdhani,sans-serif;font-size:0.74rem;
+      <div style='font-family:Rajdhani,sans-serif;font-size:0.82rem;
                   letter-spacing:1.5px;text-transform:uppercase;
-                  color:#4A6880;line-height:1;margin-top:2px;'>
+                  color:#8FBCCE;line-height:1;margin-top:2px;'>
         Sustainability AI Decision Intelligence Platform
       </div>
     </div>
@@ -1257,7 +1272,7 @@ with _tab_ai:
         Physics-grounded agentic AI that runs real thermal simulations,
         compares scenarios and gives evidence-based Net Zero investment recommendations.
       </div>
-      <div style='color:#4A6880;font-size:0.72rem;margin-top:4px;'>
+      <div style='color:#8FBCCE;font-size:0.78rem;margin-top:4px;'>
         Powered by Google Gemini · Physics-informed reasoning · © 2026 Aparajita Parihar
       </div>
     </div>
@@ -1287,9 +1302,9 @@ with _tab_ai:
              border-radius:0 8px 8px 8px;padding:10px 14px;margin:4px 0 10px;
              color:#071A2F;font-size:0.88rem;line-height:1.65;}
     .ca-tool{display:inline-block;background:#0D2640;color:#00C2A8;border-radius:4px;
-             padding:2px 8px;font-size:0.74rem;font-weight:700;margin:2px 2px 2px 0;
+             padding:2px 8px;font-size:0.78rem;font-weight:700;margin:2px 2px 2px 0;
              letter-spacing:0.3px;}
-    .ca-meta{font-size:0.74rem;color:#8AACBF;margin-top:4px;}
+    .ca-meta{font-size:0.78rem;color:#6A92AA;margin-top:4px;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -1399,7 +1414,7 @@ with _tab_ai:
                         f"<span class='ca-meta' style='margin-left:6px;'>Powered by Gemini 1.5 Flash</span>"
                         f"<br/><br/>{_msg['content']}<br/>"
                         f"<div style='margin-top:8px;padding-top:6px;border-top:1px solid #E0EBF4;"
-                        f"font-size:0.72rem;color:#8AACBF;'>"
+                        f"font-size:0.77rem;color:#6A92AA;'>"
                         f"⚠️ AI-generated content. Verify all figures independently before acting.</div>"
                         f"</div>",
                         unsafe_allow_html=True,
@@ -1612,9 +1627,9 @@ with _tab_about:
           <div style='margin-bottom:14px;'>
             <div class='contact-label'>GitHub</div>
             <div class='contact-val'>
-              <a href='https://github.com/parihab/crowagent-platform'
+              <a href='https://github.com/WonderApri/crowagent-platform'
                  target='_blank' style='color:#00C2A8;font-size:0.85rem;'>
-                github.com/parihab/crowagent-platform
+                github.com/WonderApri/crowagent-platform
               </a>
             </div>
           </div>
@@ -1641,7 +1656,7 @@ with _tab_about:
 
           <div style='margin-top:14px;background:#F8FAFC;border:1px solid #E0EBF4;
                       border-radius:5px;padding:10px 12px;'>
-            <div style='font-size:0.74rem;color:#8AACBF;font-weight:700;
+            <div style='font-size:0.78rem;color:#5A7A90;font-weight:700;
                         text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px;'>
               Response Time
             </div>
@@ -1657,10 +1672,10 @@ with _tab_about:
         st.markdown(f"""
         <div style='background:#071A2F;border:1px solid #1A3A5C;border-radius:8px;
                     padding:14px 16px;'>
-          <div style='font-family:Rajdhani,sans-serif;font-size:0.74rem;font-weight:700;
+          <div style='font-family:Rajdhani,sans-serif;font-size:0.78rem;font-weight:700;
                       letter-spacing:1px;text-transform:uppercase;color:#00C2A8;
                       margin-bottom:8px;'>Build Information</div>
-          <div style='font-size:0.74rem;color:#7A9BB5;line-height:1.8;'>
+          <div style='font-size:0.78rem;color:#9ABDD0;line-height:1.8;'>
             <strong style='color:#CBD8E6;'>Version:</strong> v2.0.0<br/>
             <strong style='color:#CBD8E6;'>Released:</strong> 21 February 2026<br/>
             <strong style='color:#CBD8E6;'>Status:</strong>
@@ -1684,15 +1699,15 @@ st.markdown("""
               flex-wrap:wrap;gap:16px;margin-bottom:8px;'>
     <span style='font-family:Rajdhani,sans-serif;font-size:0.9rem;
                  font-weight:700;color:#00C2A8;'>🌿 CrowAgent™</span>
-    <span style='color:#5A7A90;font-size:0.78rem;'>Sustainability AI Decision Intelligence Platform</span>
-    <span style='color:#5A7A90;font-size:0.78rem;'>v2.0.0 · Working Prototype</span>
+    <span style='color:#8FBCCE;font-size:0.80rem;'>Sustainability AI Decision Intelligence Platform</span>
+    <span style='color:#8FBCCE;font-size:0.80rem;'>v2.0.0 · Working Prototype</span>
   </div>
-  <div style='font-size:0.74rem;color:#7A9BB5;line-height:1.6;'>
+  <div style='font-size:0.78rem;color:#9ABDD0;line-height:1.6;'>
     © 2026 Aparajita Parihar · All rights reserved · Independent research project ·
     CrowAgent™ is an unregistered trademark (UK IPO Class 42, registration pending) ·
     Not licensed for commercial use without written permission
   </div>
-  <div style='font-size:0.72rem;color:#5A7A90;margin-top:4px;font-style:italic;'>
+  <div style='font-size:0.77rem;color:#8FBCCE;margin-top:4px;font-style:italic;'>
     Physics: Raissi et al. (2019) J. Comp. Physics · doi:10.1016/j.jcp.2018.10.045 ·
     Weather: Open-Meteo API + Met Office DataPoint · Carbon: BEIS 2023 ·
     Costs: HESA 2022-23 · AI: Google Gemini 1.5 Flash ·
