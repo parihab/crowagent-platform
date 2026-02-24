@@ -216,11 +216,12 @@ function detectLocation() {
     },
     function(err) {
       var msgs = {1:'Permission denied',2:'Position unavailable',3:'Request timed out'};
-      status.innerHTML = '\u274c ' + (msgs[err.code] || err.message);
+      status.innerHTML = '\u274c ' + (msgs[err.code] || err.message)
+                        + ' (try again or enter coords manually)';
       btn.disabled = false;
       btn.textContent = '📍 Detect My Location';
     },
-    { timeout: 10000, maximumAge: 300000 }
+    { timeout: 20000, maximumAge: 300000 }
   );
 }
 </script>
