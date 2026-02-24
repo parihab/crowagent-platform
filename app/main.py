@@ -909,8 +909,18 @@ with st.sidebar:
 
     # ── Pydeck map demo (static example)
     try:
+        # user-controlled month filter
+        month = st.slider("Month", 1, 12, 6, format="%d")
+
+        # sample dataset tagged with a month; filtering demonstrates interactive chart updates
+        _all_points = [
+            {"lon": -1.8904, "lat": 52.4862, "radius": 100, "month": m}
+            for m in range(1, 13)
+        ]
+        data = [pt for pt in _all_points if pt["month"] == month]
+
         layer = pdk.Layer("ScatterplotLayer",
-            data=[{"lon": -1.8904, "lat": 52.4862, "radius": 100}],
+            data=data,
             get_position="[lon, lat]", get_radius="radius",
             get_fill_color=[0, 194, 168], pickable=True)
 
