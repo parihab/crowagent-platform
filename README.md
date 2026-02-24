@@ -70,6 +70,8 @@ cd crowagent-platform
 
 ```bash
 streamlit run app/main.py
+# or, thanks to the helper wrapper included at the repository root:
+# streamlit run streamlit_app.py
 ```
 
 ### Running Tests
@@ -78,6 +80,9 @@ streamlit run app/main.py
 pytest tests/ -v
 ```
 
+The test suite now includes startup and validation checks that exercise
+key parts of the application logic without launching a browser.  They use
+monkeypatching to simulate network responses so you can run them offline.
 ---
 
 ## API Keys
