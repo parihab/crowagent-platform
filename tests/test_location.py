@@ -1,7 +1,14 @@
+import os
+import sys
 import streamlit.components.v1 as components
 import pytest
 
-from services import location
+# ensure services package is importable
+_services_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "services"))
+if _services_dir not in sys.path:
+    sys.path.insert(0, _services_dir)
+
+import location
 
 
 def test_render_geo_detect_does_not_raise(monkeypatch):
