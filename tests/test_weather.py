@@ -37,6 +37,7 @@ def test_provider_chain_prefers_met_then_owm(monkeypatch):
 
     # if Met Office fails, we should fall back to OpenWeatherMap
     def bad_met(*args, **kwargs):
+        calls.append("met")
         raise RuntimeError("fail")
 
     monkeypatch.setattr(wx, "_fetch_met_office", bad_met)
@@ -55,6 +56,7 @@ def test_provider_chain_prefers_met_then_owm(monkeypatch):
 
     # if both key-backed providers fail, we should hit Open-Meteo
     def bad_owm(*args, **kwargs):
+        calls.append("owm")
         raise RuntimeError("oops")
 
     monkeypatch.setattr(wx, "_fetch_openweathermap", bad_owm)
