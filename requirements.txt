@@ -5,3 +5,11 @@ numpy>=1.24.0
 requests>=2.31.0
 python-dotenv>=1.0.0
 pytest>=7.0.0
+# 3D/4D visualisation — zero-cost (MIT licence, no API key required)
+pydeck>=0.8.0
+overpy>=0.6
+# streamlit.components.v1 is bundled with streamlit — no extra install needed
+# Weather providers (BYOK — zero-cost API keys, user-supplied):
+#   Open-Meteo    : https://open-meteo.com         (no key, default)
+#   OpenWeatherMap: https://openweathermap.org/api  (free tier, 1k req/day)
+#   Met Office    : https://metoffice.gov.uk/services/data/datapoint (UK, free)

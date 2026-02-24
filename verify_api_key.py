@@ -6,6 +6,13 @@ This test simulates what happens during app initialization.
 import os
 import sys
 
+# make sure prints support Unicode characters (emojis etc.)
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 # Add project root to path
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 if ROOT_DIR not in sys.path:

@@ -9,9 +9,7 @@
 
 ## Overview
 
-CrowAgent™ Platform is a physics-informed campus thermal intelligence system that helps
-university estate managers and sustainability professionals make evidence-based,
-cost-effective decisions for achieving Net Zero targets.
+CrowAgent™ Platform is a physics-informed campus thermal intelligence system that helps university estate managers and sustainability professionals make evidence-based, cost-effective decisions for achieving Net Zero targets.
 
 The platform combines:
 - **Physics-Informed Thermal Model** (PINN methodology — Raissi et al., 2019)
@@ -23,11 +21,14 @@ The platform combines:
 
 ## Features
 
-- 📊 **Dashboard** — Energy, carbon, and financial KPIs for multiple building scenarios
-- 📈 **Financial Analysis** — Payback period, ROI, and cost-per-tonne CO₂ comparisons
-- 🤖 **AI Advisor** — Agentic LLM with physics tool-use for expert recommendations
-- 🌤 **Live Weather** — Real-time temperature integration for accurate thermal calculations
-- 🏢 **Multi-Building Portfolio** — Compare interventions across your campus estate
+- 📊 **Dashboard** — Energy, carbon, and financial KPIs for multiple building scenarios  
+- 📈 **Financial Analysis** — Payback period, ROI, and cost-per-tonne CO₂ comparisons  
+- 🤖 **AI Advisor** — Agentic LLM with physics tool‑use for expert recommendations  
+- 🌤 **Live Weather** — Real-time temperature integration for accurate thermal calculations  
+- 🏢 **Multi-Building Portfolio** — Compare interventions across your campus estate  
+- 🎨 **Branding & Layout** — consistent CrowAgent™ logo in both header and footer, centrally aligned  
+- 🏷 **Robust asset loading** — logo/icon files are looked up relative to the working directory so they still render when Streamlit copies the script (no more emoji fallback)  
+- ✏️ **Customisation** — use the “➕ Add building” control under the Building section and the “➕ Add scenario” control under Scenarios; enter simple JSON objects (session‑only)
 
 ---
 
@@ -44,13 +45,36 @@ The platform combines:
 ```bash
 git clone https://github.com/WonderApri/crowagent-platform.git
 cd crowagent-platform
-pip install -r requirements.txt
 ```
+
+1. (optional) create and activate a virtualenv:
+
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   ```
+
+2. install dependencies:
+
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. configure environment variables:
+
+   ```bash
+   cp .env.example .env
+   # or create .streamlit/secrets.toml with the same values
+   ```
+
+   Edit the file with your own keys; never commit real secrets.
 
 ### Running the App
 
 ```bash
 streamlit run app/main.py
+# or, thanks to the helper wrapper included at the repository root:
+# streamlit run streamlit_app.py
 ```
 
 ### Running Tests
@@ -59,16 +83,28 @@ streamlit run app/main.py
 pytest tests/ -v
 ```
 
+The test suite now includes startup and validation checks that exercise
+key parts of the application logic without launching a browser.  They use
+monkeypatching to simulate network responses so you can run them offline.
 ---
 
 ## API Keys
 
 API keys are **never stored server-side**. They live in your browser session only.
 
-| Key | Required | Where to get |
-|-----|----------|--------------|
-| Gemini API key | For AI Advisor | [aistudio.google.com](https://aistudio.google.com) |
-| Met Office DataPoint | Optional (better UK weather) | [metoffice.gov.uk/services/data/datapoint](https://www.metoffice.gov.uk/services/data/datapoint) |
+| Key                  | Required | Where to get                                                    |
+|----------------------|----------|-----------------------------------------------------------------|
+| Gemini API key       | ✅        | [aistudio.google.com](https://aistudio.google.com)              |
+| Met Office DataPoint | ❌        | [metoffice.gov.uk/services/data/datapoint](https://www.metoffice.gov.uk/services/data/datapoint) |
+
+### Additional environment variables
+
+The application looks for secrets (GEMINI_KEY, MET_OFFICE_KEY) in
+`.streamlit/secrets.toml` or, as a fallback, in `.env` loaded via
+`python-dotenv`. Use `.env.example` as a template.
+
+`.streamlit/secrets.toml` or, as a fallback, in `.env` loaded via
+`python-dotenv`. Use `.env.example` as a template.
 
 ---
 
@@ -88,17 +124,11 @@ API keys are **never stored server-side**. They live in your browser session onl
 
 ## Disclaimer
 
-CrowAgent™ Platform is a **working research prototype**. All energy, carbon, and financial
-results are based on simplified steady-state physics models calibrated against published
-UK higher education sector averages. They do not reflect the specific characteristics of
-any real building or institution.
+CrowAgent™ Platform is a **working research prototype**. All energy, carbon, and financial results are based on simplified steady-state physics models calibrated against published UK higher education sector averages. They do not reflect the specific characteristics of any real building or institution.
 
-**Greenfield University is a fictional institution** created for demonstration purposes.
-Any resemblance to any real institution is coincidental.
+**Greenfield University is a fictional institution** created for demonstration purposes. Any resemblance to any real institution is coincidental.
 
-Results **must not** be used as the sole basis for any capital investment, procurement,
-or planning decision. Commission a site-specific energy assessment by a suitably qualified
-energy surveyor before undertaking any retrofit programme.
+Results **must not** be used as the sole basis for any capital investment, procurement, or planning decision. Commission a site-specific energy assessment by a suitably qualified energy surveyor before undertaking any retrofit programme.
 
 ---
 
@@ -106,19 +136,13 @@ energy surveyor before undertaking any retrofit programme.
 
 **Copyright © 2026 Aparajita Parihar. All rights reserved.**
 
-CrowAgent™ Platform — including all source code, physics models, UI design, and brand
-assets — is the original work of Aparajita Parihar.
+CrowAgent™ Platform — including all source code, physics models, UI design, and brand assets — is the original work of Aparajita Parihar.
 
-**CrowAgent™** is an unregistered trademark of Aparajita Parihar. A UK Intellectual
-Property Office (UK IPO) Class 42 trademark application is currently pending. Use of
-the CrowAgent name or logo without permission is prohibited.
+**CrowAgent™** is an unregistered trademark of Aparajita Parihar. A UK Intellectual Property Office (UK IPO) Class 42 trademark application is currently pending. Use of the CrowAgent name or logo without permission is prohibited.
 
-This project is an **independent research project** and is **not affiliated with the
-University of Reading** or any other institution.
+This project is an **independent research project** and is **not affiliated with the University of Reading** or any other institution.
 
-This software is **not licensed for commercial use** without written permission of the
-author. Redistribution, modification, and non-commercial use for research and educational
-purposes are permitted provided this copyright notice and trademark statement are retained.
+This software is **not licensed for commercial use** without written permission of the author. Redistribution, modification, and non-commercial use for research and educational purposes are permitted provided this copyright notice and trademark statement are retained.
 
 For licensing enquiries: crowagent.platform@gmail.com
 
@@ -133,3 +157,11 @@ For licensing enquiries: crowagent.platform@gmail.com
 ---
 
 *v2.0.0 · 21 February 2026 · Working Prototype*
+
+## Contributing
+
+Before submitting a pull request, make sure the `security_check.py` script runs cleanly (it will fail if `.env` or `.streamlit/secrets.toml` is missing or contains placeholder values).  See the SECURITY_GUIDE.md for details on safe handling of API keys and configuration.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

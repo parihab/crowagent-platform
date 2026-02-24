@@ -6,6 +6,13 @@ This test simulates the session state behavior for the API key.
 import os
 import sys
 
+# ensure unicode output works regardless of locale
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 # Add root to path
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 if ROOT_DIR not in sys.path:

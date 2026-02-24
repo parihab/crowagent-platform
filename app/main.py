@@ -15,6 +15,13 @@ import base64
 import os
 import sys
 
+# ensure proper UTF-8 output in environments with non-UTF8 locale
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 from dotenv import load_dotenv
 # Load .env from project root (parent directory of app/)
 _env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
@@ -27,6 +34,49 @@ import numpy as np
 import requests
 from datetime import datetime, timezone
 
+
+# ----------------------------------------------------------------------------
+# helper functions for user-added definitions (used by sidebar forms and tests)
+# ----------------------------------------------------------------------------
+def _add_building_from_json(jtext: str) -> tuple[bool, str]:
+    """Attempt to parse JSON and add it to BUILDINGS.
+
+    Expected input is a JSON object containing at least a ``name`` key; the
+    remainder of keys should match the structure used in the BUILDINGS dict in
+    this module.  Returns ``(True, message)`` on success or ``(False, err)`` on
+    failure.
+    """
+    try:
+        obj = json.loads(jtext)
+    except Exception as exc:
+        return False, f"JSON parse error: {exc}"
+    if "name" not in obj:
+        return False, "Missing \"name\" key."
+    name = obj.pop("name")
+    if not isinstance(name, str) or not name.strip():
+        return False, "Invalid building name."
+    BUILDINGS[name] = obj
+    return True, f"Building '{name}' added." 
+
+
+def _add_scenario_from_json(jtext: str) -> tuple[bool, str]:
+    """Parse JSON and insert into SCENARIOS.
+
+    JSON must include a ``name`` key; remaining keys should align with existing
+    scenario dictionaries (u_wall_factor, install_cost_gbp, etc.).
+    """
+    try:
+        obj = json.loads(jtext)
+    except Exception as exc:
+        return False, f"JSON parse error: {exc}"
+    if "name" not in obj:
+        return False, "Missing \"name\" key."
+    name = obj.pop("name")
+    if not isinstance(name, str) or not name.strip():
+        return False, "Invalid scenario name."
+    SCENARIOS[name] = obj
+    return True, f"Scenario '{name}' added."
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PATH SETUP — Ensure core and services modules are accessible
 # ─────────────────────────────────────────────────────────────────────────────
@@ -35,39 +85,87 @@ if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
 import services.weather as wx
+import services.location as loc
+import services.audit as audit
 import core.agent as crow_agent
 import core.physics as physics
+from app.visualization_3d import render_campus_3d_map
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LOGO LOADER
 # ─────────────────────────────────────────────────────────────────────────────
 def _load_logo_uri() -> str:
-    """Return the horizontal dark logo as a base64 data URI, or '' if file missing."""
+    """Return the horizontal dark logo as a base64 data URI.
+
+    When Streamlit executes a script it often copies the file into a temporary
+    directory, in which case ``__file__`` will point to the temp location and
+    the original ``assets/`` folder will be unreachable.  Historically this
+    caused the sidebar/logo to fall back to the 🌿 emoji.  To avoid that we
+    also check the current working directory (which remains the project root
+    when the app is launched from ``streamlit run``).
+
+    An empty string is returned if the file cannot be found; callers may
+    render textual branding in that case.
+    """
     candidates = [
         os.path.join(os.path.dirname(__file__), "../assets/CrowAgent_Logo_Horizontal_Dark.svg"),
         os.path.join(os.path.dirname(__file__), "assets/CrowAgent_Logo_Horizontal_Dark.svg"),
+        os.path.join(os.getcwd(), "assets/CrowAgent_Logo_Horizontal_Dark.svg"),
         "assets/CrowAgent_Logo_Horizontal_Dark.svg",
     ]
     for path in candidates:
         if os.path.isfile(path):
-            with open(path, "rb") as fh:
-                b64 = base64.b64encode(fh.read()).decode()
-            return f"data:image/svg+xml;base64,{b64}"
+            try:
+                with open(path, "rb") as fh:
+                    b64 = base64.b64encode(fh.read()).decode()
+                return f"data:image/svg+xml;base64,{b64}"
+            except Exception as e:  # pragma: no cover - IO problems are rare
+                st.warning(f"Failed to read logo file at {path}: {e}")
+                return ""
+    # nothing found; log a warning so the issue is easier to diagnose in future
+    st.warning("CrowAgent logo asset not found; falling back to text/emoji branding.")
+    return ""
+
+def _load_icon_uri() -> str:
+    """Return the square icon mark as a base64 data URI for the browser tab.
+
+    Similar to ``_load_logo_uri`` this function checks both the module path and
+    the current working directory so that the icon resolves even when Streamlit
+    has executed a temporary copy of the script.  An empty string indicates
+    that the emoji fallback should be used instead.
+    """
+    candidates = [
+        os.path.join(os.path.dirname(__file__), "../assets/CrowAgent_Icon_Square.svg"),
+        os.path.join(os.path.dirname(__file__), "assets/CrowAgent_Icon_Square.svg"),
+        os.path.join(os.getcwd(), "assets/CrowAgent_Icon_Square.svg"),
+        "assets/CrowAgent_Icon_Square.svg",
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            try:
+                with open(path, "rb") as fh:
+                    b64 = base64.b64encode(fh.read()).decode()
+                return f"data:image/svg+xml;base64,{b64}"
+            except Exception as e:  # pragma: no cover
+                st.warning(f"Failed to read icon file at {path}: {e}")
+                return ""
+    st.warning("CrowAgent icon asset not found; falling back to emoji favicon.")
     return ""
 
 LOGO_URI = _load_logo_uri()
+ICON_URI = _load_icon_uri()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PAGE CONFIGURATION
 # ─────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title   = "CrowAgent™ Platform",
-    page_icon    = "🌿",
+    page_icon    = ICON_URI or "🌿",
     layout       = "wide",
     initial_sidebar_state = "expanded",
     menu_items   = {
         "Get Help":     "mailto:crowagent.platform@gmail.com",
-        "Report a bug": "https://github.com/parihab/crowagent-platform/issues",
+        "Report a bug": "https://github.com/WonderApri/crowagent-platform/issues",
         "About": (
             "**CrowAgent™ Platform — Sustainability AI Decision Intelligence**\n\n"
             "© 2026 Aparajita Parihar. All rights reserved.\n\n"
@@ -110,6 +208,7 @@ h1,h2,h3,h4 {
   border-right: 1px solid #1A3A5C !important;
 }
 [data-testid="stSidebar"] * { color: #CBD8E6 !important; }
+
 [data-testid="stSidebar"] .stMarkdown h1,
 [data-testid="stSidebar"] .stMarkdown h2,
 [data-testid="stSidebar"] .stMarkdown h3 {
@@ -132,7 +231,7 @@ h1,h2,h3,h4 {
   background: #0D2640 !important;
   border: 1px solid #00C2A8 !important;
   color: #00C2A8 !important;
-  font-size: 0.78rem !important;
+  font-size: 0.82rem !important;
   font-weight: 600 !important;
   padding: 4px 10px !important;
 }
@@ -162,13 +261,13 @@ h1,h2,h3,h4 {
 
 /* ── Status pills ──────────────────────────────────────────────────────── */
 .sp { display:inline-flex; align-items:center; gap:5px; padding:3px 10px;
-      border-radius:20px; font-size:0.74rem; font-weight:700;
+      border-radius:20px; font-size:0.78rem; font-weight:700;
       letter-spacing:0.3px; white-space:nowrap; }
 .sp-live   { background:rgba(29,184,122,.12); color:#1DB87A;
              border:1px solid rgba(29,184,122,.3); }
 .sp-cache  { background:rgba(240,180,41,.1);  color:#F0B429;
              border:1px solid rgba(240,180,41,.25); }
-.sp-manual { background:rgba(90,122,144,.12); color:#8AACBF;
+.sp-manual { background:rgba(90,122,144,.12); color:#A8C8D8;
              border:1px solid rgba(90,122,144,.2); }
 .sp-warn   { background:rgba(232,76,76,.1);   color:#E84C4C;
              border:1px solid rgba(232,76,76,.25); }
@@ -186,7 +285,7 @@ h1,h2,h3,h4 {
 }
 .stTabs [data-baseweb="tab"] {
   background: transparent !important;
-  color: #5A7A90 !important;
+  color: #3A576B !important;
   font-family: 'Rajdhani', sans-serif !important;
   font-size: 0.88rem !important;
   font-weight: 600 !important;
@@ -212,28 +311,33 @@ h1,h2,h3,h4 {
   border-top: 3px solid #00C2A8;
   box-shadow: 0 2px 8px rgba(7,26,47,.05);
   height: 100%;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.kpi-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 12px rgba(7,26,47,.15);
 }
 .kpi-card.accent-green  { border-top-color: #1DB87A; }
 .kpi-card.accent-gold   { border-top-color: #F0B429; }
 .kpi-card.accent-navy   { border-top-color: #071A2F; }
 .kpi-label {
   font-family: 'Rajdhani', sans-serif;
-  font-size: 0.72rem; font-weight: 700; letter-spacing: 1px;
-  text-transform: uppercase; color: #5A7A90; margin-bottom: 6px;
+  font-size: 0.78rem; font-weight: 700; letter-spacing: 1px;
+  text-transform: uppercase; color: #3A576B; margin-bottom: 6px;
 }
 .kpi-value {
   font-family: 'Rajdhani', sans-serif;
   font-size: 2rem; font-weight: 700; color: #071A2F; line-height: 1.1;
 }
-.kpi-unit  { font-size: 0.9rem; font-weight: 500; color: #5A7A90; margin-left: 2px; }
-.kpi-delta-pos { color: #1DB87A; font-size: 0.78rem; font-weight: 700; margin-top: 4px; }
-.kpi-delta-neg { color: #E84C4C; font-size: 0.78rem; font-weight: 700; margin-top: 4px; }
-.kpi-sub   { font-size: 0.75rem; color: #8AACBF; margin-top: 2px; }
+.kpi-unit  { font-size: 0.9rem; font-weight: 500; color: #3A576B; margin-left: 2px; }
+.kpi-delta-pos { color: #1DB87A; font-size: 0.80rem; font-weight: 700; margin-top: 4px; }
+.kpi-delta-neg { color: #E84C4C; font-size: 0.80rem; font-weight: 700; margin-top: 4px; }
+.kpi-sub   { font-size: 0.78rem; color: #5A7A90; margin-top: 2px; }
 
 /* ── Section headers ───────────────────────────────────────────────────── */
 .sec-hdr {
   font-family: 'Rajdhani', sans-serif;
-  font-size: 0.78rem; font-weight: 700; letter-spacing: 1.5px;
+  font-size: 0.84rem; font-weight: 700; letter-spacing: 1.5px;
   text-transform: uppercase; color: #00C2A8;
   border-bottom: 1px solid rgba(0,194,168,.2);
   padding-bottom: 6px; margin-bottom: 14px; margin-top: 4px;
@@ -255,7 +359,7 @@ h1,h2,h3,h4 {
   text-transform: uppercase;
 }
 .chart-caption {
-  font-size: 0.72rem; color: #8AACBF; margin-top: 4px;
+  font-size: 0.77rem; color: #6A92AA; margin-top: 4px;
   font-style: italic;
 }
 
@@ -265,7 +369,7 @@ h1,h2,h3,h4 {
   border: 1px solid rgba(240,180,41,.3);
   border-left: 4px solid #F0B429;
   border-radius: 0 6px 6px 0;
-  padding: 10px 16px; font-size: 0.78rem;
+  padding: 10px 16px; font-size: 0.82rem;
   color: #6A5010; line-height: 1.55; margin: 10px 0;
 }
 .disc-ai {
@@ -273,7 +377,7 @@ h1,h2,h3,h4 {
   border: 1px solid rgba(0,194,168,.2);
   border-left: 4px solid #00C2A8;
   border-radius: 0 6px 6px 0;
-  padding: 10px 16px; font-size: 0.78rem;
+  padding: 10px 16px; font-size: 0.82rem;
   color: #1A5A50; line-height: 1.55; margin: 10px 0;
 }
 .disc-data {
@@ -281,7 +385,7 @@ h1,h2,h3,h4 {
   border: 1px solid rgba(7,26,47,.12);
   border-left: 4px solid #071A2F;
   border-radius: 0 6px 6px 0;
-  padding: 10px 16px; font-size: 0.78rem;
+  padding: 10px 16px; font-size: 0.82rem;
   color: #3A5268; line-height: 1.55; margin: 10px 0;
 }
 
@@ -298,8 +402,8 @@ h1,h2,h3,h4 {
   font-size: 2rem; font-weight: 700; color: #ffffff;
   display: inline-block; line-height: 1;
 }
-.wx-desc { font-size: 0.78rem; color: #7A9BB5; margin-top: 2px; }
-.wx-row  { font-size: 0.74rem; color: #CBD8E6; margin-top: 5px; }
+.wx-desc { font-size: 0.82rem; color: #A8C8D8; margin-top: 2px; }
+.wx-row  { font-size: 0.78rem; color: #CBD8E6; margin-top: 5px; }
 
 /* ── Contact cards ─────────────────────────────────────────────────────── */
 .contact-card {
@@ -311,7 +415,7 @@ h1,h2,h3,h4 {
 }
 .contact-label {
   font-family: 'Rajdhani', sans-serif;
-  font-size: 0.74rem; font-weight: 700; letter-spacing: 1px;
+  font-size: 0.80rem; font-weight: 700; letter-spacing: 1px;
   text-transform: uppercase; color: #00C2A8; margin-bottom: 4px;
 }
 .contact-val { font-size: 0.88rem; color: #071A2F; font-weight: 600; }
@@ -323,6 +427,10 @@ h1,h2,h3,h4 {
   padding: 16px 24px;
   margin-top: 32px;
   text-align: center;
+  /* flex layout ensures logo and text sit in the page centre */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 /* ── Validation messages ───────────────────────────────────────────────── */
@@ -332,7 +440,7 @@ h1,h2,h3,h4 {
   border-left: 3px solid #E84C4C;
   border-radius: 0 4px 4px 0;
   padding: 7px 12px;
-  font-size: 0.76rem; color: #8B1A1A;
+  font-size: 0.80rem; color: #8B1A1A;
 }
 .val-ok {
   background: rgba(29,184,122,.06);
@@ -340,7 +448,7 @@ h1,h2,h3,h4 {
   border-left: 3px solid #1DB87A;
   border-radius: 0 4px 4px 0;
   padding: 7px 12px;
-  font-size: 0.76rem; color: #0A4A28;
+  font-size: 0.80rem; color: #0A4A28;
 }
 .val-err {
   background: rgba(220,53,69,.08);
@@ -348,7 +456,7 @@ h1,h2,h3,h4 {
   border-left: 3px solid #DC3545;
   border-radius: 0 4px 4px 0;
   padding: 7px 12px;
-  font-size: 0.76rem; color: #721C24;
+  font-size: 0.80rem; color: #721C24;
 }
 
 /* ── Plotly overrides ──────────────────────────────────────────────────── */
@@ -357,7 +465,7 @@ h1,h2,h3,h4 {
 /* ── Sidebar section label ─────────────────────────────────────────────── */
 .sb-section {
   font-family: 'Rajdhani', sans-serif;
-  font-size: 0.74rem; font-weight: 700; letter-spacing: 1.5px;
+  font-size: 0.80rem; font-weight: 700; letter-spacing: 1.5px;
   text-transform: uppercase; color: #00C2A8 !important;
   margin: 14px 0 6px 0;
 }
@@ -366,16 +474,35 @@ h1,h2,h3,h4 {
 .chip {
   display: inline-block; background: #0D2640;
   border: 1px solid #1A3A5C; border-radius: 4px;
-  padding: 2px 8px; font-size: 0.74rem; color: #7A9BB5;
+  padding: 2px 8px; font-size: 0.78rem; color: #9ABDD0;
   margin: 2px;
 }
 
-/* ── Hide Streamlit default elements ───────────────────────────────────── */
+/* ── Clean up Streamlit defaults without breaking header ─────────────── */
 #MainMenu { visibility: hidden; }
 footer    { visibility: hidden; }
-header    { visibility: hidden; }
+/* hide toolbar and status icons but leave header interactive */
+div[data-testid="stToolbar"], div[data-testid="stStatusWidget"] { visibility: hidden; }
+header {
+  background: transparent !important;
+}
+
+/* ── Sidebar toggle tweaks ─────────────────────────────────────────── */
+button[data-testid="stSidebarCollapseButton"] {
+  visibility: visible !important;
+  color: #00C2A8 !important;
+}
+button[data-testid="stSidebarCollapseButton"]:hover {
+  color: #009688 !important;
+}
+
+/* ensure toggle icon contrast when sidebar is dark */
+[data-testid="stSidebar"] {
+  background: #071A2F !important;
+}
 </style>
 """, unsafe_allow_html=True)
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -580,13 +707,22 @@ CHART_LAYOUT = dict(
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
+# UTILITY IMPORTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+from app.utils import validate_gemini_key
+
+# ─────────────────────────────────────────────────────────────────────────────
 # SESSION STATE INITIALISATION
 # ─────────────────────────────────────────────────────────────────────────────
+
 def _get_secret(key: str, default: str = "") -> str:
     try:
         return st.secrets[key]
     except (KeyError, AttributeError, FileNotFoundError):
         return os.getenv(key, default)
+
+# (encryption helpers removed – keys are handled in plaintext in session state)
 
 # Initialize session state with defaults or environment values
 if "chat_history" not in st.session_state:
@@ -603,6 +739,99 @@ if "manual_temp" not in st.session_state:
     st.session_state.manual_temp = 10.5
 if "force_weather_refresh" not in st.session_state:
     st.session_state.force_weather_refresh = False
+# ── Weather location & provider (new in v2.1) ──────────────────────────────
+if "wx_city" not in st.session_state:
+    st.session_state.wx_city = "Reading, Berkshire"
+if "wx_lat" not in st.session_state:
+    st.session_state.wx_lat = loc.CITIES["Reading, Berkshire"]["lat"]
+if "wx_lon" not in st.session_state:
+    st.session_state.wx_lon = loc.CITIES["Reading, Berkshire"]["lon"]
+if "wx_location_name" not in st.session_state:
+    st.session_state.wx_location_name = "Reading, Berkshire, UK"
+if "wx_provider" not in st.session_state:
+    st.session_state.wx_provider = "open_meteo"
+if "wx_enable_fallback" not in st.session_state:
+    st.session_state.wx_enable_fallback = True
+if "owm_key" not in st.session_state:
+    st.session_state.owm_key = _get_secret("OWM_KEY", "")
+# sidebar collapse disallowed (see CSS below)
+
+# ── Handle query params on page load (geo, city or custom coordinates) ──
+# The location picker should remember the user’s last choice even after a
+# full browser refresh.  We support three different params:
+#  • geo_lat / geo_lon  – injected by the JS component (auto‑detect flow)
+#  • city                – explicit selection from the dropdown
+#  • lat & lon           – arbitrary manual coordinates
+# GDPR: raw coordinates are resolved to a named city when possible and then
+# discarded immediately.
+_qp = st.query_params
+if "geo_lat" in _qp and "geo_lon" in _qp:
+    try:
+        _geo_lat = float(_qp["geo_lat"])
+        _geo_lon = float(_qp["geo_lon"])
+        _resolved = loc.nearest_city(_geo_lat, _geo_lon)
+        st.session_state.wx_city          = _resolved
+        st.session_state.wx_lat           = loc.CITIES[_resolved]["lat"]
+        st.session_state.wx_lon           = loc.CITIES[_resolved]["lon"]
+        st.session_state.wx_location_name = f"{_resolved}, {loc.CITIES[_resolved]['country']}"
+        st.session_state.force_weather_refresh = True
+        audit.log_event(
+            "LOCATION_AUTO_DETECTED",
+            f"Resolved browser location to '{_resolved}' (raw coords discarded per GDPR)",
+        )
+        # remember the resolved city so a refresh doesn’t revert to Reading
+        st.query_params.clear()
+        st.query_params["city"] = _resolved
+    except Exception:
+        pass
+elif "city" in _qp:
+    # explicit city persisted by earlier interaction
+    _city = _qp.get("city")
+    if isinstance(_city, list):
+        _city = _city[0]
+    if _city in loc.CITIES:
+        _meta = loc.city_meta(_city)
+        st.session_state.wx_city          = _city
+        st.session_state.wx_lat           = _meta["lat"]
+        st.session_state.wx_lon           = _meta["lon"]
+        st.session_state.wx_location_name = f"{_city}, {_meta['country']}"
+        st.session_state.force_weather_refresh = True
+    st.query_params.clear()
+elif "lat" in _qp and "lon" in _qp:
+    try:
+        _lat = float(_qp.get("lat"))
+        _lon = float(_qp.get("lon"))
+        st.session_state.wx_lat = _lat
+        st.session_state.wx_lon = _lon
+        st.session_state.wx_city = ""  # not one of the known cities
+        st.session_state.wx_location_name = f"Custom site ({_lat:.4f}, {_lon:.4f})"
+        st.session_state.force_weather_refresh = True
+    except Exception:
+        pass
+    st.query_params.clear()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# UTILS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _update_location_query_params() -> None:
+    """Reflect the currently selected location in the page's query string.
+
+    We encode the city key where available; if the user has supplied custom
+    coordinates we use ``lat``/``lon`` so that a subsequent refresh still
+    reinstates exactly what they chose.  Calling this function after any
+    change (dropdown, manual coords or auto‑detect) keeps the experience
+    consistent.
+    """
+    params: dict[str, str] = {}
+    if st.session_state.wx_city:
+        params["city"] = st.session_state.wx_city
+    # always include numeric coords too; they’ll be ignored if a city is set
+    params["lat"] = str(st.session_state.wx_lat)
+    params["lon"] = str(st.session_state.wx_lon)
+    st.query_params.clear()
+    st.query_params.update(params)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -612,8 +841,8 @@ with st.sidebar:
     # ── Logo ──────────────────────────────────────────────────────────────────
     if LOGO_URI:
         st.markdown(
-            f"<div style='padding:10px 0 4px;'>"
-            f"<img src='{LOGO_URI}' width='200' style='max-width:100%;' alt='CrowAgent™ Logo'/>"
+            f"<div style='padding:10px 0 4px; text-align:center;'>"
+            f"<img src='{LOGO_URI}' width='200' style='max-width:100%; height:auto; display:inline-block;' alt='CrowAgent™ Logo'/>"
             f"</div>",
             unsafe_allow_html=True,
         )
@@ -624,11 +853,12 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
     st.markdown(
-        "<div style='font-size:0.72rem;color:#4A6880;margin-bottom:8px;'>"
+        "<div style='font-size:0.82rem;color:#8FBCCE;margin-bottom:8px;'>"
         "Sustainability AI Decision Intelligence Platform</div>",
         unsafe_allow_html=True,
     )
 
+    # note: collapse is disabled by design; sidebar is always open
     st.markdown("---")
 
     # ── Building selector ─────────────────────────────────────────────────────
@@ -638,13 +868,29 @@ with st.sidebar:
     )
     sb = BUILDINGS[selected_building_name]
     st.markdown(
-        f"<div style='font-size:0.72rem;color:#7A9BB5;line-height:1.5;'>"
+        f"<div style='font-size:0.76rem;color:#9ABDD0;line-height:1.5;'>"
         f"<span class='chip'>{sb['building_type']}</span> "
         f"<span class='chip'>{sb['built_year']}</span> "
         f"<span class='chip'>{sb['floor_area_m2']:,} m²</span>"
         f"</div>",
         unsafe_allow_html=True,
     )
+
+    # custom building add
+    with st.expander("➕ Add building", expanded=False):
+        st.markdown(
+            "<div style='font-size:0.75rem;color:#8FBCCE;'>"
+            "Enter a JSON object representing the building, including a "
+            "\"name\" field for the new key.",
+            unsafe_allow_html=True,
+        )
+        cb = st.text_area("Building JSON", height=120)
+        if st.button("Add building", key="add_building_btn"):
+            ok, msg = _add_building_from_json(cb)
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
 
     st.markdown("---")
 
@@ -656,6 +902,21 @@ with st.sidebar:
                  "Enhanced Insulation Upgrade"],
         label_visibility="collapsed",
     )
+
+    # custom scenario add
+    with st.expander("➕ Add scenario", expanded=False):
+        st.markdown(
+            "<div style='font-size:0.75rem;color:#8FBCCE;'>"
+            "Enter a JSON object for the scenario, with a \"name\" key.</div>",
+            unsafe_allow_html=True,
+        )
+        cs = st.text_area("Scenario JSON", height=120)
+        if st.button("Add scenario", key="add_scenario_btn"):
+            ok, msg = _add_scenario_from_json(cs)
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
     # Validation
     if not selected_scenario_names:
         st.markdown(
@@ -666,7 +927,78 @@ with st.sidebar:
 
     st.markdown("---")
 
+    # ── Location picker ────────────────────────────────────────────────────────
+    st.markdown("<div class='sb-section'>📍 Location</div>", unsafe_allow_html=True)
+
+    _city_list = loc.city_options()
+    _city_idx  = _city_list.index(st.session_state.wx_city) if st.session_state.wx_city in _city_list else 0
+    _sel_city  = st.selectbox(
+        "City / Region", _city_list, index=_city_idx,
+        label_visibility="collapsed",
+    )
+    if _sel_city != st.session_state.wx_city:
+        _meta = loc.city_meta(_sel_city)
+        st.session_state.wx_city          = _sel_city
+        st.session_state.wx_lat           = _meta["lat"]
+        st.session_state.wx_lon           = _meta["lon"]
+        st.session_state.wx_location_name = f"{_sel_city}, {_meta['country']}"
+        st.session_state.force_weather_refresh = True
+        audit.log_event("LOCATION_CHANGED", f"City set to '{_sel_city}'")
+        _update_location_query_params()
+
+    # Manual lat/lon entry (for precise site addresses)
+    with st.expander("⚙ Custom coordinates", expanded=False):
+        _col_lat, _col_lon = st.columns(2)
+        with _col_lat:
+            _custom_lat = st.number_input(
+                "Latitude", value=float(st.session_state.wx_lat),
+                min_value=-90.0, max_value=90.0, format="%.4f", step=0.0001,
+            )
+        with _col_lon:
+            _custom_lon = st.number_input(
+                "Longitude", value=float(st.session_state.wx_lon),
+                min_value=-180.0, max_value=180.0, format="%.4f", step=0.0001,
+            )
+        if st.button("Apply coordinates", key="apply_coords", use_container_width=True):
+            st.session_state.wx_lat           = _custom_lat
+            st.session_state.wx_lon           = _custom_lon
+            st.session_state.wx_location_name = f"Custom site ({_custom_lat:.4f}, {_custom_lon:.4f})"
+            st.session_state.force_weather_refresh = True
+            audit.log_event(
+                "LOCATION_CUSTOM",
+                f"Custom coordinates set: {_custom_lat:.4f}, {_custom_lon:.4f}",
+            )
+            _update_location_query_params()
+        st.markdown(
+            "<div style='font-size:0.73rem;color:#8FBCCE;margin-top:4px;'>"
+            "Or use browser geolocation (HTTPS only):</div>",
+            unsafe_allow_html=True,
+        )
+        # geolocation component returns a dict when coordinates are obtained
+    _geo = loc.render_geo_detect()
+    if _geo and isinstance(_geo, dict):
+        try:
+            _lat = float(_geo.get("lat"))
+            _lon = float(_geo.get("lon"))
+            _resolved = loc.nearest_city(_lat, _lon)
+            st.session_state.wx_city          = _resolved
+            st.session_state.wx_lat           = _lat
+            st.session_state.wx_lon           = _lon
+            st.session_state.wx_location_name = f"{_resolved}, {loc.CITIES[_resolved]['country']}"
+            st.session_state.force_weather_refresh = True
+            audit.log_event(
+                "LOCATION_AUTO_DETECTED",
+                f"Resolved browser location to '{_resolved}' (coords retained until ref.)",
+            )
+            _update_location_query_params()
+        except Exception:
+            pass
+
+
+    st.markdown("---")
+
     # ── Weather panel ──────────────────────────────────────────────────────────
+
     st.markdown("<div class='sb-section'>🌤 Live Weather</div>", unsafe_allow_html=True)
 
     _force = st.button("↻ Refresh Weather", key="wx_refresh", use_container_width=True)
@@ -680,9 +1012,23 @@ with st.sidebar:
     )
     st.session_state.manual_temp = manual_t
 
+    # Resolve Met Office site ID for selected city (if available)
+    _mo_loc_id = (
+        loc.city_meta(st.session_state.wx_city).get("mo_id", wx.MET_OFFICE_LOCATION)
+        if st.session_state.wx_city in loc.CITIES
+        else wx.MET_OFFICE_LOCATION
+    )
+
     with st.spinner("Checking weather…"):
         weather = wx.get_weather(
+            lat                 = st.session_state.wx_lat,
+            lon                 = st.session_state.wx_lon,
+            location_name       = st.session_state.wx_location_name,
+            provider            = st.session_state.wx_provider,
             met_office_key      = st.session_state.met_office_key or None,
+            met_office_location = _mo_loc_id,
+            openweathermap_key  = st.session_state.owm_key or None,
+            enable_fallback     = st.session_state.wx_enable_fallback,
             manual_temp_c       = manual_t,
             force_refresh       = st.session_state.force_weather_refresh,
         )
@@ -710,7 +1056,7 @@ with st.sidebar:
       <div class='wx-desc'>{weather['condition']}</div>
     </div>
     <div style='text-align:right;'>
-      <div style='font-size:0.72rem;color:#4A6880;'>{weather['location_name']}</div>
+      <div style='font-size:0.76rem;color:#8FBCCE;'>{weather['location_name']}</div>
     </div>
   </div>
   <div class='wx-row'>
@@ -728,12 +1074,12 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # ── API Keys (collapsible) ────────────────────────────────────────────────
-    with st.expander("🔑 API Keys (optional)", expanded=False):
+    # ── API Keys & Weather Config (collapsible) ───────────────────────────────
+    with st.expander("🔑 API Keys & Weather Config", expanded=False):
         st.markdown(
             "<div style='background:#FFF3CD;border:1px solid #FFD89B;border-radius:6px;padding:10px;'>"
             "<div style='font-size:0.75rem;color:#664D03;font-weight:700;margin-bottom:6px;'>🔒 Security Notice</div>"
-            "<div style='font-size:0.72rem;color:#664D03;line-height:1.5;'>"
+            "<div style='font-size:0.78rem;color:#664D03;line-height:1.5;'>"
             "• Keys exist in your session only (cleared on browser close)<br/>"
             "• Your keys are <strong>never</strong> stored on the server<br/>"
             "• Each user enters their own key independently<br/>"
@@ -743,7 +1089,7 @@ with st.sidebar:
         )
         st.markdown("")  # spacing
         st.markdown(
-          "<div style='font-size:0.9rem;color:#4A6880;margin-bottom:8px;'>"
+          "<div style='font-size:0.9rem;color:#8FBCCE;margin-bottom:8px;'>"
           "Provide your own API keys — do not use shared or public keys. "
           "Met Office DataPoint (free): register at "
           "<a href=\"https://www.metoffice.gov.uk/services/data/datapoint\" target=\"_blank\">metoffice.gov.uk/services/data/datapoint</a>. "
@@ -754,121 +1100,183 @@ with st.sidebar:
           unsafe_allow_html=True,
         )
         
+        # ── Weather Provider selector ─────────────────────────────────────────
+        st.markdown(
+            "<div style='font-size:0.78rem;color:#8FBCCE;font-weight:700;"
+            "letter-spacing:0.5px;margin:8px 0 4px;'>WEATHER PROVIDER</div>",
+            unsafe_allow_html=True,
+        )
+        _provider_labels = {
+            "open_meteo":      "Open-Meteo (free, no key)",
+            "openweathermap":  "OpenWeatherMap (key required)",
+            "met_office":      "Met Office DataPoint (UK, key required)",
+        }
+        _provider_keys = list(_provider_labels.keys())
+        _cur_prov_idx  = _provider_keys.index(st.session_state.wx_provider) \
+                         if st.session_state.wx_provider in _provider_keys else 0
+        _sel_provider  = st.selectbox(
+            "Weather provider", _provider_keys,
+            index=_cur_prov_idx,
+            format_func=lambda k: _provider_labels[k],
+            label_visibility="collapsed",
+        )
+        if _sel_provider != st.session_state.wx_provider:
+            _prev = st.session_state.wx_provider
+            st.session_state.wx_provider = _sel_provider
+            st.session_state.force_weather_refresh = True
+            audit.log_event(
+                "PROVIDER_CHANGED",
+                f"Weather provider changed from '{_provider_labels[_prev]}' "
+                f"to '{_provider_labels[_sel_provider]}'",
+            )
+
+        # Fallback toggle
+        _fb = st.checkbox(
+            "Fall back to Open-Meteo if primary fails",
+            value=st.session_state.wx_enable_fallback,
+            key="wx_fallback_toggle",
+        )
+        if _fb != st.session_state.wx_enable_fallback:
+            st.session_state.wx_enable_fallback = _fb
+
+        st.markdown("---")
+        # ── OpenWeatherMap key ─────────────────────────────────────────────────
+        _show_owm = st.checkbox("Show OWM key", key="show_owm_key", value=False)
+        _owm_value = st.session_state.owm_key
+        _owm_key  = st.text_input(
+            "OpenWeatherMap API key",
+            type="default" if _show_owm else "password",
+            placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+            value=_owm_value,
+            help="Free at openweathermap.org/api — 1,000 calls/day on free tier",
+        )
+        if _owm_key != _owm_value:
+            _had_key = bool(_owm_value)
+            st.session_state.owm_key = _owm_key
+            audit.log_event(
+                "KEY_UPDATED",
+                "OpenWeatherMap key " + ("updated" if _had_key else "added"),
+            )
+        if st.session_state.owm_key:
+            if st.button("Test OWM key", key="test_owm_key", use_container_width=True):
+                _ok, _msg = wx.test_openweathermap_key(
+                    st.session_state.owm_key,
+                    st.session_state.wx_lat,
+                    st.session_state.wx_lon,
+                )
+                if _ok:
+                    st.markdown("<div class='val-ok'>✓ " + _msg + "</div>", unsafe_allow_html=True)
+                else:
+                    st.markdown("<div class='val-err'>❌ " + _msg + "</div>", unsafe_allow_html=True)
+
+        st.markdown("---")
+        # ── Met Office DataPoint key ───────────────────────────────────────────
+        _show_mo = st.checkbox("Show Met Office key", key="show_mo_key", value=False)
+        _mo_value = st.session_state.met_office_key
         _mo_key = st.text_input(
           "Met Office DataPoint key",
-          type="password", placeholder="",
-          value=st.session_state.met_office_key,
+          type="default" if _show_mo else "password", placeholder="",
+          value=_mo_value,
           help="Free at metoffice.gov.uk/services/data/datapoint",
         )
-        if _mo_key != st.session_state.met_office_key:
+        if _mo_key != _mo_value:
+            _had_mo = bool(_mo_value)
             st.session_state.met_office_key = _mo_key
+            audit.log_event(
+                "KEY_UPDATED",
+                "Met Office DataPoint key " + ("updated" if _had_mo else "added"),
+            )
 
-        # Guidance and validation for Met Office DataPoint key
-        if not st.session_state.met_office_key:
-          st.markdown(
-            "<div style='font-size:0.86rem;color:#4A6880;'>"
-            "Met Office DataPoint is optional. To enable UK-observation-level "
-            "weather, register for a free API key at: <a href=\"https://www.metoffice.gov.uk/services/data/datapoint\" target=\"_blank\">metoffice.gov.uk/services/data/datapoint</a>. "
-            "Paste your key into this field and click 'Test Met Office key'."
-            "</div>",
-            unsafe_allow_html=True,
-          )
-        else:
+        # Validation for Met Office DataPoint key
+        if st.session_state.met_office_key:
           if st.button("Test Met Office key", key="test_mo_key", use_container_width=True):
-            ok, msg = wx.test_met_office_key(st.session_state.met_office_key)
+            ok, msg = wx.test_met_office_key(_decrypt(st.session_state.met_office_key))
             if ok:
               st.markdown("<div class='val-ok'>✓ " + msg + "</div>", unsafe_allow_html=True)
             else:
               st.markdown("<div class='val-err'>❌ " + msg + "</div>", unsafe_allow_html=True)
 
+        _show_gm = st.checkbox("Show Gemini key", key="show_gm_key", value=False)
+        _gm_value = st.session_state.gemini_key
         _gm_key = st.text_input(
             "Gemini API key (for AI Advisor)",
-            type="password", placeholder="AIzaSy... (starts with 'AIza')",
-            value=st.session_state.gemini_key,
-          help="Get your key at aistudio.google.com or console.cloud.google.com | Never share this key | Each user brings their own",
+            type="default" if _show_gm else "password", placeholder="AIzaSy... (starts with 'AIza')",
+            value=_gm_value,
+            help="Get your key at aistudio.google.com or console.cloud.google.com | Never share this key | Each user brings their own",
         )
-        if _gm_key != st.session_state.gemini_key:
+        if _gm_key != _gm_value:
             st.session_state.gemini_key = _gm_key
 
         # Validation feedback with actual API test
         if st.session_state.gemini_key:
+            # show raw-format warning
             if not st.session_state.gemini_key.startswith("AIza"):
                 st.markdown(
                     "<div class='val-warn'>⚠ Gemini key should start with 'AIza'</div>",
                     unsafe_allow_html=True,
                 )
             else:
-                # Test the API key with a simple request
-                try:
-                    test_url = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent"
-                    test_payload = {
-                        "contents": [{"parts": [{"text": "test"}]}],
-                        "generationConfig": {"maxOutputTokens": 10}
-                    }
-                    test_resp = requests.post(
-                        test_url,
-                        params={"key": st.session_state.gemini_key},
-                        json=test_payload,
-                        timeout=10
-                    )
-                    
-                    if test_resp.status_code == 200:
-                        st.markdown(
-                            "<div class='val-ok'>✓ Gemini AI Advisor ready</div>",
-                            unsafe_allow_html=True,
-                        )
-                        st.session_state.gemini_key_valid = True
-                    elif test_resp.status_code == 401:
-                        st.markdown(
-                            "<div class='val-err'>❌ Invalid API key</div>",
-                            unsafe_allow_html=True,
-                        )
-                        st.session_state.gemini_key_valid = False
-                    elif test_resp.status_code == 403:
-                        st.markdown(
-                            "<div class='val-err'>❌ API key blocked (check permissions in Google Cloud)</div>",
-                            unsafe_allow_html=True,
-                        )
-                        st.session_state.gemini_key_valid = False
-                    else:
-                        st.markdown(
-                            "<div class='val-ok'>✓ Key format valid (will test on first use)</div>",
-                            unsafe_allow_html=True,
-                        )
-                        st.session_state.gemini_key_valid = True
-                except requests.exceptions.Timeout:
-                    st.markdown(
-                        "<div class='val-warn'>⚠ Validation timed out — key saved, will test on first use</div>",
-                        unsafe_allow_html=True,
-                    )
-                    st.session_state.gemini_key_valid = True
-                except requests.exceptions.ConnectionError:
-                    st.markdown(
-                        "<div class='val-warn'>⚠ No internet connection — key saved, will test on first use</div>",
-                        unsafe_allow_html=True,
-                    )
-                    st.session_state.gemini_key_valid = True
-                except Exception as e:
-                    st.markdown(
-                        f"<div class='val-warn'>⚠ Validation error — key saved, will test on first use</div>",
-                        unsafe_allow_html=True,
-                    )
-                    st.session_state.gemini_key_valid = True
+                # delegate to utility helper
+                valid, message, warn = validate_gemini_key(st.session_state.gemini_key)
+                st.markdown(message, unsafe_allow_html=True)
+                st.session_state.gemini_key_valid = valid or warn
 
     st.markdown("---")
 
+    # ── Config Audit Log ──────────────────────────────────────────────────────
+    _log_entries = audit.get_log(n=5)
+    if _log_entries:
+        with st.expander("🔍 Config Change Log", expanded=False):
+            st.markdown(
+                "<div style='font-size:0.72rem;color:#8FBCCE;margin-bottom:4px;'>"
+                "In-session only — cleared on browser close.</div>",
+                unsafe_allow_html=True,
+            )
+            for _entry in _log_entries:
+                st.markdown(
+                    f"<div style='font-size:0.72rem;line-height:1.5;"
+                    f"border-left:2px solid #1A3A5C;padding-left:6px;margin-bottom:4px;'>"
+                    f"<span style='color:#00C2A8;'>{_entry['action']}</span>"
+                    f"<br/><span style='color:#CBD8E6;'>{_entry['details']}</span>"
+                    f"<br/><span style='color:#5A7A90;font-size:0.68rem;'>{_entry['ts']}</span>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+
     # ── Data sources ──────────────────────────────────────────────────────────
     st.markdown("<div class='sb-section'>📚 Data Sources</div>", unsafe_allow_html=True)
-    for src in ["Open-Meteo (live weather)", "Met Office DataPoint (optional)",
+    for src in ["Open-Meteo (weather, default)", "Met Office DataPoint (UK, optional)",
+                "OpenWeatherMap (global, optional)", "GeoNames (city dataset, CC-BY)",
                 "BEIS GHG Factors 2023", "HESA Estates Stats 2022-23",
                 "CIBSE Guide A", "PVGIS (EC JRC)", "Raissi et al. (2019)"]:
         st.caption(f"· {src}")
 
     st.markdown("---")
-    st.markdown(
-        "<div style='font-size:0.72rem;color:#7A9BB5;text-align:center;line-height:1.6;'>"
-        "© 2026 Aparajita Parihar<br/>CrowAgent™ · All rights reserved<br/>"
-        "v2.0.0 · Prototype</div>",
+
+    # insert a branded footer. the logo is rendered inline because _logo_html
+    # has not yet been computed (it comes later when building the top bar), so
+    # we duplicate the same logic here to keep the header and footer in sync.
+    if LOGO_URI:
+        _footer_logo = (
+            f"<img src='{LOGO_URI}' height='28' "
+            "style='vertical-align:middle;display:inline-block;height:28px;" 
+            "width:auto;' alt='CrowAgent™ Logo'/>"
+        )
+    else:
+        _footer_logo = (
+            "<span style='font-family:Rajdhani,sans-serif;" 
+            "font-size:1.1rem;font-weight:700;color:#00C2A8;'>" 
+            "CrowAgent™</span>"
+        )
+
+    st.markdown(f"""
+<div class='ent-footer'>
+  {_footer_logo}
+  <div style='font-size:0.76rem;color:#9ABDD0;line-height:1.6;margin-top:8px;'>
+    © 2026 Aparajita Parihar<br/>CrowAgent™ · All rights reserved<br/>
+    v2.0.0 · Prototype
+  </div>
+</div>""",
         unsafe_allow_html=True,
     )
 
@@ -899,18 +1307,19 @@ _weather_pill = (
 )
 
 if LOGO_URI:
-    _logo_html = f"<img src='{LOGO_URI}' height='38' style='vertical-align:middle;' alt='CrowAgent™ Logo'/>"
+    # ensure logo is vertically centered and not cropped
+    _logo_html = f"<img src='{LOGO_URI}' height='38' style='vertical-align:middle; display:inline-block; height:38px; width:auto;' alt='CrowAgent™ Logo'/>"
 else:
-    _logo_html = "<span style='font-family:Rajdhani,sans-serif;font-size:1.2rem;font-weight:700;color:#00C2A8;'>🌿 CrowAgent™</span>"
-
+    # fallback text should match branding but no emoji
+    _logo_html = "<span style='font-family:Rajdhani,sans-serif;font-size:1.2rem;font-weight:700;color:#00C2A8;'>CrowAgent™</span>"
 st.markdown(f"""
 <div class='platform-topbar'>
   <div style='display:flex;align-items:center;gap:16px;flex-wrap:wrap;'>
     {_logo_html}
     <div>
-      <div style='font-family:Rajdhani,sans-serif;font-size:0.74rem;
+      <div style='font-family:Rajdhani,sans-serif;font-size:0.82rem;
                   letter-spacing:1.5px;text-transform:uppercase;
-                  color:#4A6880;line-height:1;margin-top:2px;'>
+                  color:#8FBCCE;line-height:1;margin-top:2px;'>
         Sustainability AI Decision Intelligence Platform
       </div>
     </div>
@@ -918,7 +1327,7 @@ st.markdown(f"""
   <div class='platform-topbar-right'>
     {_weather_pill}
     <span class='sp sp-cache'>🚧 PROTOTYPE v2.0.0</span>
-    <span class='sp sp-cache'>Reading, Berkshire</span>
+    <span class='sp sp-cache'>{st.session_state.wx_location_name or st.session_state.wx_city or 'Reading, Berkshire'}</span>
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -1114,6 +1523,13 @@ with _tab_dash:
             "without site-specific survey."
         )
 
+    # ── 3D/4D Campus Visualisation ────────────────────────────────────────────
+    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+    render_campus_3d_map(
+        selected_scenario_names=selected_scenario_names,
+        weather=weather,
+    )
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 2 — FINANCIAL ANALYSIS
@@ -1257,7 +1673,7 @@ with _tab_ai:
         Physics-grounded agentic AI that runs real thermal simulations,
         compares scenarios and gives evidence-based Net Zero investment recommendations.
       </div>
-      <div style='color:#4A6880;font-size:0.72rem;margin-top:4px;'>
+      <div style='color:#8FBCCE;font-size:0.78rem;margin-top:4px;'>
         Powered by Google Gemini · Physics-informed reasoning · © 2026 Aparajita Parihar
       </div>
     </div>
@@ -1287,9 +1703,9 @@ with _tab_ai:
              border-radius:0 8px 8px 8px;padding:10px 14px;margin:4px 0 10px;
              color:#071A2F;font-size:0.88rem;line-height:1.65;}
     .ca-tool{display:inline-block;background:#0D2640;color:#00C2A8;border-radius:4px;
-             padding:2px 8px;font-size:0.74rem;font-weight:700;margin:2px 2px 2px 0;
+             padding:2px 8px;font-size:0.78rem;font-weight:700;margin:2px 2px 2px 0;
              letter-spacing:0.3px;}
-    .ca-meta{font-size:0.74rem;color:#8AACBF;margin-top:4px;}
+    .ca-meta{font-size:0.78rem;color:#6A92AA;margin-top:4px;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -1399,7 +1815,7 @@ with _tab_ai:
                         f"<span class='ca-meta' style='margin-left:6px;'>Powered by Gemini 1.5 Flash</span>"
                         f"<br/><br/>{_msg['content']}<br/>"
                         f"<div style='margin-top:8px;padding-top:6px;border-top:1px solid #E0EBF4;"
-                        f"font-size:0.72rem;color:#8AACBF;'>"
+                        f"font-size:0.77rem;color:#6A92AA;'>"
                         f"⚠️ AI-generated content. Verify all figures independently before acting.</div>"
                         f"</div>",
                         unsafe_allow_html=True,
@@ -1612,9 +2028,9 @@ with _tab_about:
           <div style='margin-bottom:14px;'>
             <div class='contact-label'>GitHub</div>
             <div class='contact-val'>
-              <a href='https://github.com/parihab/crowagent-platform'
+              <a href='https://github.com/WonderApri/crowagent-platform'
                  target='_blank' style='color:#00C2A8;font-size:0.85rem;'>
-                github.com/parihab/crowagent-platform
+                github.com/WonderApri/crowagent-platform
               </a>
             </div>
           </div>
@@ -1641,7 +2057,7 @@ with _tab_about:
 
           <div style='margin-top:14px;background:#F8FAFC;border:1px solid #E0EBF4;
                       border-radius:5px;padding:10px 12px;'>
-            <div style='font-size:0.74rem;color:#8AACBF;font-weight:700;
+            <div style='font-size:0.78rem;color:#5A7A90;font-weight:700;
                         text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px;'>
               Response Time
             </div>
@@ -1657,10 +2073,10 @@ with _tab_about:
         st.markdown(f"""
         <div style='background:#071A2F;border:1px solid #1A3A5C;border-radius:8px;
                     padding:14px 16px;'>
-          <div style='font-family:Rajdhani,sans-serif;font-size:0.74rem;font-weight:700;
+          <div style='font-family:Rajdhani,sans-serif;font-size:0.78rem;font-weight:700;
                       letter-spacing:1px;text-transform:uppercase;color:#00C2A8;
                       margin-bottom:8px;'>Build Information</div>
-          <div style='font-size:0.74rem;color:#7A9BB5;line-height:1.8;'>
+          <div style='font-size:0.78rem;color:#9ABDD0;line-height:1.8;'>
             <strong style='color:#CBD8E6;'>Version:</strong> v2.0.0<br/>
             <strong style='color:#CBD8E6;'>Released:</strong> 21 February 2026<br/>
             <strong style='color:#CBD8E6;'>Status:</strong>
@@ -1684,15 +2100,15 @@ st.markdown("""
               flex-wrap:wrap;gap:16px;margin-bottom:8px;'>
     <span style='font-family:Rajdhani,sans-serif;font-size:0.9rem;
                  font-weight:700;color:#00C2A8;'>🌿 CrowAgent™</span>
-    <span style='color:#5A7A90;font-size:0.78rem;'>Sustainability AI Decision Intelligence Platform</span>
-    <span style='color:#5A7A90;font-size:0.78rem;'>v2.0.0 · Working Prototype</span>
+    <span style='color:#8FBCCE;font-size:0.80rem;'>Sustainability AI Decision Intelligence Platform</span>
+    <span style='color:#8FBCCE;font-size:0.80rem;'>v2.0.0 · Working Prototype</span>
   </div>
-  <div style='font-size:0.74rem;color:#7A9BB5;line-height:1.6;'>
+  <div style='font-size:0.78rem;color:#9ABDD0;line-height:1.6;'>
     © 2026 Aparajita Parihar · All rights reserved · Independent research project ·
     CrowAgent™ is an unregistered trademark (UK IPO Class 42, registration pending) ·
     Not licensed for commercial use without written permission
   </div>
-  <div style='font-size:0.72rem;color:#5A7A90;margin-top:4px;font-style:italic;'>
+  <div style='font-size:0.77rem;color:#8FBCCE;margin-top:4px;font-style:italic;'>
     Physics: Raissi et al. (2019) J. Comp. Physics · doi:10.1016/j.jcp.2018.10.045 ·
     Weather: Open-Meteo API + Met Office DataPoint · Carbon: BEIS 2023 ·
     Costs: HESA 2022-23 · AI: Google Gemini 1.5 Flash ·

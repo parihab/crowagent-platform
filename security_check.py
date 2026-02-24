@@ -10,13 +10,24 @@ sharing the application URL publicly.
 import os
 import sys
 
+# ensure stdout can emit Unicode (emojis, etc.)
+# some environments default to 'ANSI_X3.4-1968' which causes
+# UnicodeEncodeError when printing symbols.
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 def check_file_content(filepath: str, should_contain: list[str] = None, 
                        must_not_contain: list[str] = None) -> tuple[bool, str]:
     """Check file content for security requirements."""
     if not os.path.exists(filepath):
         return False, f"❌ File not found: {filepath}"
     
-    with open(filepath, 'r') as f:
+    # read files with explicit utf-8 encoding to avoid errors on
+    # systems where locale is not utf-8.
+    with open(filepath, 'r', encoding='utf-8') as f:
         content = f.read()
     
     # Check must-have content
@@ -47,12 +58,17 @@ checks = []
 print("\n[1] .env File Security")
 print("-" * 80)
 
-passed, msg = check_file_content(
-    '.env',
-    should_contain=['# API Keys', 'DO NOT commit', 'YOUR_GEMINI_API_KEY_HERE'],
-    must_not_contain=['AIzaSy']  # No real-looking keys
-)
-print(msg)
+if not os.path.exists('.env'):
+    print("❌ File not found: .env (copy .env.example and fill in your keys)")
+    passed = False
+else:
+    passed, msg = check_file_content(
+        '.env',
+        should_contain=['# API Keys', 'DO NOT commit', 'YOUR_GEMINI_API_KEY_HERE'],
+        must_not_contain=['AIzaSy']  # No real-looking keys
+    )
+    print(msg)
+
 checks.append(('✅ No API keys in .env' if passed else '❌ .env contains API keys', passed))
 all_passed = all_passed and passed
 
@@ -72,7 +88,7 @@ if os.path.exists('.streamlit/secrets.toml'):
     checks.append(('✅ No active keys in secrets.toml' if passed else '❌ Active keys in secrets.toml', passed))
     all_passed = all_passed and passed
 else:
-    print("❌ .streamlit/secrets.toml not found")
+    print("❌ .streamlit/secrets.toml not found (create one or use .env)")
     all_passed = False
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -119,9 +135,10 @@ unsafe_patterns = [
 ]
 
 for pattern in unsafe_patterns:
-    if pattern in open('app/main.py').read():
-        has_unsafe_logging = True
-        break
+    with open('app/main.py', 'r', encoding='utf-8') as f:
+        if pattern in f.read():
+            has_unsafe_logging = True
+            break
 
 passed = not has_unsafe_logging
 print("✅ No API key logging found" if passed else "❌ Found API key logging")
