@@ -36,6 +36,8 @@ def test_footer_includes_centered_logo(monkeypatch):
 
     assert footer_call is not None, "Footer markup was not emitted"
     assert "class='ent-footer'" in footer_call or 'class="ent-footer"' in footer_call
-    # either an image or the textual logo should be present
-    assert "CrowAgent™" in footer_call
-    assert "img" in footer_call or "font-family" in footer_call
+    # ensure we are actually rendering the image asset when the URI exists
+    if main.LOGO_URI:
+        assert "<img" in footer_call, "Expected <img> logo in footer when LOGO_URI is set"
+    else:
+        assert "font-family" in footer_call or "🌿" in footer_call

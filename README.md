@@ -27,6 +27,7 @@ The platform combines:
 - 🌤 **Live Weather** — Real-time temperature integration for accurate thermal calculations  
 - 🏢 **Multi-Building Portfolio** — Compare interventions across your campus estate  
 - 🎨 **Branding & Layout** — consistent CrowAgent™ logo in both header and footer, centrally aligned  
+- 🏷 **Robust asset loading** — logo/icon files are looked up relative to the working directory so they still render when Streamlit copies the script (no more emoji fallback)  
 - ✏️ **Customisation** — use the “➕ Add building” control under the Building section and the “➕ Add scenario” control under Scenarios; enter simple JSON objects (session‑only)
 
 ---

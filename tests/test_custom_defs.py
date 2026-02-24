@@ -9,6 +9,24 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from app import main
 
 
+def test_logo_loader_handles_tempfile(monkeypatch, tmp_path):
+    """Ensure that the loader still finds the asset even if __file__ is bogus.
+
+    Streamlit can copy the script to a temporary location before execution; in
+    that case the module's ``__file__`` points to the temp file and our
+    original relative paths would not work.  The loader should fall back to
+    looking in the working directory, which is where users normally invoke the
+    app.
+    """
+    # simulate being executed from a temporary directory
+    monkeypatch.setattr(main, "__file__", str(tmp_path / "fake.py"))
+    # cwd remains the repository root; the asset exists there
+    uri = main._load_logo_uri()
+    assert uri.startswith("data:image/svg+xml;base64,"), "Logo loader failed under temp __file__"
+    icon_uri = main._load_icon_uri()
+    assert icon_uri.startswith("data:image/svg+xml;base64,"), "Icon loader failed under temp __file__"
+
+
 def test_add_building_success(monkeypatch):
     # preserve original data
     orig = dict(main.BUILDINGS)

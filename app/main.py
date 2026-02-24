@@ -95,31 +95,61 @@ import core.physics as physics
 # LOGO LOADER
 # ─────────────────────────────────────────────────────────────────────────────
 def _load_logo_uri() -> str:
-    """Return the horizontal dark logo as a base64 data URI, or '' if file missing."""
+    """Return the horizontal dark logo as a base64 data URI.
+
+    When Streamlit executes a script it often copies the file into a temporary
+    directory, in which case ``__file__`` will point to the temp location and
+    the original ``assets/`` folder will be unreachable.  Historically this
+    caused the sidebar/logo to fall back to the 🌿 emoji.  To avoid that we
+    also check the current working directory (which remains the project root
+    when the app is launched from ``streamlit run``).
+
+    An empty string is returned if the file cannot be found; callers may
+    render textual branding in that case.
+    """
     candidates = [
         os.path.join(os.path.dirname(__file__), "../assets/CrowAgent_Logo_Horizontal_Dark.svg"),
         os.path.join(os.path.dirname(__file__), "assets/CrowAgent_Logo_Horizontal_Dark.svg"),
+        os.path.join(os.getcwd(), "assets/CrowAgent_Logo_Horizontal_Dark.svg"),
         "assets/CrowAgent_Logo_Horizontal_Dark.svg",
     ]
     for path in candidates:
         if os.path.isfile(path):
-            with open(path, "rb") as fh:
-                b64 = base64.b64encode(fh.read()).decode()
-            return f"data:image/svg+xml;base64,{b64}"
+            try:
+                with open(path, "rb") as fh:
+                    b64 = base64.b64encode(fh.read()).decode()
+                return f"data:image/svg+xml;base64,{b64}"
+            except Exception as e:  # pragma: no cover - IO problems are rare
+                st.warning(f"Failed to read logo file at {path}: {e}")
+                return ""
+    # nothing found; log a warning so the issue is easier to diagnose in future
+    st.warning("CrowAgent logo asset not found; falling back to text/emoji branding.")
     return ""
 
 def _load_icon_uri() -> str:
-    """Return the square icon mark as a base64 data URI for the browser tab, or '' if missing."""
+    """Return the square icon mark as a base64 data URI for the browser tab.
+
+    Similar to ``_load_logo_uri`` this function checks both the module path and
+    the current working directory so that the icon resolves even when Streamlit
+    has executed a temporary copy of the script.  An empty string indicates
+    that the emoji fallback should be used instead.
+    """
     candidates = [
         os.path.join(os.path.dirname(__file__), "../assets/CrowAgent_Icon_Square.svg"),
         os.path.join(os.path.dirname(__file__), "assets/CrowAgent_Icon_Square.svg"),
+        os.path.join(os.getcwd(), "assets/CrowAgent_Icon_Square.svg"),
         "assets/CrowAgent_Icon_Square.svg",
     ]
     for path in candidates:
         if os.path.isfile(path):
-            with open(path, "rb") as fh:
-                b64 = base64.b64encode(fh.read()).decode()
-            return f"data:image/svg+xml;base64,{b64}"
+            try:
+                with open(path, "rb") as fh:
+                    b64 = base64.b64encode(fh.read()).decode()
+                return f"data:image/svg+xml;base64,{b64}"
+            except Exception as e:  # pragma: no cover
+                st.warning(f"Failed to read icon file at {path}: {e}")
+                return ""
+    st.warning("CrowAgent icon asset not found; falling back to emoji favicon.")
     return ""
 
 LOGO_URI = _load_logo_uri()
