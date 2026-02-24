@@ -46,6 +46,7 @@ import services.location as loc
 import services.audit as audit
 import core.agent as crow_agent
 import core.physics as physics
+from app.visualization_3d import render_campus_3d_map
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LOGO LOADER
@@ -1281,6 +1282,13 @@ with _tab_dash:
             "Not specific to any real institution. Do not use for actual estate planning "
             "without site-specific survey."
         )
+
+    # ── 3D/4D Campus Visualisation ────────────────────────────────────────────
+    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+    render_campus_3d_map(
+        selected_scenario_names=selected_scenario_names,
+        weather=weather,
+    )
 
 
 # ════════════════════════════════════════════════════════════════════════════
