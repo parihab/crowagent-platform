@@ -210,14 +210,15 @@ function detectLocation() {
         status.innerHTML = '\u26a0 Cannot auto-update. Coordinates: ' + lat + ', ' + lon
           + '<br/>Enter them manually below.';
         btn.disabled = false;
-        btn.textContent = '\ud83d\udccd Detect My Location';
+        // use HTML entity for pushpin to avoid Python surrogate issues
+        btn.textContent = '📍 Detect My Location';
       }
     },
     function(err) {
       var msgs = {1:'Permission denied',2:'Position unavailable',3:'Request timed out'};
       status.innerHTML = '\u274c ' + (msgs[err.code] || err.message);
       btn.disabled = false;
-      btn.textContent = '\ud83d\udccd Detect My Location';
+      btn.textContent = '📍 Detect My Location';
     },
     { timeout: 10000, maximumAge: 300000 }
   );
