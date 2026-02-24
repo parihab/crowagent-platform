@@ -47,12 +47,17 @@ checks = []
 print("\n[1] .env File Security")
 print("-" * 80)
 
-passed, msg = check_file_content(
-    '.env',
-    should_contain=['# API Keys', 'DO NOT commit', 'YOUR_GEMINI_API_KEY_HERE'],
-    must_not_contain=['AIzaSy']  # No real-looking keys
-)
-print(msg)
+if not os.path.exists('.env'):
+    print("❌ File not found: .env (copy .env.example and fill in your keys)")
+    passed = False
+else:
+    passed, msg = check_file_content(
+        '.env',
+        should_contain=['# API Keys', 'DO NOT commit', 'YOUR_GEMINI_API_KEY_HERE'],
+        must_not_contain=['AIzaSy']  # No real-looking keys
+    )
+    print(msg)
+
 checks.append(('✅ No API keys in .env' if passed else '❌ .env contains API keys', passed))
 all_passed = all_passed and passed
 
@@ -72,7 +77,7 @@ if os.path.exists('.streamlit/secrets.toml'):
     checks.append(('✅ No active keys in secrets.toml' if passed else '❌ Active keys in secrets.toml', passed))
     all_passed = all_passed and passed
 else:
-    print("❌ .streamlit/secrets.toml not found")
+    print("❌ .streamlit/secrets.toml not found (create one or use .env)")
     all_passed = False
 
 # ─────────────────────────────────────────────────────────────────────────────
