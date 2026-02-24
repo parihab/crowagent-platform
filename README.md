@@ -101,6 +101,10 @@ and will optionally use a ``KEY_ENCRYPTION_KEY`` value (Fernet) to encrypt
 any API keys entered via the sidebar.  If that variable is unset the application
 falls back to storing keys in-session unencrypted but will never log them.
 
+A new "Lock sidebar collapsed" checkbox in the sidebar allows users to keep
+the navigation panel hidden between reruns; when enabled a small CSS override
+ensures the panel never "peeks" back in during refreshes.
+
 `.streamlit/secrets.toml` or, as a fallback, in `.env` loaded via
 `python-dotenv`. Use `.env.example` as a template.
 

@@ -643,7 +643,8 @@ def _get_secret(key: str, default: str = "") -> str:
 # cleartext.  The admin panel still never echoes the raw key.
 # ----------------------------------------------------------------------------
 try:
-    from cryptography.fernet import Fernet, InvalidToken
+    # typing: ignore import because cryptography is optional in the dev container
+    from cryptography.fernet import Fernet, InvalidToken  # type: ignore[import]
     _FERNET_KEY = _get_secret("KEY_ENCRYPTION_KEY", "").encode()
     _FERNET = Fernet(_FERNET_KEY) if _FERNET_KEY else None
 except ImportError:
