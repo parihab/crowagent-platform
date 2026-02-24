@@ -782,10 +782,10 @@ if "geo_lat" in _qp and "geo_lon" in _qp:
             f"Resolved browser location to '{_resolved}' (raw coords discarded per GDPR)",
         )
         # remember the resolved city so a refresh doesn’t revert to Reading
-        st.experimental_set_query_params(city=_resolved)
+        st.query_params.clear()
+        st.query_params["city"] = _resolved
     except Exception:
         pass
-    st.query_params.clear()
 elif "city" in _qp:
     # explicit city persisted by earlier interaction
     _city = _qp.get("city")
@@ -832,7 +832,8 @@ def _update_location_query_params() -> None:
     # always include numeric coords too; they’ll be ignored if a city is set
     params["lat"] = str(st.session_state.wx_lat)
     params["lon"] = str(st.session_state.wx_lon)
-    st.experimental_set_query_params(**params)
+    st.query_params.clear()
+    st.query_params.update(params)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
