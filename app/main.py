@@ -758,8 +758,14 @@ if "owm_key" not in st.session_state:
     st.session_state.owm_key = _get_secret("OWM_KEY", "")
 # sidebar collapse disallowed (see CSS below)
 
-# ── Handle browser geolocation query params (injected by geo-detect JS) ────
-# GDPR: raw coords are resolved to nearest city and discarded immediately.
+# ── Handle query params on page load (geo, city or custom coordinates) ──
+# The location picker should remember the user’s last choice even after a
+# full browser refresh.  We support three different params:
+#  • geo_lat / geo_lon  – injected by the JS component (auto‑detect flow)
+#  • city                – explicit selection from the dropdown
+#  • lat & lon           – arbitrary manual coordinates
+# GDPR: raw coordinates are resolved to a named city when possible and then
+# discarded immediately.
 _qp = st.query_params
 if "geo_lat" in _qp and "geo_lon" in _qp:
     try:
@@ -775,10 +781,58 @@ if "geo_lat" in _qp and "geo_lon" in _qp:
             "LOCATION_AUTO_DETECTED",
             f"Resolved browser location to '{_resolved}' (raw coords discarded per GDPR)",
         )
+        # remember the resolved city so a refresh doesn’t revert to Reading
+        st.experimental_set_query_params(city=_resolved)
     except Exception:
         pass
-    # Clear geo params from URL after handling
     st.query_params.clear()
+elif "city" in _qp:
+    # explicit city persisted by earlier interaction
+    _city = _qp.get("city")
+    if isinstance(_city, list):
+        _city = _city[0]
+    if _city in loc.CITIES:
+        _meta = loc.city_meta(_city)
+        st.session_state.wx_city          = _city
+        st.session_state.wx_lat           = _meta["lat"]
+        st.session_state.wx_lon           = _meta["lon"]
+        st.session_state.wx_location_name = f"{_city}, {_meta['country']}"
+        st.session_state.force_weather_refresh = True
+    st.query_params.clear()
+elif "lat" in _qp and "lon" in _qp:
+    try:
+        _lat = float(_qp.get("lat"))
+        _lon = float(_qp.get("lon"))
+        st.session_state.wx_lat = _lat
+        st.session_state.wx_lon = _lon
+        st.session_state.wx_city = ""  # not one of the known cities
+        st.session_state.wx_location_name = f"Custom site ({_lat:.4f}, {_lon:.4f})"
+        st.session_state.force_weather_refresh = True
+    except Exception:
+        pass
+    st.query_params.clear()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# UTILS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _update_location_query_params() -> None:
+    """Reflect the currently selected location in the page's query string.
+
+    We encode the city key where available; if the user has supplied custom
+    coordinates we use ``lat``/``lon`` so that a subsequent refresh still
+    reinstates exactly what they chose.  Calling this function after any
+    change (dropdown, manual coords or auto‑detect) keeps the experience
+    consistent.
+    """
+    params: dict[str, str] = {}
+    if st.session_state.wx_city:
+        params["city"] = st.session_state.wx_city
+    # always include numeric coords too; they’ll be ignored if a city is set
+    params["lat"] = str(st.session_state.wx_lat)
+    params["lon"] = str(st.session_state.wx_lon)
+    st.experimental_set_query_params(**params)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -891,6 +945,7 @@ with st.sidebar:
         st.session_state.wx_location_name = f"{_sel_city}, {_meta['country']}"
         st.session_state.force_weather_refresh = True
         audit.log_event("LOCATION_CHANGED", f"City set to '{_sel_city}'")
+        _update_location_query_params()
 
     # Manual lat/lon entry (for precise site addresses)
     with st.expander("⚙ Custom coordinates", expanded=False):
@@ -914,12 +969,31 @@ with st.sidebar:
                 "LOCATION_CUSTOM",
                 f"Custom coordinates set: {_custom_lat:.4f}, {_custom_lon:.4f}",
             )
+            _update_location_query_params()
         st.markdown(
             "<div style='font-size:0.73rem;color:#8FBCCE;margin-top:4px;'>"
             "Or use browser geolocation (HTTPS only):</div>",
             unsafe_allow_html=True,
         )
-        loc.render_geo_detect()
+        # geolocation component returns a dict when coordinates are obtained
+    _geo = loc.render_geo_detect()
+    if _geo and isinstance(_geo, dict):
+        try:
+            _lat = float(_geo.get("lat"))
+            _lon = float(_geo.get("lon"))
+            _resolved = loc.nearest_city(_lat, _lon)
+            st.session_state.wx_city          = _resolved
+            st.session_state.wx_lat           = _lat
+            st.session_state.wx_lon           = _lon
+            st.session_state.wx_location_name = f"{_resolved}, {loc.CITIES[_resolved]['country']}"
+            st.session_state.force_weather_refresh = True
+            audit.log_event(
+                "LOCATION_AUTO_DETECTED",
+                f"Resolved browser location to '{_resolved}' (coords retained until ref.)",
+            )
+            _update_location_query_params()
+        except Exception:
+            pass
 
 
     st.markdown("---")
@@ -1254,7 +1328,7 @@ st.markdown(f"""
   <div class='platform-topbar-right'>
     {_weather_pill}
     <span class='sp sp-cache'>🚧 PROTOTYPE v2.0.0</span>
-    <span class='sp sp-cache'>Reading, Berkshire</span>
+    <span class='sp sp-cache'>{st.session_state.wx_location_name or st.session_state.wx_city or 'Reading, Berkshire'}</span>
   </div>
 </div>
 """, unsafe_allow_html=True)
