@@ -12,6 +12,10 @@
 
 from __future__ import annotations
 
+import math
+from typing import Dict, List
+
+import overpy
 import pandas as pd
 import streamlit as st
 
@@ -37,11 +41,10 @@ _MONTHLY_TEMPS: dict[int, float] = {
     1: 5.0, 2: 5.2, 3: 7.6,  4: 10.3, 5: 13.8, 6: 16.9,
     7: 19.7, 8: 19.2, 9: 15.9, 10: 12.0, 11: 8.1, 12: 5.8,
 }
-_MONTH_NAMES = {
-    1: "January", 2: "February", 3: "March",    4: "April",
-    5: "May",     6: "June",     7: "July",      8: "August",
-    9: "September", 10: "October", 11: "November", 12: "December",
-}
+_MONTH_NAMES: List[str] = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+]
 
 # ── Seasonal energy model constants ──────────────────────────────────────────
 # ~60% of UK campus energy is heating-related (HESA 2022-23 sector data).
@@ -323,7 +326,7 @@ def _render_4d_timeline(weather: dict) -> None:
     st.markdown(
         f"<div style='font-size:0.82rem;color:#00C2A8;font-weight:600;"
         f"margin-bottom:6px;'>"
-        f"📅 {_MONTH_NAMES[month]} — Campus avg. carbon: {avg_carbon:.1f} t CO₂e "
+        f"📅 {_MONTH_NAMES[month - 1]} — Campus avg. carbon: {avg_carbon:.1f} t CO₂e "
         f"&nbsp;·&nbsp; Outdoor temp: {month_temp}°C</div>",
         unsafe_allow_html=True,
     )
@@ -436,3 +439,106 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
         "⚠️ Coordinates are illustrative — fictional Greenfield campus</div>",
         unsafe_allow_html=True,
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OSM BUILDING FOOTPRINTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_osm_buildings(lat: float, lon: float, radius_m: int = 700) -> List[Dict]:
+    """Fetch real OSM building footprints via the Overpass API.
+
+    Returns a list of dicts with keys ``polygon`` ([lon, lat] pairs),
+    ``height_m``, and ``name``.  Returns ``[]`` on any network/parse failure.
+    """
+    d_lat = radius_m / 111_000.0
+    d_lon = radius_m / (111_000.0 * math.cos(math.radians(lat)))
+    bbox  = (lat - d_lat, lon - d_lon, lat + d_lat, lon + d_lon)
+    query = (
+        f"way[building]({bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]});"
+        "(._;>;); out body;"
+    )
+    try:
+        result = overpy.Overpass().query(query)
+        rows: List[Dict] = []
+        for way in result.ways:
+            coords = [[float(n.lon), float(n.lat)] for n in way.nodes]
+            if len(coords) < 3:
+                continue
+            h = 10.0
+            if "height" in way.tags:
+                try:
+                    h = float(way.tags["height"].rstrip("m "))
+                except Exception:
+                    pass
+            elif "building:levels" in way.tags:
+                try:
+                    h = float(way.tags["building:levels"]) * 3.5
+                except Exception:
+                    pass
+            rows.append({"polygon": coords, "height_m": h,
+                          "name": way.tags.get("name", "")})
+        return rows
+    except Exception:
+        return []
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LEGACY PUBLIC API — backwards-compatible with existing tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+def render_3d_energy_map(buildings_data: List[Dict]) -> None:
+    """Render a pydeck ColumnLayer for an arbitrary list of building dicts.
+
+    Expected keys: ``name``, ``lat``, ``lon``, ``energy_kwh``,
+    ``carbon_tonnes``, ``scenario``.
+    """
+    if not buildings_data:
+        st.info("No building data available to render.")
+        return
+
+    carbons = [b.get("carbon_tonnes", 0.0) for b in buildings_data]
+    min_c   = min(carbons, default=0.0)
+    max_c   = max(carbons, default=1.0)
+
+    rows = [
+        {
+            "name":       b.get("name", ""),
+            "lat":        b.get("lat", 0.0),
+            "lon":        b.get("lon", 0.0),
+            "energy_mwh": b.get("energy_kwh", 0.0) / 1000.0,
+            "carbon_t":   b.get("carbon_tonnes", 0.0),
+            "carbon_saving_t":   0.0,
+            "energy_saving_pct": 0.0,
+            "fill_color": _carbon_to_rgba(b.get("carbon_tonnes", 0.0), min_c, max_c),
+            "elevation":  max(10.0, b.get("energy_kwh", 0.0) / 10.0),
+        }
+        for b in buildings_data
+    ]
+
+    if not _PYDECK_AVAILABLE:
+        _render_2d_fallback(rows)
+        return
+
+    try:
+        st.pydeck_chart(
+            _build_deck(rows),
+            use_container_width=True,
+        )
+    except Exception as exc:
+        st.warning(f"3D map failed: {exc}")
+        _render_2d_fallback(rows)
+
+
+def render_4d_carbon_timeline(
+    buildings_data: List[Dict],
+    scenarios_over_time: Dict[int, List[Dict]],
+) -> None:
+    """Render a month-by-month carbon intensity timeline using a pydeck map."""
+    if not scenarios_over_time:
+        st.info("No timeline data available.")
+        return
+    month = st.slider("Select Month", 1, 12, 1)
+    st.markdown(f"**Carbon Intensity — {_MONTH_NAMES[month - 1]} 2025**")
+    render_3d_energy_map(scenarios_over_time.get(month, []))
