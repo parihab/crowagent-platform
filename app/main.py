@@ -6,7 +6,7 @@
 # Not licensed for commercial use without written permission of the author.
 # CrowAgent™ is an unregistered trademark pending UK IPO Class 42.
 #
-# Platform Version : v2.0.0 — 21 February 2026
+# Platform Version : v2.0.0 — 25 February 2026 (Enterprise Target 1 Updates)
 # Status           : Working Prototype — See disclaimer
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import os
 import sys
+import json
 
 # ensure proper UTF-8 output in environments with non-UTF8 locale
 if hasattr(sys.stdout, "reconfigure"):
@@ -39,13 +40,7 @@ from datetime import datetime, timezone
 # helper functions for user-added definitions (used by sidebar forms and tests)
 # ----------------------------------------------------------------------------
 def _add_building_from_json(jtext: str) -> tuple[bool, str]:
-    """Attempt to parse JSON and add it to BUILDINGS.
-
-    Expected input is a JSON object containing at least a ``name`` key; the
-    remainder of keys should match the structure used in the BUILDINGS dict in
-    this module.  Returns ``(True, message)`` on success or ``(False, err)`` on
-    failure.
-    """
+    """Attempt to parse JSON and add it to BUILDINGS."""
     try:
         obj = json.loads(jtext)
     except Exception as exc:
@@ -60,11 +55,7 @@ def _add_building_from_json(jtext: str) -> tuple[bool, str]:
 
 
 def _add_scenario_from_json(jtext: str) -> tuple[bool, str]:
-    """Parse JSON and insert into SCENARIOS.
-
-    JSON must include a ``name`` key; remaining keys should align with existing
-    scenario dictionaries (u_wall_factor, install_cost_gbp, etc.).
-    """
+    """Parse JSON and insert into SCENARIOS."""
     try:
         obj = json.loads(jtext)
     except Exception as exc:
@@ -95,18 +86,6 @@ from app.visualization_3d import render_campus_3d_map
 # LOGO LOADER
 # ─────────────────────────────────────────────────────────────────────────────
 def _load_logo_uri() -> str:
-    """Return the horizontal dark logo as a base64 data URI.
-
-    When Streamlit executes a script it often copies the file into a temporary
-    directory, in which case ``__file__`` will point to the temp location and
-    the original ``assets/`` folder will be unreachable.  Historically this
-    caused the sidebar/logo to fall back to the 🌿 emoji.  To avoid that we
-    also check the current working directory (which remains the project root
-    when the app is launched from ``streamlit run``).
-
-    An empty string is returned if the file cannot be found; callers may
-    render textual branding in that case.
-    """
     candidates = [
         os.path.join(os.path.dirname(__file__), "../assets/CrowAgent_Logo_Horizontal_Dark.svg"),
         os.path.join(os.path.dirname(__file__), "assets/CrowAgent_Logo_Horizontal_Dark.svg"),
@@ -119,21 +98,12 @@ def _load_logo_uri() -> str:
                 with open(path, "rb") as fh:
                     b64 = base64.b64encode(fh.read()).decode()
                 return f"data:image/svg+xml;base64,{b64}"
-            except Exception as e:  # pragma: no cover - IO problems are rare
+            except Exception as e:
                 st.warning(f"Failed to read logo file at {path}: {e}")
                 return ""
-    # nothing found; log a warning so the issue is easier to diagnose in future
-    st.warning("CrowAgent logo asset not found; falling back to text/emoji branding.")
     return ""
 
 def _load_icon_uri() -> str:
-    """Return the square icon mark as a base64 data URI for the browser tab.
-
-    Similar to ``_load_logo_uri`` this function checks both the module path and
-    the current working directory so that the icon resolves even when Streamlit
-    has executed a temporary copy of the script.  An empty string indicates
-    that the emoji fallback should be used instead.
-    """
     candidates = [
         os.path.join(os.path.dirname(__file__), "../assets/CrowAgent_Icon_Square.svg"),
         os.path.join(os.path.dirname(__file__), "assets/CrowAgent_Icon_Square.svg"),
@@ -146,10 +116,9 @@ def _load_icon_uri() -> str:
                 with open(path, "rb") as fh:
                     b64 = base64.b64encode(fh.read()).decode()
                 return f"data:image/svg+xml;base64,{b64}"
-            except Exception as e:  # pragma: no cover
+            except Exception as e:
                 st.warning(f"Failed to read icon file at {path}: {e}")
                 return ""
-    st.warning("CrowAgent icon asset not found; falling back to emoji favicon.")
     return ""
 
 LOGO_URI = _load_logo_uri()
@@ -178,337 +147,121 @@ st.set_page_config(
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ENTERPRISE CSS + GOOGLE FONTS
-# Fonts: Rajdhani (headings/display) + Nunito Sans (body)
 # ─────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Nunito+Sans:ital,wght@0,300;0,400;0,600;0,700;1,400&display=swap');
 
 /* ── Global resets ─────────────────────────────────────────────────────── */
-html, body, [class*="css"] {
-  font-family: 'Nunito Sans', sans-serif !important;
-}
-h1,h2,h3,h4 {
-  font-family: 'Rajdhani', sans-serif !important;
-  letter-spacing: 0.3px;
-}
+html, body, [class*="css"] { font-family: 'Nunito Sans', sans-serif !important; }
+h1,h2,h3,h4 { font-family: 'Rajdhani', sans-serif !important; letter-spacing: 0.3px; }
 
 /* ── App background ────────────────────────────────────────────────────── */
-[data-testid="stAppViewContainer"] > .main {
-  background: #F0F4F8;
-}
-.block-container {
-  padding-top: 0 !important;
-  max-width: 100% !important;
-}
+[data-testid="stAppViewContainer"] > .main { background: #F0F4F8; }
+.block-container { padding-top: 0 !important; max-width: 100% !important; }
 
 /* ── Sidebar ───────────────────────────────────────────────────────────── */
-[data-testid="stSidebar"] {
-  background: #071A2F !important;
-  border-right: 1px solid #1A3A5C !important;
-}
+[data-testid="stSidebar"] { background: #071A2F !important; border-right: 1px solid #1A3A5C !important; }
 [data-testid="stSidebar"] * { color: #CBD8E6 !important; }
-
-[data-testid="stSidebar"] .stMarkdown h1,
-[data-testid="stSidebar"] .stMarkdown h2,
-[data-testid="stSidebar"] .stMarkdown h3 {
-  color: #00C2A8 !important;
-}
-[data-testid="stSidebar"] .stTextInput input {
-  background: #0D2640 !important;
-  border: 1px solid #1A3A5C !important;
-  color: #CBD8E6 !important;
-  font-size: 0.82rem !important;
-}
-[data-testid="stSidebar"] .stSelectbox > div > div {
-  background: #0D2640 !important;
-  border: 1px solid #1A3A5C !important;
-  color: #CBD8E6 !important;
-}
+[data-testid="stSidebar"] .stMarkdown h1, [data-testid="stSidebar"] .stMarkdown h2, [data-testid="stSidebar"] .stMarkdown h3 { color: #00C2A8 !important; }
+[data-testid="stSidebar"] .stTextInput input { background: #0D2640 !important; border: 1px solid #1A3A5C !important; color: #CBD8E6 !important; font-size: 0.82rem !important; }
+[data-testid="stSidebar"] .stSelectbox > div > div { background: #0D2640 !important; border: 1px solid #1A3A5C !important; color: #CBD8E6 !important; }
 [data-testid="stSidebar"] hr { border-color: #1A3A5C !important; }
 [data-testid="stSidebar"] .stCheckbox span { color: #CBD8E6 !important; }
-[data-testid="stSidebar"] .stButton button {
-  background: #0D2640 !important;
-  border: 1px solid #00C2A8 !important;
-  color: #00C2A8 !important;
-  font-size: 0.82rem !important;
-  font-weight: 600 !important;
-  padding: 4px 10px !important;
-}
-[data-testid="stSidebar"] .stButton button:hover {
-  background: #00C2A8 !important;
-  color: #071A2F !important;
-}
+[data-testid="stSidebar"] .stButton button { background: #0D2640 !important; border: 1px solid #00C2A8 !important; color: #00C2A8 !important; font-size: 0.82rem !important; font-weight: 600 !important; padding: 4px 10px !important; }
+[data-testid="stSidebar"] .stButton button:hover { background: #00C2A8 !important; color: #071A2F !important; }
 
 /* ── Platform header bar ───────────────────────────────────────────────── */
-.platform-topbar {
-  background: linear-gradient(135deg, #071A2F 0%, #0D2640 60%, #0A2E40 100%);
-  border-bottom: 2px solid #00C2A8;
-  padding: 10px 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-.platform-topbar-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
+.platform-topbar { background: linear-gradient(135deg, #071A2F 0%, #0D2640 60%, #0A2E40 100%); border-bottom: 2px solid #00C2A8; padding: 10px 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.platform-topbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
 /* ── Status pills ──────────────────────────────────────────────────────── */
-.sp { display:inline-flex; align-items:center; gap:5px; padding:3px 10px;
-      border-radius:20px; font-size:0.78rem; font-weight:700;
-      letter-spacing:0.3px; white-space:nowrap; }
-.sp-live   { background:rgba(29,184,122,.12); color:#1DB87A;
-             border:1px solid rgba(29,184,122,.3); }
-.sp-cache  { background:rgba(240,180,41,.1);  color:#F0B429;
-             border:1px solid rgba(240,180,41,.25); }
-.sp-manual { background:rgba(90,122,144,.12); color:#A8C8D8;
-             border:1px solid rgba(90,122,144,.2); }
-.sp-warn   { background:rgba(232,76,76,.1);   color:#E84C4C;
-             border:1px solid rgba(232,76,76,.25); }
-.pulse-dot { width:7px; height:7px; border-radius:50%;
-             background:#1DB87A; display:inline-block;
-             animation: blink 2s ease-in-out infinite; }
+.sp { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:20px; font-size:0.78rem; font-weight:700; letter-spacing:0.3px; white-space:nowrap; }
+.sp-live   { background:rgba(29,184,122,.12); color:#1DB87A; border:1px solid rgba(29,184,122,.3); }
+.sp-cache  { background:rgba(240,180,41,.1);  color:#F0B429; border:1px solid rgba(240,180,41,.25); }
+.sp-manual { background:rgba(90,122,144,.12); color:#A8C8D8; border:1px solid rgba(90,122,144,.2); }
+.sp-warn   { background:rgba(232,76,76,.1);   color:#E84C4C; border:1px solid rgba(232,76,76,.25); }
+.pulse-dot { width:7px; height:7px; border-radius:50%; background:#1DB87A; display:inline-block; animation: blink 2s ease-in-out infinite; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
 
 /* ── Tab navigation ────────────────────────────────────────────────────── */
-.stTabs [data-baseweb="tab-list"] {
-  background: #ffffff !important;
-  border-bottom: 2px solid #E0EBF4 !important;
-  gap: 0 !important;
-  padding: 0 !important;
-}
-.stTabs [data-baseweb="tab"] {
-  background: transparent !important;
-  color: #3A576B !important;
-  font-family: 'Rajdhani', sans-serif !important;
-  font-size: 0.88rem !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.5px !important;
-  padding: 10px 20px !important;
-  border-bottom: 3px solid transparent !important;
-}
-.stTabs [aria-selected="true"] {
-  color: #071A2F !important;
-  border-bottom: 3px solid #00C2A8 !important;
-  background: rgba(0,194,168,.04) !important;
-}
-.stTabs [data-baseweb="tab-panel"] {
-  padding: 20px 0 0 0 !important;
-}
+.stTabs [data-baseweb="tab-list"] { background: #ffffff !important; border-bottom: 2px solid #E0EBF4 !important; gap: 0 !important; padding: 0 !important; }
+.stTabs [data-baseweb="tab"] { background: transparent !important; color: #3A576B !important; font-family: 'Rajdhani', sans-serif !important; font-size: 0.88rem !important; font-weight: 600 !important; letter-spacing: 0.5px !important; padding: 10px 20px !important; border-bottom: 3px solid transparent !important; }
+.stTabs [aria-selected="true"] { color: #071A2F !important; border-bottom: 3px solid #00C2A8 !important; background: rgba(0,194,168,.04) !important; }
+.stTabs [data-baseweb="tab-panel"] { padding: 20px 0 0 0 !important; }
 
 /* ── Enterprise KPI cards ──────────────────────────────────────────────── */
-.kpi-card {
-  background: #ffffff;
-  border-radius: 8px;
-  padding: 18px 20px 14px;
-  border: 1px solid #E0EBF4;
-  border-top: 3px solid #00C2A8;
-  box-shadow: 0 2px 8px rgba(7,26,47,.05);
-  height: 100%;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-.kpi-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 4px 12px rgba(7,26,47,.15);
-}
+.kpi-card { background: #ffffff; border-radius: 8px; padding: 18px 20px 14px; border: 1px solid #E0EBF4; border-top: 3px solid #00C2A8; box-shadow: 0 2px 8px rgba(7,26,47,.05); height: 100%; transition: transform 0.2s ease, box-shadow 0.2s ease; }
+.kpi-card:hover { transform: translateY(-4px); box-shadow: 0 4px 12px rgba(7,26,47,.15); }
 .kpi-card.accent-green  { border-top-color: #1DB87A; }
 .kpi-card.accent-gold   { border-top-color: #F0B429; }
 .kpi-card.accent-navy   { border-top-color: #071A2F; }
-.kpi-label {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 0.78rem; font-weight: 700; letter-spacing: 1px;
-  text-transform: uppercase; color: #3A576B; margin-bottom: 6px;
-}
-.kpi-value {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 2rem; font-weight: 700; color: #071A2F; line-height: 1.1;
-}
+.kpi-label { font-family: 'Rajdhani', sans-serif; font-size: 0.78rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #3A576B; margin-bottom: 6px; }
+.kpi-value { font-family: 'Rajdhani', sans-serif; font-size: 2rem; font-weight: 700; color: #071A2F; line-height: 1.1; }
 .kpi-unit  { font-size: 0.9rem; font-weight: 500; color: #3A576B; margin-left: 2px; }
 .kpi-delta-pos { color: #1DB87A; font-size: 0.80rem; font-weight: 700; margin-top: 4px; }
 .kpi-delta-neg { color: #E84C4C; font-size: 0.80rem; font-weight: 700; margin-top: 4px; }
 .kpi-sub   { font-size: 0.78rem; color: #5A7A90; margin-top: 2px; }
 
 /* ── Section headers ───────────────────────────────────────────────────── */
-.sec-hdr {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 0.84rem; font-weight: 700; letter-spacing: 1.5px;
-  text-transform: uppercase; color: #00C2A8;
-  border-bottom: 1px solid rgba(0,194,168,.2);
-  padding-bottom: 6px; margin-bottom: 14px; margin-top: 4px;
-}
+.sec-hdr { font-family: 'Rajdhani', sans-serif; font-size: 0.84rem; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #00C2A8; border-bottom: 1px solid rgba(0,194,168,.2); padding-bottom: 6px; margin-bottom: 14px; margin-top: 4px; }
 
 /* ── Chart containers ──────────────────────────────────────────────────── */
-.chart-card {
-  background: #ffffff;
-  border-radius: 8px;
-  border: 1px solid #E0EBF4;
-  padding: 18px 18px 10px;
-  box-shadow: 0 2px 8px rgba(7,26,47,.04);
-  margin-bottom: 16px;
-}
-.chart-title {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 0.88rem; font-weight: 700; letter-spacing: 0.5px;
-  color: #071A2F; margin-bottom: 4px;
-  text-transform: uppercase;
-}
-.chart-caption {
-  font-size: 0.77rem; color: #6A92AA; margin-top: 4px;
-  font-style: italic;
-}
+.chart-card { background: #ffffff; border-radius: 8px; border: 1px solid #E0EBF4; padding: 18px 18px 10px; box-shadow: 0 2px 8px rgba(7,26,47,.04); margin-bottom: 16px; }
+.chart-title { font-family: 'Rajdhani', sans-serif; font-size: 0.88rem; font-weight: 700; letter-spacing: 0.5px; color: #071A2F; margin-bottom: 4px; text-transform: uppercase; }
+.chart-caption { font-size: 0.77rem; color: #6A92AA; margin-top: 4px; font-style: italic; }
 
 /* ── Disclaimer banners ────────────────────────────────────────────────── */
-.disc-prototype {
-  background: rgba(240,180,41,.07);
-  border: 1px solid rgba(240,180,41,.3);
-  border-left: 4px solid #F0B429;
-  border-radius: 0 6px 6px 0;
-  padding: 10px 16px; font-size: 0.82rem;
-  color: #6A5010; line-height: 1.55; margin: 10px 0;
-}
-.disc-ai {
-  background: rgba(0,194,168,.05);
-  border: 1px solid rgba(0,194,168,.2);
-  border-left: 4px solid #00C2A8;
-  border-radius: 0 6px 6px 0;
-  padding: 10px 16px; font-size: 0.82rem;
-  color: #1A5A50; line-height: 1.55; margin: 10px 0;
-}
-.disc-data {
-  background: rgba(7,26,47,.04);
-  border: 1px solid rgba(7,26,47,.12);
-  border-left: 4px solid #071A2F;
-  border-radius: 0 6px 6px 0;
-  padding: 10px 16px; font-size: 0.82rem;
-  color: #3A5268; line-height: 1.55; margin: 10px 0;
-}
+.disc-prototype { background: rgba(240,180,41,.07); border: 1px solid rgba(240,180,41,.3); border-left: 4px solid #F0B429; border-radius: 0 6px 6px 0; padding: 10px 16px; font-size: 0.82rem; color: #6A5010; line-height: 1.55; margin: 10px 0; }
+.disc-ai { background: rgba(0,194,168,.05); border: 1px solid rgba(0,194,168,.2); border-left: 4px solid #00C2A8; border-radius: 0 6px 6px 0; padding: 10px 16px; font-size: 0.82rem; color: #1A5A50; line-height: 1.55; margin: 10px 0; }
+.disc-data { background: rgba(7,26,47,.04); border: 1px solid rgba(7,26,47,.12); border-left: 4px solid #071A2F; border-radius: 0 6px 6px 0; padding: 10px 16px; font-size: 0.82rem; color: #3A5268; line-height: 1.55; margin: 10px 0; }
+
+/* ── Onboarding Cards ──────────────────────────────────────────────────── */
+.onboarding-card { background: #ffffff; border: 2px solid #E0EBF4; border-radius: 12px; padding: 30px; text-align: center; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+.onboarding-card:hover { border-color: #00C2A8; transform: translateY(-5px); box-shadow: 0 8px 25px rgba(0,194,168,0.15); }
 
 /* ── Weather widget (sidebar) ──────────────────────────────────────────── */
-.wx-widget {
-  background: #0D2640;
-  border: 1px solid #1A3A5C;
-  border-radius: 8px;
-  padding: 12px 14px;
-  margin: 6px 0;
-}
-.wx-temp {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 2rem; font-weight: 700; color: #ffffff;
-  display: inline-block; line-height: 1;
-}
+.wx-widget { background: #0D2640; border: 1px solid #1A3A5C; border-radius: 8px; padding: 12px 14px; margin: 6px 0; }
+.wx-temp { font-family: 'Rajdhani', sans-serif; font-size: 2rem; font-weight: 700; color: #ffffff; display: inline-block; line-height: 1; }
 .wx-desc { font-size: 0.82rem; color: #A8C8D8; margin-top: 2px; }
 .wx-row  { font-size: 0.78rem; color: #CBD8E6; margin-top: 5px; }
 
 /* ── Contact cards ─────────────────────────────────────────────────────── */
-.contact-card {
-  background: #ffffff;
-  border-radius: 8px;
-  border: 1px solid #E0EBF4;
-  padding: 20px 22px;
-  box-shadow: 0 2px 8px rgba(7,26,47,.05);
-}
-.contact-label {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 0.80rem; font-weight: 700; letter-spacing: 1px;
-  text-transform: uppercase; color: #00C2A8; margin-bottom: 4px;
-}
+.contact-card { background: #ffffff; border-radius: 8px; border: 1px solid #E0EBF4; padding: 20px 22px; box-shadow: 0 2px 8px rgba(7,26,47,.05); }
+.contact-label { font-family: 'Rajdhani', sans-serif; font-size: 0.80rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #00C2A8; margin-bottom: 4px; }
 .contact-val { font-size: 0.88rem; color: #071A2F; font-weight: 600; }
 
 /* ── Enterprise footer ─────────────────────────────────────────────────── */
-.ent-footer {
-  background: #071A2F;
-  border-top: 2px solid #00C2A8;
-  padding: 16px 24px;
-  margin-top: 32px;
-  text-align: center;
-  /* flex layout ensures logo and text sit in the page centre */
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
+.ent-footer { background: #071A2F; border-top: 2px solid #00C2A8; padding: 16px 24px; margin-top: 32px; text-align: center; display: flex; flex-direction: column; align-items: center; }
 
 /* ── Validation messages ───────────────────────────────────────────────── */
-.val-warn {
-  background: rgba(232,76,76,.06);
-  border: 1px solid rgba(232,76,76,.25);
-  border-left: 3px solid #E84C4C;
-  border-radius: 0 4px 4px 0;
-  padding: 7px 12px;
-  font-size: 0.80rem; color: #8B1A1A;
-}
-.val-ok {
-  background: rgba(29,184,122,.06);
-  border: 1px solid rgba(29,184,122,.25);
-  border-left: 3px solid #1DB87A;
-  border-radius: 0 4px 4px 0;
-  padding: 7px 12px;
-  font-size: 0.80rem; color: #0A4A28;
-}
-.val-err {
-  background: rgba(220,53,69,.08);
-  border: 1px solid rgba(220,53,69,.3);
-  border-left: 3px solid #DC3545;
-  border-radius: 0 4px 4px 0;
-  padding: 7px 12px;
-  font-size: 0.80rem; color: #721C24;
-}
+.val-warn { background: rgba(232,76,76,.06); border: 1px solid rgba(232,76,76,.25); border-left: 3px solid #E84C4C; border-radius: 0 4px 4px 0; padding: 7px 12px; font-size: 0.80rem; color: #8B1A1A; }
+.val-ok { background: rgba(29,184,122,.06); border: 1px solid rgba(29,184,122,.25); border-left: 3px solid #1DB87A; border-radius: 0 4px 4px 0; padding: 7px 12px; font-size: 0.80rem; color: #0A4A28; }
+.val-err { background: rgba(220,53,69,.08); border: 1px solid rgba(220,53,69,.3); border-left: 3px solid #DC3545; border-radius: 0 4px 4px 0; padding: 7px 12px; font-size: 0.80rem; color: #721C24; }
 
 /* ── Plotly overrides ──────────────────────────────────────────────────── */
 .js-plotly-plot .plotly .modebar { top: 4px !important; }
 
 /* ── Sidebar section label ─────────────────────────────────────────────── */
-.sb-section {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 0.80rem; font-weight: 700; letter-spacing: 1.5px;
-  text-transform: uppercase; color: #00C2A8 !important;
-  margin: 14px 0 6px 0;
-}
+.sb-section { font-family: 'Rajdhani', sans-serif; font-size: 0.80rem; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #00C2A8 !important; margin: 14px 0 6px 0; }
 
 /* ── Info chip ─────────────────────────────────────────────────────────── */
-.chip {
-  display: inline-block; background: #0D2640;
-  border: 1px solid #1A3A5C; border-radius: 4px;
-  padding: 2px 8px; font-size: 0.78rem; color: #9ABDD0;
-  margin: 2px;
-}
+.chip { display: inline-block; background: #0D2640; border: 1px solid #1A3A5C; border-radius: 4px; padding: 2px 8px; font-size: 0.78rem; color: #9ABDD0; margin: 2px; }
 
 /* ── Clean up Streamlit defaults without breaking header ─────────────── */
 #MainMenu { visibility: hidden; }
 footer    { visibility: hidden; }
-/* hide toolbar and status icons but leave header interactive */
 div[data-testid="stToolbar"], div[data-testid="stStatusWidget"] { visibility: hidden; }
-header {
-  background: transparent !important;
-}
-
-/* ── Sidebar toggle tweaks ─────────────────────────────────────────── */
-button[data-testid="stSidebarCollapseButton"] {
-  visibility: visible !important;
-  color: #00C2A8 !important;
-}
-button[data-testid="stSidebarCollapseButton"]:hover {
-  color: #009688 !important;
-}
-
-/* ensure toggle icon contrast when sidebar is dark */
-[data-testid="stSidebar"] {
-  background: #071A2F !important;
-}
+header { background: transparent !important; }
+button[data-testid="stSidebarCollapseButton"] { visibility: visible !important; color: #00C2A8 !important; }
+button[data-testid="stSidebarCollapseButton"]:hover { color: #009688 !important; }
+[data-testid="stSidebar"] { background: #071A2F !important; }
 </style>
 """, unsafe_allow_html=True)
 
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # BUILDING DATA — Greenfield University (fictional)
-# Derived from HESA 2022-23 UK HE sector averages + CIBSE Guide A U-values.
-# NOT data from any real institution.
 # ─────────────────────────────────────────────────────────────────────────────
 BUILDINGS: dict[str, dict] = {
     "Greenfield Library": {
@@ -592,39 +345,26 @@ SCENARIOS: dict[str, dict] = {
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PHYSICS ENGINE — PINN Thermal Model
-# Q_transmission = U × A × ΔT × hours  [Wh]
-# Q_infiltration = 0.33 × ACH × Vol × ΔT  [Wh]
-# Ref: Raissi et al. (2019) J. Comp. Physics  doi:10.1016/j.jcp.2018.10.045
 # ─────────────────────────────────────────────────────────────────────────────
 def calculate_thermal_load(building: dict, scenario: dict, weather_data: dict) -> dict:
-    """
-    Physics-informed thermal load calculation.
-    DISCLAIMER: Uses simplified steady-state model calibrated against UK HE
-    sector averages. Results are indicative only. Not for use as sole basis
-    for capital investment decisions — consult a qualified energy surveyor.
-    """
     b    = building
     s    = scenario
     temp = weather_data["temperature_c"]
 
-    # ── Validation ────────────────────────────────────────────────────────────
     valid, msg = wx.validate_temperature(temp)
     if not valid:
         raise ValueError(f"Physics model validation: {msg}")
 
-    # ── Geometry ──────────────────────────────────────────────────────────────
     perimeter_m     = 4.0 * (b["floor_area_m2"] ** 0.5)
     wall_area_m2    = perimeter_m * b["height_m"] * (1.0 - b["glazing_ratio"])
     glazing_area_m2 = perimeter_m * b["height_m"] * b["glazing_ratio"]
     roof_area_m2    = b["floor_area_m2"]
     volume_m3       = b["floor_area_m2"] * b["height_m"]
 
-    # ── Effective U-values post-intervention ──────────────────────────────────
     u_wall    = b["u_value_wall"]    * s["u_wall_factor"]
     u_roof    = b["u_value_roof"]    * s["u_roof_factor"]
     u_glazing = b["u_value_glazing"] * s["u_glazing_factor"]
 
-    # ── Heat loss (CIBSE Guide A) ─────────────────────────────────────────────
     delta_t     = max(0.0, 21.0 - temp)      # 21°C set-point (Part L)
     heating_hrs = 5800.0                      # UK heating season (CIBSE Guide A)
 
@@ -633,15 +373,12 @@ def calculate_thermal_load(building: dict, scenario: dict, weather_data: dict) -
     q_glazing = u_glazing * glazing_area_m2 * delta_t * heating_hrs
     q_trans_mwh = (q_wall + q_roof + q_glazing) / 1_000_000.0
 
-    # ── Infiltration (CIBSE Guide A) ──────────────────────────────────────────
     ach         = 0.7 * (1.0 - s["infiltration_reduction"])
     q_inf_mwh   = (0.33 * ach * volume_m3 * delta_t * heating_hrs) / 1_000_000.0
 
-    # ── Solar gain offset  (PVGIS: 950 kWh/m²/yr Reading) ────────────────────
     solar_mwh = (950.0 * glazing_area_m2 * 0.6 * (1.0 - s["solar_gain_reduction"])) / 1_000.0
     modelled_mwh = max(0.0, q_trans_mwh + q_inf_mwh - solar_mwh * 0.3)
 
-    # ── Baseline (no scenario) ────────────────────────────────────────────────
     baseline_raw = (
         b["u_value_wall"]    * wall_area_m2    * delta_t * heating_hrs
       + b["u_value_roof"]    * roof_area_m2    * delta_t * heating_hrs
@@ -658,12 +395,10 @@ def calculate_thermal_load(building: dict, scenario: dict, weather_data: dict) -
     renewable_mwh = s["renewable_kwh"] / 1_000.0
     final_mwh     = max(0.0, adjusted_mwh - renewable_mwh)
 
-    # ── Carbon (BEIS 2023: 0.20482 kgCO₂e/kWh) ───────────────────────────────
     ci               = 0.20482
     baseline_carbon  = (b["baseline_energy_mwh"] * 1000.0 * ci) / 1000.0
     scenario_carbon  = (final_mwh * 1000.0 * ci) / 1000.0
 
-    # ── Financial (HESA 2022-23: £0.28/kWh) ──────────────────────────────────
     unit_cost     = 0.28
     annual_saving = (b["baseline_energy_mwh"] - final_mwh) * 1000.0 * unit_cost
     install_cost  = float(s["install_cost_gbp"])
@@ -709,23 +444,28 @@ CHART_LAYOUT = dict(
 # ─────────────────────────────────────────────────────────────────────────────
 # UTILITY IMPORTS
 # ─────────────────────────────────────────────────────────────────────────────
-
 from app.utils import validate_gemini_key
 import app.compliance as compliance
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SESSION STATE INITIALISATION
+# SESSION STATE INITIALISATION & REFRESH SURVIVAL
 # ─────────────────────────────────────────────────────────────────────────────
-
 def _get_secret(key: str, default: str = "") -> str:
     try:
         return st.secrets[key]
     except (KeyError, AttributeError, FileNotFoundError):
         return os.getenv(key, default)
 
-# (encryption helpers removed – keys are handled in plaintext in session state)
+# Check query params for F5 refresh survival
+_qp = st.query_params
+if "segment" in _qp:
+    st.session_state.user_segment = _qp["segment"]
+    st.session_state.onboarded = True
+elif "onboarded" not in st.session_state:
+    st.session_state.onboarded = False
 
-# Initialize session state with defaults or environment values
+if "custom_buildings" not in st.session_state:
+    st.session_state.custom_buildings = {}
 if "user_segment" not in st.session_state:
     st.session_state.user_segment = "university_he"
 if "chat_history" not in st.session_state:
@@ -742,7 +482,6 @@ if "manual_temp" not in st.session_state:
     st.session_state.manual_temp = 10.5
 if "force_weather_refresh" not in st.session_state:
     st.session_state.force_weather_refresh = False
-# ── Weather location & provider (new in v2.1) ──────────────────────────────
 if "wx_city" not in st.session_state:
     st.session_state.wx_city = "Reading, Berkshire"
 if "wx_lat" not in st.session_state:
@@ -757,17 +496,8 @@ if "wx_enable_fallback" not in st.session_state:
     st.session_state.wx_enable_fallback = True
 if "owm_key" not in st.session_state:
     st.session_state.owm_key = _get_secret("OWM_KEY", "")
-# sidebar collapse disallowed (see CSS below)
 
 # ── Handle query params on page load (geo, city or custom coordinates) ──
-# The location picker should remember the user’s last choice even after a
-# full browser refresh.  We support three different params:
-#  • geo_lat / geo_lon  – injected by the JS component (auto‑detect flow)
-#  • city                – explicit selection from the dropdown
-#  • lat & lon           – arbitrary manual coordinates
-# GDPR: raw coordinates are resolved to a named city when possible and then
-# discarded immediately.
-_qp = st.query_params
 if "geo_lat" in _qp and "geo_lon" in _qp:
     try:
         _geo_lat = float(_qp["geo_lat"])
@@ -778,17 +508,11 @@ if "geo_lat" in _qp and "geo_lon" in _qp:
         st.session_state.wx_lon           = loc.CITIES[_resolved]["lon"]
         st.session_state.wx_location_name = f"{_resolved}, {loc.CITIES[_resolved]['country']}"
         st.session_state.force_weather_refresh = True
-        audit.log_event(
-            "LOCATION_AUTO_DETECTED",
-            f"Resolved browser location to '{_resolved}' (raw coords discarded per GDPR)",
-        )
-        # remember the resolved city so a refresh doesn’t revert to Reading
-        st.query_params.clear()
+        audit.log_event("LOCATION_AUTO_DETECTED", f"Resolved browser location to '{_resolved}'")
         st.query_params["city"] = _resolved
     except Exception:
         pass
 elif "city" in _qp:
-    # explicit city persisted by earlier interaction
     _city = _qp.get("city")
     if isinstance(_city, list):
         _city = _city[0]
@@ -799,42 +523,85 @@ elif "city" in _qp:
         st.session_state.wx_lon           = _meta["lon"]
         st.session_state.wx_location_name = f"{_city}, {_meta['country']}"
         st.session_state.force_weather_refresh = True
-    st.query_params.clear()
 elif "lat" in _qp and "lon" in _qp:
     try:
         _lat = float(_qp.get("lat"))
         _lon = float(_qp.get("lon"))
         st.session_state.wx_lat = _lat
         st.session_state.wx_lon = _lon
-        st.session_state.wx_city = ""  # not one of the known cities
+        st.session_state.wx_city = ""
         st.session_state.wx_location_name = f"Custom site ({_lat:.4f}, {_lon:.4f})"
         st.session_state.force_weather_refresh = True
     except Exception:
         pass
-    st.query_params.clear()
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# UTILS
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _update_location_query_params() -> None:
-    """Reflect the currently selected location in the page's query string.
-
-    We encode the city key where available; if the user has supplied custom
-    coordinates we use ``lat``/``lon`` so that a subsequent refresh still
-    reinstates exactly what they chose.  Calling this function after any
-    change (dropdown, manual coords or auto‑detect) keeps the experience
-    consistent.
-    """
     params: dict[str, str] = {}
     if st.session_state.wx_city:
         params["city"] = st.session_state.wx_city
-    # always include numeric coords too; they’ll be ignored if a city is set
     params["lat"] = str(st.session_state.wx_lat)
     params["lon"] = str(st.session_state.wx_lon)
+    if st.session_state.get("onboarded") and st.session_state.get("user_segment"):
+        params["segment"] = st.session_state.user_segment
     st.query_params.clear()
     st.query_params.update(params)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ONBOARDING GATE (Enterprise Target 1)
+# ─────────────────────────────────────────────────────────────────────────────
+if not st.session_state.onboarded:
+    st.markdown("<div style='text-align:center; padding: 40px 0;'>", unsafe_allow_html=True)
+    if LOGO_URI:
+        st.markdown(f"<img src='{LOGO_URI}' width='300' style='margin-bottom:20px;' alt='CrowAgent Logo'/>", unsafe_allow_html=True)
+    else:
+        st.markdown("<h1 style='color:#00C2A8;'>🌿 CrowAgent™</h1>", unsafe_allow_html=True)
+    st.markdown("<h1>Welcome to CrowAgent™ Platform</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#5A7A90; font-size:1.1rem; margin-bottom:40px;'>Select your profile to customize your AI dashboard and financial metrics.</p>", unsafe_allow_html=True)
+    
+    col1, col2, col3, col4 = st.columns([1,1,1,1])
+    
+    with col1:
+        st.markdown("""<div class='onboarding-card'>
+            <div style='font-size:3rem; margin-bottom:10px;'>🎓</div><h3 style='color:#071A2F; font-size:1.2rem;'>University / HE</h3>
+        </div>""", unsafe_allow_html=True)
+        if st.button("Select University", key="btn_uni", use_container_width=True):
+            st.query_params["segment"] = "university_he"
+            st.session_state.user_segment = "university_he"
+            st.session_state.onboarded = True
+            st.rerun()
+
+    with col2:
+        st.markdown("""<div class='onboarding-card'>
+            <div style='font-size:3rem; margin-bottom:10px;'>🏢</div><h3 style='color:#071A2F; font-size:1.2rem;'>SMB Landlord</h3>
+        </div>""", unsafe_allow_html=True)
+        if st.button("Select Landlord", key="btn_smb", use_container_width=True):
+            st.query_params["segment"] = "smb_landlord"
+            st.session_state.user_segment = "smb_landlord"
+            st.session_state.onboarded = True
+            st.rerun()
+
+    with col3:
+        st.markdown("""<div class='onboarding-card'>
+            <div style='font-size:3rem; margin-bottom:10px;'>🏭</div><h3 style='color:#071A2F; font-size:1.2rem;'>Industrial</h3>
+        </div>""", unsafe_allow_html=True)
+        if st.button("Select Industrial", key="btn_ind", use_container_width=True):
+            st.query_params["segment"] = "smb_industrial"
+            st.session_state.user_segment = "smb_industrial"
+            st.session_state.onboarded = True
+            st.rerun()
+
+    with col4:
+        st.markdown("""<div class='onboarding-card'>
+            <div style='font-size:3rem; margin-bottom:10px;'>🏠</div><h3 style='color:#071A2F; font-size:1.2rem;'>Individual</h3>
+        </div>""", unsafe_allow_html=True)
+        if st.button("Select Individual", key="btn_indv", use_container_width=True):
+            st.query_params["segment"] = "individual_selfbuild"
+            st.session_state.user_segment = "individual_selfbuild"
+            st.session_state.onboarded = True
+            st.rerun()
+            
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.stop() # Halt execution until a segment is chosen
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -861,11 +628,10 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    # note: collapse is disabled by design; sidebar is always open
     st.markdown("---")
 
     # ── User Segment selector ─────────────────────────────────────────────────
-    st.markdown("<div class='sb-section'>👤 User Segment</div>", unsafe_allow_html=True)
+    st.markdown("<div class='sb-section'>👤 Active Profile</div>", unsafe_allow_html=True)
     _seg_options = {k: f"{v['icon']} {v['label']}" for k, v in compliance.SEGMENT_META.items()}
     _seg_keys    = list(_seg_options.keys())
     _seg_idx     = _seg_keys.index(st.session_state.user_segment) \
@@ -878,6 +644,9 @@ with st.sidebar:
     )
     if _sel_segment != st.session_state.user_segment:
         st.session_state.user_segment = _sel_segment
+        st.query_params["segment"] = _sel_segment
+        st.rerun()
+        
     _seg_meta = compliance.SEGMENT_META[st.session_state.user_segment]
     st.markdown(
         f"<div style='font-size:0.74rem;color:#8FBCCE;line-height:1.5;margin-bottom:4px;'>"
@@ -892,9 +661,11 @@ with st.sidebar:
     _active_buildings = dict(BUILDINGS)           # always preserve university buildings
     if _seg_buildings:
         _active_buildings = {**_seg_buildings, **BUILDINGS}  # segment first for UX
+    if st.session_state.custom_buildings:
+        _active_buildings = {**st.session_state.custom_buildings, **_active_buildings}
 
     # ── Building selector ─────────────────────────────────────────────────────
-    st.markdown("<div class='sb-section'>🏢 Building</div>", unsafe_allow_html=True)
+    st.markdown("<div class='sb-section'>🏢 My Portfolio</div>", unsafe_allow_html=True)
     selected_building_name = st.selectbox(
         "Building", list(_active_buildings.keys()), label_visibility="collapsed",
     )
@@ -908,8 +679,45 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    # custom building add
-    with st.expander("➕ Add building", expanded=False):
+    # ── Enterprise Target 1: Dynamic Portfolio Builder (No JSON) ──────────────
+    with st.expander("➕ Add Property to Portfolio", expanded=False):
+        with st.form("add_property_form", clear_on_submit=True):
+            st.markdown("<div style='font-size:0.75rem;color:#8FBCCE;'>Add a custom property to your portfolio (max 10).</div>", unsafe_allow_html=True)
+            p_name = st.text_input("Property Name", placeholder="e.g. Main Office")
+            p_area = st.number_input("Floor Area (m²)", min_value=10, max_value=200000, value=500, step=50)
+            p_age = st.selectbox("Built Era", ["Pre-1990 (Poor Insulation)", "1990-2010 (Average)", "Post-2010 (Modern)"])
+
+            p_submit = st.form_submit_button("Save to Portfolio", use_container_width=True)
+            if p_submit:
+                if not p_name.strip():
+                    st.error("Please enter a property name.")
+                elif len(st.session_state.custom_buildings) >= 10:
+                    st.error("Portfolio limit reached (10 max).")
+                else:
+                    # Basic physics baseline assignment based on age
+                    if "Pre-1990" in p_age: uw, ur, ug, eui = 2.1, 2.3, 3.1, 220
+                    elif "1990-2010" in p_age: uw, ur, ug, eui = 1.6, 1.8, 2.6, 140
+                    else: uw, ur, ug, eui = 0.8, 0.6, 1.6, 80
+
+                    st.session_state.custom_buildings[p_name.strip()] = {
+                        "floor_area_m2": p_area,
+                        "height_m": 4.0,
+                        "glazing_ratio": 0.30,
+                        "u_value_wall": uw,
+                        "u_value_roof": ur,
+                        "u_value_glazing": ug,
+                        "baseline_energy_mwh": round((p_area * eui) / 1000, 1),
+                        "occupancy_hours": 3000,
+                        "description": f"Custom property ({p_age.split(' ')[0]})",
+                        "built_year": p_age.split(" ")[0],
+                        "building_type": "Custom",
+                        "segment": st.session_state.user_segment
+                    }
+                    st.success(f"Added {p_name.strip()}!")
+                    st.rerun()
+
+    # ORIGINAL: custom building add (JSON) kept for test suite compatibility
+    with st.expander("⚙️ Advanced JSON Add (Dev Tools)", expanded=False):
         st.markdown(
             "<div style='font-size:0.75rem;color:#8FBCCE;'>"
             "Enter a JSON object representing the building, including a "
@@ -926,17 +734,16 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # ── Scenario multi-select ─────────────────────────────────────────────────
+    # ── Scenario multi-select (Target 1: Default to Combined) ─────────────────
     st.markdown("<div class='sb-section'>🔧 Scenarios</div>", unsafe_allow_html=True)
     selected_scenario_names = st.multiselect(
         "Scenarios", list(SCENARIOS.keys()),
-        default=["Baseline (No Intervention)", "Solar Glass Installation",
-                 "Enhanced Insulation Upgrade"],
+        default=["Baseline (No Intervention)", "Combined Package (All Interventions)"],
         label_visibility="collapsed",
     )
 
-    # custom scenario add
-    with st.expander("➕ Add scenario", expanded=False):
+    # ORIGINAL: custom scenario add (kept for test compatibility)
+    with st.expander("⚙️ Advanced Scenario JSON", expanded=False):
         st.markdown(
             "<div style='font-size:0.75rem;color:#8FBCCE;'>"
             "Enter a JSON object for the scenario, with a \"name\" key.</div>",
@@ -949,6 +756,7 @@ with st.sidebar:
                 st.success(msg)
             else:
                 st.error(msg)
+                
     # Validation
     if not selected_scenario_names:
         st.markdown(
@@ -1222,7 +1030,7 @@ with st.sidebar:
         # Validation for Met Office DataPoint key
         if st.session_state.met_office_key:
           if st.button("Test Met Office key", key="test_mo_key", use_container_width=True):
-            ok, msg = wx.test_met_office_key(_decrypt(st.session_state.met_office_key))
+            ok, msg = wx.test_met_office_key(st.session_state.met_office_key)
             if ok:
               st.markdown("<div class='val-ok'>✓ " + msg + "</div>", unsafe_allow_html=True)
             else:
@@ -1384,7 +1192,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# MAIN NAVIGATION TABS
+# MAIN NAVIGATION TABS & SEGMENT-RESPONSIVE LABELS (Target 1)
 # ─────────────────────────────────────────────────────────────────────────────
 _tab_dash, _tab_fin, _tab_ai, _tab_compliance, _tab_about = st.tabs([
     "📊 Dashboard",
@@ -1394,6 +1202,15 @@ _tab_dash, _tab_fin, _tab_ai, _tab_compliance, _tab_about = st.tabs([
     "ℹ️ About & Contact",
 ])
 
+if st.session_state.user_segment == "smb_landlord":
+    lbl_best_saving = "MEES Penalty Avoided"
+    lbl_best_carbon = "EPC Rating Uplift"
+elif st.session_state.user_segment == "smb_industrial":
+    lbl_best_saving = "Scope 1 & 2 Reduction"
+    lbl_best_carbon = "SECR Intensity Drop"
+else:
+    lbl_best_saving = "Best Energy Saving"
+    lbl_best_carbon = "Best Carbon Reduction"
 
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 1 — DASHBOARD
@@ -1442,7 +1259,7 @@ with _tab_dash:
         with k2:
             st.markdown(f"""
             <div class='kpi-card accent-green'>
-              <div class='kpi-label'>Best Energy Saving</div>
+              <div class='kpi-label'>{lbl_best_saving}</div>
               <div class='kpi-value'>{best_saving.get('energy_saving_pct',0)}<span class='kpi-unit'>%</span></div>
               <div class='kpi-delta-pos'>↓ {best_saving.get('energy_saving_mwh',0):,.0f} MWh/yr</div>
               <div class='kpi-sub'>{best_saving_name.split('(')[0].strip()}</div>
@@ -1450,7 +1267,7 @@ with _tab_dash:
         with k3:
             st.markdown(f"""
             <div class='kpi-card accent-teal' style='border-top-color:#00C2A8'>
-              <div class='kpi-label'>Best Carbon Reduction</div>
+              <div class='kpi-label'>{lbl_best_carbon}</div>
               <div class='kpi-value'>{best_carbon.get('carbon_saving_t',0):,.0f}<span class='kpi-unit'>t CO₂e</span></div>
               <div class='kpi-delta-pos'>↓ {round(best_carbon.get('carbon_saving_t',0)/max(baseline_co2,1)*100,1)}% of baseline</div>
               <div class='kpi-sub'>{best_carbon_name.split('(')[0].strip()}</div>
@@ -1574,6 +1391,11 @@ with _tab_fin:
         f"{selected_building_name} · {len(selected_scenario_names)} scenario(s) selected</div>",
         unsafe_allow_html=True,
     )
+
+    if st.session_state.user_segment == "smb_landlord":
+        st.markdown("<div class='val-warn' style='margin-bottom: 12px;'>🚨 **MEES 2028 Warning:** Properties rated below EPC C by 2028 may face civil penalties and become unlettable. The ROI below represents necessary capital expenditure to protect your asset value.</div>", unsafe_allow_html=True)
+    elif st.session_state.user_segment == "smb_industrial":
+        st.markdown("<div class='val-ok' style='margin-bottom: 12px;'>🌍 **SECR Reporting:** The ROI below supports your Scope 1 & 2 reduction targets, enhancing your supply-chain competitiveness and PAS 2060 readiness.</div>", unsafe_allow_html=True)
 
     st.markdown("""
     <div class='disc-prototype'>
@@ -2520,7 +2342,7 @@ with _tab_about:
                       margin-bottom:8px;'>Build Information</div>
           <div style='font-size:0.78rem;color:#9ABDD0;line-height:1.8;'>
             <strong style='color:#CBD8E6;'>Version:</strong> v2.0.0<br/>
-            <strong style='color:#CBD8E6;'>Released:</strong> 21 February 2026<br/>
+            <strong style='color:#CBD8E6;'>Released:</strong> 25 February 2026<br/>
             <strong style='color:#CBD8E6;'>Status:</strong>
             <span style='color:#F0B429;'>🚧 Working Prototype</span><br/>
             <strong style='color:#CBD8E6;'>Weather:</strong>
