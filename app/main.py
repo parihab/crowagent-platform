@@ -1081,6 +1081,30 @@ with st.sidebar:
 # ─────────────────────────────────────────────────────────────────────────────
 # COMPUTE ALL SELECTED SCENARIOS
 # ─────────────────────────────────────────────────────────────────────────────
+_active_buildings = BUILDINGS
+
+if "selected_building_name" not in st.session_state or \
+   st.session_state.selected_building_name not in _active_buildings:
+    st.session_state.selected_building_name = next(iter(_active_buildings))
+selected_building_name = st.session_state.selected_building_name
+
+_valid_scenario_names = list(SCENARIOS.keys())
+_default_scenarios = ["Baseline (No Intervention)"]
+
+if "selected_scenario_names" not in st.session_state:
+    st.session_state.selected_scenario_names = [
+        s for s in _default_scenarios if s in SCENARIOS
+    ] or _valid_scenario_names[:1]
+
+selected_scenario_names = [
+    s for s in st.session_state.selected_scenario_names if s in SCENARIOS
+]
+if not selected_scenario_names:
+    selected_scenario_names = [
+        s for s in _default_scenarios if s in SCENARIOS
+    ] or _valid_scenario_names[:1]
+st.session_state.selected_scenario_names = selected_scenario_names
+
 results: dict[str, dict] = {}
 _compute_errors: list[str] = []
 
