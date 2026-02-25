@@ -200,6 +200,21 @@ header { background: transparent !important; }
 </style>
 """, unsafe_allow_html=True)
 
+
+def _card(label: str, value_html: str, subtext: str, accent_class: str = "") -> None:
+    """Render a compact KPI card block used across dashboard segments."""
+    accent = f" {accent_class}" if accent_class else ""
+    st.markdown(
+        f"""
+        <div class='kpi-card{accent}'>
+          <div class='kpi-label'>{label}</div>
+          <div class='kpi-value'>{value_html}</div>
+          <div class='kpi-sub'>{subtext}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 # ─────────────────────────────────────────────────────────────────────────────
 # BUILDING & SCENARIO DATA (Original templates + Custom JSON support)
 # ─────────────────────────────────────────────────────────────────────────────
