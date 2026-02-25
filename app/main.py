@@ -362,6 +362,31 @@ SCENARIOS: dict[str, dict] = {
     },
 }
 
+SEGMENT_DEFAULT_SCENARIOS: dict[str, list[str]] = {
+    "university_he": [
+        "Baseline (No Intervention)",
+        "Combined Package (All Interventions)",
+    ],
+    "smb_landlord": [
+        "Baseline (No Intervention)",
+        "Enhanced Insulation Upgrade",
+    ],
+    "smb_industrial": [
+        "Baseline (No Intervention)",
+        "Solar Glass Installation",
+    ],
+    "individual_selfbuild": [
+        "Baseline (No Intervention)",
+        "Green Roof Installation",
+    ],
+}
+
+
+def _segment_default_scenarios(segment: str | None) -> list[str]:
+    defaults = SEGMENT_DEFAULT_SCENARIOS.get(segment or "", ["Baseline (No Intervention)"])
+    selected = [name for name in defaults if name in SCENARIOS]
+    return selected or ["Baseline (No Intervention)"]
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PORTFOLIO ARRAY LOGIC
 # ─────────────────────────────────────────────────────────────────────────────
@@ -610,10 +635,24 @@ if "owm_key" not in st.session_state:
 # ONBOARDING GATE (App Locked Until Segment Selected)
 # ─────────────────────────────────────────────────────────────────────────────
 if not st.session_state.user_segment:
-    st.markdown("""
-    <div style="text-align: center; margin-top: 50px;">
-        <h1 style="color: #071A2F;">Welcome to CrowAgent™ Platform</h1>
-        <p style="color: #5A7A90; font-size: 1.1rem; margin-bottom: 30px;">Select your sector to configure the intelligence engine.</p>
+    _welcome_logo = (
+        f"<img src='{LOGO_URI}' width='220' style='max-width:100%; height:auto; display:inline-block; margin-bottom:10px;' alt='CrowAgent™ Logo'/>"
+        if LOGO_URI
+        else "<div style='font-family:Rajdhani,sans-serif;font-size:2rem;font-weight:700;color:#00C2A8;margin-bottom:10px;'>CrowAgent™</div>"
+    )
+    st.markdown(f"""
+    <div style="text-align: center; margin-top: 40px;">
+        {_welcome_logo}
+        <h1 style="color: #071A2F; margin-bottom: 8px;">Welcome to CrowAgent™ Platform</h1>
+        <p style="color: #5A7A90; font-size: 1.05rem; margin: 0 auto 8px auto; max-width: 820px;">
+            CrowAgent™ is a sustainability decision-intelligence workspace for UK built-environment stakeholders.
+            It brings together retrofit scenario modelling, financial insights, AI-assisted recommendations, and UK compliance guidance.
+        </p>
+        <p style="color:#7A93A7;font-size:0.8rem; margin: 0 auto 28px auto; max-width: 920px; line-height:1.45;">
+            Prototype notice: outputs are indicative and for decision support only. Always validate with certified assessors and qualified professionals
+            before procurement, design sign-off, or regulatory submission. CrowAgent™ name, logo, and product marks are trademarks of their respective owners.
+            © 2026 CrowAgent™. All rights reserved.
+        </p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -636,6 +675,7 @@ if not st.session_state.user_segment:
             """, unsafe_allow_html=True)
             if st.button(f"Select {label}", key=f"btn_gate_{seg_id}", use_container_width=True):
                 st.session_state.user_segment = seg_id
+                st.session_state.selected_scenario_names = _segment_default_scenarios(seg_id)
                 st.query_params["segment"] = seg_id
                 st.rerun()
                 
@@ -694,6 +734,7 @@ with st.sidebar:
     )
     if st.button("Change Segment / Reset", key="btn_reset_segment"):
         st.session_state.user_segment = None
+        st.session_state.pop("selected_scenario_names", None)
         st.query_params.clear()
         st.rerun()
 
@@ -1087,9 +1128,14 @@ if "selected_building_name" not in st.session_state or \
    st.session_state.selected_building_name not in _active_buildings:
     st.session_state.selected_building_name = next(iter(_active_buildings))
 selected_building_name = st.session_state.selected_building_name
+selected_building = _active_buildings.get(selected_building_name)
+if selected_building is None:
+    selected_building_name = next(iter(_active_buildings))
+    st.session_state.selected_building_name = selected_building_name
+    selected_building = _active_buildings[selected_building_name]
 
 _valid_scenario_names = list(SCENARIOS.keys())
-_default_scenarios = ["Baseline (No Intervention)"]
+_default_scenarios = _segment_default_scenarios(st.session_state.user_segment)
 
 if "selected_scenario_names" not in st.session_state:
     st.session_state.selected_scenario_names = [
@@ -1110,8 +1156,7 @@ _compute_errors: list[str] = []
 
 for _sn in selected_scenario_names:
     try:
-        results[_sn] = calculate_thermal_load(_active_buildings[selected_building_name],
-                                              SCENARIOS[_sn], weather)
+        results[_sn] = calculate_thermal_load(selected_building, SCENARIOS[_sn], weather)
     except Exception as _e:
         _compute_errors.append(f"Scenario '{_sn}': {_e}")
 
@@ -1195,13 +1240,13 @@ with _tab_dash:
         st.markdown(
             f"<h2 style='margin:0;padding:0;'>{selected_building_name}</h2>"
             f"<div style='font-size:0.78rem;color:#5A7A90;margin-top:2px;'>"
-            f"{sb['description']}</div>",
+            f"{selected_building['description']}</div>",
             unsafe_allow_html=True,
         )
     with col_badge:
         st.markdown(
             f"<div style='text-align:right;padding-top:4px;'>"
-            f"<span class='chip'>{sb['built_year']}</span>"
+            f"<span class='chip'>{selected_building['built_year']}</span>"
             f"<span class='chip'>{weather['temperature_c']}°C</span>"
             f"</div>",
             unsafe_allow_html=True,
@@ -1218,7 +1263,7 @@ with _tab_dash:
         best_carbon_name = next(n for n, r in results.items()
                                 if r is best_carbon)
         baseline_energy = baseline_result.get("baseline_energy_mwh",
-                                              sb["baseline_energy_mwh"])
+                                              selected_building["baseline_energy_mwh"])
         baseline_co2    = round(baseline_energy * 1000 * 0.20482 / 1000, 1)
 
         k1, k2, k3, k4 = st.columns(4)
@@ -1326,19 +1371,19 @@ with _tab_dash:
     with st.expander(f"📐 Building Specification — {selected_building_name}"):
         sp1, sp2 = st.columns(2)
         with sp1:
-            st.markdown(f"**Floor Area:** {sb['floor_area_m2']:,} m²")
-            st.markdown(f"**Floor-to-Floor Height:** {sb['height_m']} m")
-            st.markdown(f"**Glazing Ratio:** {sb['glazing_ratio']*100:.0f}%")
-            st.markdown(f"**Annual Occupancy:** ~{sb['occupancy_hours']:,} hours")
-            st.markdown(f"**Approximate Build Year:** {sb['built_year']}")
+            st.markdown(f"**Floor Area:** {selected_building['floor_area_m2']:,} m²")
+            st.markdown(f"**Floor-to-Floor Height:** {selected_building['height_m']} m")
+            st.markdown(f"**Glazing Ratio:** {selected_building['glazing_ratio']*100:.0f}%")
+            st.markdown(f"**Annual Occupancy:** ~{selected_building['occupancy_hours']:,} hours")
+            st.markdown(f"**Approximate Build Year:** {selected_building['built_year']}")
         with sp2:
-            st.markdown(f"**Baseline U-wall:** {sb['u_value_wall']} W/m²K")
-            st.markdown(f"**Baseline U-roof:** {sb['u_value_roof']} W/m²K")
-            st.markdown(f"**Baseline U-glazing:** {sb['u_value_glazing']} W/m²K")
-            st.markdown(f"**Baseline Energy:** {sb['baseline_energy_mwh']} MWh/yr")
+            st.markdown(f"**Baseline U-wall:** {selected_building['u_value_wall']} W/m²K")
+            st.markdown(f"**Baseline U-roof:** {selected_building['u_value_roof']} W/m²K")
+            st.markdown(f"**Baseline U-glazing:** {selected_building['u_value_glazing']} W/m²K")
+            st.markdown(f"**Baseline Energy:** {selected_building['baseline_energy_mwh']} MWh/yr")
             st.markdown(
                 f"**Baseline Carbon:** "
-                f"{round(sb['baseline_energy_mwh'] * 1000 * 0.20482 / 1000, 1)} t CO₂e/yr"
+                f"{round(selected_building['baseline_energy_mwh'] * 1000 * 0.20482 / 1000, 1)} t CO₂e/yr"
             )
         st.caption(
             "⚠️ Data is indicative and derived from published UK HE sector averages (HESA 2022-23). "
