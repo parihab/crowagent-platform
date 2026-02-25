@@ -54,6 +54,23 @@ _HEATING_FRACTION = 0.60
 _UK_ANNUAL_AVG_TEMP_C = 11.0   # °C — UK annual mean (Met Office 1991–2020)
 _SETPOINT_C = 21.0             # Part L heating set-point
 
+# ── Campus anchor point ───────────────────────────────────────────────────────
+# Centroid of the three fictional Greenfield buildings — used for the map pin
+# and the OSM Overpass bounding-box.
+_CAMPUS_LAT = 51.4545
+_CAMPUS_LON = -0.9712
+
+# ── Emissions & cost constants ────────────────────────────────────────────────
+_CI               = 0.20482   # kgCO₂e/kWh  (BEIS 2023 grid intensity)
+_ELEC_GBP_PER_KWH = 0.28      # £/kWh        (HESA 2022-23 HE sector average)
+
+# ── Building display icons ────────────────────────────────────────────────────
+_BUILDING_ICONS: dict[str, str] = {
+    "Greenfield Library":       "📚",
+    "Greenfield Arts Building": "🎨",
+    "Greenfield Science Block": "🔬",
+}
+
 
 def _seasonal_energy_mwh(baseline_mwh: float, month_temp: float) -> float:
     """
@@ -180,13 +197,48 @@ _TOOLTIP_HTML_4D = """
 </div>"""
 
 
-def _build_deck(rows: list[dict], tooltip_html: str = _TOOLTIP_HTML) -> "pdk.Deck":
-    """Assemble a pydeck Deck from pre-computed building rows."""
-    df = pd.DataFrame(rows)
+def _build_deck(
+    rows: list[dict],
+    osm_rows: list[dict] | None = None,
+    selected_building: str | None = None,
+    tooltip_html: str = _TOOLTIP_HTML,
+) -> "pdk.Deck":
+    """Assemble a pydeck Deck with OSM surroundings, location pin, and campus columns.
 
-    column_layer = pdk.Layer(
+    Layers (bottom → top)
+    ─────────────────────
+    1. PolygonLayer  — real OSM building footprints (grey, extruded)
+    2. ColumnLayer   — campus energy columns (colour = carbon intensity)
+    3. ScatterplotLayer — location pin at campus centre (blue dot)
+    """
+    import copy
+    # Highlight the selected building with a gold column
+    display_rows = copy.deepcopy(rows)
+    for row in display_rows:
+        if selected_building and row["name"] == selected_building:
+            row["fill_color"] = [255, 215, 0, 240]
+
+    layers: list = []
+
+    # 1 — OSM surrounding buildings
+    if osm_rows:
+        layers.append(pdk.Layer(
+            "PolygonLayer",
+            data=pd.DataFrame(osm_rows),
+            get_polygon="polygon",
+            get_elevation="height_m",
+            elevation_scale=1,
+            extruded=True,
+            get_fill_color=[180, 195, 215, 55],
+            get_line_color=[120, 135, 155, 130],
+            line_width_min_pixels=1,
+            pickable=False,
+        ))
+
+    # 2 — Campus energy columns
+    layers.append(pdk.Layer(
         "ColumnLayer",
-        data=df,
+        data=pd.DataFrame(display_rows),
         get_position="[lon, lat]",
         get_elevation="elevation",
         elevation_scale=1,
@@ -196,19 +248,30 @@ def _build_deck(rows: list[dict], tooltip_html: str = _TOOLTIP_HTML) -> "pdk.Dec
         auto_highlight=True,
         extruded=True,
         coverage=1,
-    )
+    ))
 
-    view = pdk.ViewState(
-        latitude=51.4545,
-        longitude=-0.9712,
-        zoom=15.5,
-        pitch=50,
-        bearing=-10,
-    )
+    # 3 — Location pin (blue dot at campus centre)
+    layers.append(pdk.Layer(
+        "ScatterplotLayer",
+        data=pd.DataFrame([{"lat": _CAMPUS_LAT, "lon": _CAMPUS_LON}]),
+        get_position="[lon, lat]",
+        get_radius=14,
+        get_fill_color=[30, 144, 255, 220],
+        get_line_color=[255, 255, 255, 255],
+        stroked=True,
+        line_width_min_pixels=2,
+        pickable=False,
+    ))
 
     return pdk.Deck(
-        layers=[column_layer],
-        initial_view_state=view,
+        layers=layers,
+        initial_view_state=pdk.ViewState(
+            latitude=_CAMPUS_LAT,
+            longitude=_CAMPUS_LON,
+            zoom=15.5,
+            pitch=50,
+            bearing=-10,
+        ),
         tooltip={"html": tooltip_html,
                  "style": {"backgroundColor": "transparent", "border": "none"}},
         map_style=_MAP_STYLE,
@@ -252,7 +315,12 @@ def _render_2d_fallback(rows: list[dict]) -> None:
 # 3D MAP VIEW
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _render_3d_map(scenario_name: str, weather: dict) -> None:
+def _render_3d_map(
+    scenario_name: str,
+    weather: dict,
+    osm_rows: list[dict] | None = None,
+    selected_building: str | None = None,
+) -> None:
     """Render the static 3D column map for the selected scenario."""
     rows = _compute_all_buildings(scenario_name, weather)
     if not rows:
@@ -260,7 +328,8 @@ def _render_3d_map(scenario_name: str, weather: dict) -> None:
         return
 
     try:
-        deck = _build_deck(rows)
+        deck = _build_deck(rows, osm_rows=osm_rows,
+                           selected_building=selected_building)
         st.pydeck_chart(deck, use_container_width=True)
     except Exception as exc:
         st.warning(f"3D map could not render ({exc}). Showing 2D fallback.")
@@ -271,7 +340,11 @@ def _render_3d_map(scenario_name: str, weather: dict) -> None:
 # 4D TIMELINE VIEW
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _render_4d_timeline(weather: dict) -> None:
+def _render_4d_timeline(
+    weather: dict,
+    osm_rows: list[dict] | None = None,
+    selected_building: str | None = None,
+) -> None:
     """
     4D mode: scrub through Jan–Dec with a time slider.
     Monthly energy/carbon is computed via the seasonal HDD model so that
@@ -332,7 +405,9 @@ def _render_4d_timeline(weather: dict) -> None:
     )
 
     try:
-        deck = _build_deck(rows, tooltip_html=_TOOLTIP_HTML_4D)
+        deck = _build_deck(rows, osm_rows=osm_rows,
+                           selected_building=selected_building,
+                           tooltip_html=_TOOLTIP_HTML_4D)
         st.pydeck_chart(deck, use_container_width=True)
     except Exception as exc:
         st.warning(f"3D map could not render ({exc})")
@@ -345,15 +420,15 @@ def _render_4d_timeline(weather: dict) -> None:
 
 def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> None:
     """
-    Renders the 3D/4D campus energy & carbon map section on the Dashboard tab.
+    Renders the 3D/4D campus energy & carbon map on the Dashboard tab.
 
-    Shows all 3 Greenfield University buildings as interactive 3D columns:
-      - Column height  = energy consumption (MWh/yr)
-      - Column colour  = carbon intensity   (teal = low → red = high)
-
-    Two modes:
-      3D Energy Map       — static view for any selected scenario
-      4D Carbon Timeline  — seasonal scrubber using UK monthly temperature norms
+    Layout
+    ──────
+    [mode toggle + scenario selector]
+    [pydeck map — OSM surroundings + energy columns + location pin]
+    [map hint bar + legend]
+    [building selector cards — 3 columns]
+    [Google Maps-style info panel — shown only when a building is selected]
 
     Parameters
     ----------
@@ -370,14 +445,23 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
         )
         return
 
+    # ── Session-state init ────────────────────────────────────────────────────
+    if "viz3d_selected_building" not in st.session_state:
+        st.session_state.viz3d_selected_building = None
+
+    selected_building: str | None = st.session_state.viz3d_selected_building
+
+    # ── Section header with location label ───────────────────────────────────
+    location_label = st.session_state.get("wx_location_name", "Reading, Berkshire, UK")
     st.markdown(
-        "<div class='sec-hdr'>🗺️ 3D Campus Energy & Carbon Map</div>",
+        f"<div class='sec-hdr'>🗺️ 3D Campus Energy &amp; Carbon Map"
+        f"<span style='font-size:0.72rem;color:#5A7A90;font-weight:400;"
+        f"margin-left:12px;'>📍 {location_label}</span></div>",
         unsafe_allow_html=True,
     )
 
     # ── View mode + scenario selector ────────────────────────────────────────
     ctrl_l, ctrl_r = st.columns([3, 2])
-
     with ctrl_l:
         view_mode = st.radio(
             "Visualisation mode",
@@ -386,7 +470,6 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
             label_visibility="collapsed",
             key="viz3d_mode",
         )
-
     with ctrl_r:
         if view_mode == "3D Energy Map":
             scenario_for_map = st.selectbox(
@@ -403,16 +486,39 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
             )
             scenario_for_map = "Baseline (No Intervention)"
 
-    # ── Render chosen mode ───────────────────────────────────────────────────
-    if view_mode == "3D Energy Map":
-        _render_3d_map(scenario_for_map, weather)
-    else:
-        _render_4d_timeline(weather)
+    # ── Fetch surrounding OSM buildings (cached 24 h) ─────────────────────────
+    with st.spinner("Loading surrounding buildings…"):
+        osm_rows = fetch_osm_buildings(_CAMPUS_LAT, _CAMPUS_LON, radius_m=600)
 
-    # ── Legend ───────────────────────────────────────────────────────────────
-    st.markdown("""
-<div style='display:flex;gap:20px;align-items:center;flex-wrap:wrap;
-            font-size:0.74rem;color:#8FBCCE;margin-top:6px;'>
+    # ── Hover tip above the map ───────────────────────────────────────────────
+    if selected_building:
+        hint = (f"<b style='color:#FFD700;'>Gold column</b> = "
+                f"{selected_building.replace('Greenfield ', '')} &nbsp;·&nbsp; "
+                "Select a different building below to switch &nbsp;·&nbsp; "
+                "Hover any column for live data")
+    else:
+        hint = ("👇 <b style='color:#00C2A8;'>Select a building below</b> to "
+                "explore its energy profile &nbsp;·&nbsp; "
+                "Hover any column for a quick tooltip")
+
+    st.markdown(
+        f"<div style='font-size:0.75rem;color:#8FBCCE;margin-bottom:4px;'>"
+        f"{hint}</div>",
+        unsafe_allow_html=True,
+    )
+
+    # ── Render chosen map mode ────────────────────────────────────────────────
+    if view_mode == "3D Energy Map":
+        _render_3d_map(scenario_for_map, weather,
+                       osm_rows=osm_rows, selected_building=selected_building)
+    else:
+        _render_4d_timeline(weather,
+                            osm_rows=osm_rows, selected_building=selected_building)
+
+    # ── Legend + attribution bar ──────────────────────────────────────────────
+    st.markdown(
+        """<div style='display:flex;gap:18px;align-items:center;flex-wrap:wrap;
+                       font-size:0.74rem;color:#8FBCCE;margin-top:5px;'>
   <span style='display:flex;align-items:center;gap:5px;'>
     <span style='display:inline-block;width:12px;height:12px;
                  background:#00C2A8;border-radius:2px;'></span>Low carbon
@@ -425,20 +531,338 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
     <span style='display:inline-block;width:12px;height:12px;
                  background:#DC3232;border-radius:2px;'></span>High carbon
   </span>
-  <span style='font-size:0.70rem;color:#3A5A70;margin-left:auto;'>
-    Height = energy consumption &nbsp;·&nbsp;
-    Tiles: © CARTO &nbsp;·&nbsp; Data: © OpenStreetMap contributors
+  <span style='display:flex;align-items:center;gap:5px;'>
+    <span style='display:inline-block;width:12px;height:12px;
+                 background:#FFD700;border-radius:2px;'></span>Selected
   </span>
-</div>
-    """, unsafe_allow_html=True)
-
-    st.markdown(
-        "<div style='font-size:0.71rem;color:#3A5A70;margin-top:2px;'>"
-        "WebGL required · Hover to inspect · Drag to rotate · Scroll to zoom · "
-        "Zero-cost: pydeck MIT + CARTO free basemap · "
-        "⚠️ Coordinates are illustrative — fictional Greenfield campus</div>",
+  <span style='display:flex;align-items:center;gap:5px;'>
+    <span style='display:inline-block;width:10px;height:10px;border-radius:50%;
+                 background:#1E90FF;'></span>Campus pin
+  </span>
+  <span style='font-size:0.70rem;color:#3A5A70;margin-left:auto;'>
+    Height = energy &nbsp;·&nbsp; Tiles: © CARTO &nbsp;·&nbsp;
+    Surroundings: © OpenStreetMap contributors &nbsp;·&nbsp;
+    WebGL · Drag to rotate · Scroll to zoom
+  </span>
+</div>""",
         unsafe_allow_html=True,
     )
+
+    # ── Building selector cards ───────────────────────────────────────────────
+    st.markdown(
+        "<div style='margin-top:14px;margin-bottom:6px;font-size:0.82rem;"
+        "color:#8FBCCE;font-weight:600;'>🏢 Campus buildings — click to explore:</div>",
+        unsafe_allow_html=True,
+    )
+
+    building_names = list(_BUILDING_COORDS.keys())
+    card_cols = st.columns(len(building_names))
+
+    for col, bname in zip(card_cols, building_names):
+        icon    = _BUILDING_ICONS.get(bname, "🏢")
+        short   = bname.replace("Greenfield ", "")
+        is_sel  = (selected_building == bname)
+        border  = "#FFD700" if is_sel else "#1A3A5C"
+        bg      = "#0D2640" if is_sel else "#071A2F"
+        label   = f"{'✓ ' if is_sel else ''}{short}"
+
+        with col:
+            st.markdown(
+                f"""<div style='background:{bg};border:2px solid {border};
+                               border-radius:8px;padding:10px 12px;
+                               text-align:center;margin-bottom:6px;'>
+  <div style='font-size:1.4rem;'>{icon}</div>
+  <div style='font-size:0.78rem;font-weight:600;color:#E0EAF0;
+              margin:4px 0 2px;'>{short}</div>
+  <div style='font-size:0.68rem;color:#5A7A90;'>
+    {_BUILDING_COORDS[bname].get('address','Whiteknights, Reading').split(',')[0]}
+  </div>
+</div>""",
+                unsafe_allow_html=True,
+            )
+            if st.button(
+                label,
+                key=f"viz3d_card_{bname}",
+                use_container_width=True,
+                type="primary" if is_sel else "secondary",
+            ):
+                if is_sel:
+                    st.session_state.viz3d_selected_building = None
+                else:
+                    st.session_state.viz3d_selected_building = bname
+                st.rerun()
+
+    # ── Google Maps-style info panel ──────────────────────────────────────────
+    if selected_building:
+        st.markdown(
+            "<hr style='border-color:#1A3A5C;margin:12px 0 0;'/>",
+            unsafe_allow_html=True,
+        )
+        _render_building_info_panel(selected_building, selected_scenario_names, weather)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GOOGLE MAPS-STYLE BUILDING INFO PANEL
+# Shown below the map when a building is selected via the card buttons.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _render_building_info_panel(
+    building_name: str,
+    selected_scenario_names: list[str],
+    weather: dict,
+) -> None:
+    """Render a Google Maps-style info card for the selected campus building.
+
+    Structure
+    ─────────
+    Header card  — name, address, building type & quick specs
+    KPI strip    — 4 metrics: energy, carbon, cost, grid intensity
+    Tabs         — 📋 Overview | 📅 Seasonal Energy | ⚡ Scenarios
+    """
+    from core.physics import BUILDINGS, SCENARIOS, calculate_thermal_load
+
+    bdata  = BUILDINGS.get(building_name)
+    coords = _BUILDING_COORDS.get(building_name, {})
+    if bdata is None:
+        return
+
+    icon = _BUILDING_ICONS.get(building_name, "🏢")
+
+    # ── Header card ───────────────────────────────────────────────────────────
+    st.markdown(
+        f"""<div style='background:linear-gradient(135deg,#071A2F 0%,#0D2640 100%);
+                        border-left:4px solid #FFD700;border-radius:8px;
+                        padding:14px 18px;margin:10px 0 8px;'>
+  <div style='font-size:1.05rem;font-weight:700;color:#FFD700;'>
+    {icon} {building_name}
+  </div>
+  <div style='font-size:0.76rem;color:#8FBCCE;margin-top:3px;'>
+    📍 {coords.get("address", "Whiteknights Campus, Reading RG6 6AF")}
+  </div>
+  <div style='font-size:0.74rem;color:#5A7A90;margin-top:2px;'>
+    {bdata.get("building_type","University building")} &nbsp;·&nbsp;
+    {bdata.get("floor_area_m2", 0):,} m² floor area &nbsp;·&nbsp;
+    Built {bdata.get("built_year","pre-1990")} &nbsp;·&nbsp;
+    {bdata.get("occupancy_hours", 0):,} occupied hrs/yr
+  </div>
+</div>""",
+        unsafe_allow_html=True,
+    )
+
+    # ── Baseline KPI strip ────────────────────────────────────────────────────
+    bl_sc = SCENARIOS.get("Baseline (No Intervention)")
+    if bl_sc:
+        try:
+            bl        = calculate_thermal_load(bdata, bl_sc, weather)
+            bl_energy = bl["scenario_energy_mwh"]
+            bl_carbon = bl["scenario_carbon_t"]
+        except Exception:
+            bl_energy = float(bdata.get("baseline_energy_mwh", 0))
+            bl_carbon = round(bl_energy * 1000 * _CI / 1000, 1)
+    else:
+        bl_energy = float(bdata.get("baseline_energy_mwh", 0))
+        bl_carbon = round(bl_energy * 1000 * _CI / 1000, 1)
+
+    bl_cost_k = round(bl_energy * 1000 * _ELEC_GBP_PER_KWH / 1000, 1)
+
+    k1, k2, k3, k4 = st.columns(4)
+    for col, label, value, unit, colour in [
+        (k1, "Annual Energy",    f"{bl_energy:,.0f}",   "MWh/yr",    "#00C2A8"),
+        (k2, "Carbon Emissions", f"{bl_carbon:,.1f}",   "t CO₂e/yr", "#FFA500"),
+        (k3, "Energy Cost",      f"£{bl_cost_k:,.0f}k", "/yr",       "#5AC8FA"),
+        (k4, "Grid Intensity",   f"{_CI*1000:.0f}",     "gCO₂e/kWh", "#8FBCCE"),
+    ]:
+        with col:
+            st.markdown(
+                f"""<div style='background:#0D2640;border-radius:6px;
+                               padding:10px 12px;border-top:3px solid {colour};
+                               text-align:center;margin-bottom:6px;'>
+  <div style='font-size:0.68rem;color:#5A7A90;margin-bottom:2px;'>{label}</div>
+  <div style='font-size:1.05rem;font-weight:700;color:{colour};'>{value}</div>
+  <div style='font-size:0.66rem;color:#5A7A90;'>{unit}</div>
+</div>""",
+                unsafe_allow_html=True,
+            )
+
+    # ── Tabs ──────────────────────────────────────────────────────────────────
+    tab_ov, tab_seas, tab_sc = st.tabs(
+        ["📋  Overview", "📅  Seasonal Energy", "⚡  Scenario Comparison"]
+    )
+    with tab_ov:
+        _info_tab_overview(bdata, selected_scenario_names, weather)
+    with tab_seas:
+        _info_tab_seasonal(bdata)
+    with tab_sc:
+        _info_tab_scenarios(bdata, selected_scenario_names, weather)
+
+
+def _info_tab_overview(bdata: dict, scenario_names: list[str], weather: dict) -> None:
+    """Building specs + scenario comparison bar chart."""
+    from core.physics import SCENARIOS, calculate_thermal_load
+    import plotly.graph_objects as go
+
+    spec_l, spec_r = st.columns(2)
+    with spec_l:
+        st.markdown(
+            f"""<div style='font-size:0.78rem;color:#CBD8E6;line-height:2.0;margin-top:6px;'>
+  <b style='color:#00C2A8;'>Wall U-value:</b> {bdata.get("u_value_wall","N/A")} W/m²K<br/>
+  <b style='color:#00C2A8;'>Roof U-value:</b> {bdata.get("u_value_roof","N/A")} W/m²K<br/>
+  <b style='color:#00C2A8;'>Glazing U-value:</b> {bdata.get("u_value_glazing","N/A")} W/m²K<br/>
+  <b style='color:#00C2A8;'>Glazing ratio:</b> {int(bdata.get("glazing_ratio",0)*100)}%
+</div>""",
+            unsafe_allow_html=True,
+        )
+    with spec_r:
+        temp = weather.get("temperature_2m", "N/A")
+        wind = weather.get("wind_speed_10m", "N/A")
+        st.markdown(
+            f"""<div style='font-size:0.78rem;color:#CBD8E6;line-height:2.0;margin-top:6px;'>
+  <b style='color:#00C2A8;'>Floor area:</b> {bdata.get("floor_area_m2",0):,} m²<br/>
+  <b style='color:#00C2A8;'>Live weather:</b> {temp}°C · wind {wind} m/s<br/>
+  <b style='color:#00C2A8;'>Baseline energy:</b> {bdata.get("baseline_energy_mwh","N/A")} MWh/yr<br/>
+  <b style='color:#00C2A8;'>Grid carbon:</b> {_CI*1000:.0f} gCO₂e/kWh (BEIS 2023)
+</div>""",
+            unsafe_allow_html=True,
+        )
+
+    if not scenario_names:
+        st.caption("Select scenarios in the sidebar to see a comparison chart.")
+        return
+
+    sc_rows: list[dict] = []
+    for sn in scenario_names:
+        sc = SCENARIOS.get(sn)
+        if sc is None:
+            continue
+        try:
+            res = calculate_thermal_load(bdata, sc, weather)
+            sc_rows.append({
+                "label":  sn.replace(" (No Intervention)", "").replace(" (All Interventions)", ""),
+                "energy": res["scenario_energy_mwh"],
+                "carbon": res["scenario_carbon_t"],
+                "colour": sc.get("colour", "#00C2A8"),
+            })
+        except Exception:
+            pass
+
+    if sc_rows:
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            name="Energy (MWh/yr)", x=[r["label"] for r in sc_rows],
+            y=[r["energy"] for r in sc_rows],
+            marker_color=[r["colour"] for r in sc_rows], opacity=0.85,
+            text=[f"{r['energy']:.0f}" for r in sc_rows], textposition="outside",
+        ))
+        fig.add_trace(go.Bar(
+            name="Carbon (t CO₂e)", x=[r["label"] for r in sc_rows],
+            y=[r["carbon"] for r in sc_rows],
+            marker_color=[r["colour"] for r in sc_rows], opacity=0.45,
+            text=[f"{r['carbon']:.1f}" for r in sc_rows], textposition="outside",
+        ))
+        fig.update_layout(
+            barmode="group", height=220,
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(family="Nunito Sans", size=10, color="#CBD8E6"),
+            margin=dict(t=10, b=5, l=0, r=0),
+            yaxis=dict(gridcolor="#1A3A5C"),
+            legend=dict(orientation="h", y=-0.28, font=dict(size=9)),
+        )
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+
+def _info_tab_seasonal(bdata: dict) -> None:
+    """Monthly energy bar chart + monthly cost grid."""
+    import plotly.graph_objects as go
+
+    baseline = float(bdata.get("baseline_energy_mwh", 100.0))
+    months   = list(range(1, 13))
+    energies = [round(_seasonal_energy_mwh(baseline, _MONTHLY_TEMPS[m]), 1) for m in months]
+    carbons  = [round(e * 1000 * _CI / 1000, 1)               for e in energies]
+    costs    = [round(e * 1000 * _ELEC_GBP_PER_KWH / 1000, 2) for e in energies]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=[_MONTH_NAMES[m - 1][:3] for m in months],
+        y=energies, name="Energy (MWh)",
+        marker_color="#00C2A8", opacity=0.85,
+    ))
+    fig.add_trace(go.Scatter(
+        x=[_MONTH_NAMES[m - 1][:3] for m in months],
+        y=carbons, name="Carbon (t CO₂e)",
+        mode="lines+markers",
+        line=dict(color="#FFA500", width=2),
+        marker=dict(size=5),
+        yaxis="y2",
+    ))
+    fig.update_layout(
+        height=230,
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Nunito Sans", size=10, color="#CBD8E6"),
+        margin=dict(t=5, b=5, l=0, r=0),
+        yaxis=dict(title="MWh", gridcolor="#1A3A5C"),
+        yaxis2=dict(title="t CO₂e", overlaying="y", side="right",
+                    gridcolor="rgba(0,0,0,0)"),
+        legend=dict(orientation="h", y=-0.28, font=dict(size=9)),
+    )
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    # Monthly cost grid — two rows of 6
+    for row_months in [months[:6], months[6:]]:
+        cols = st.columns(6)
+        for col, m in zip(cols, row_months):
+            with col:
+                st.metric(
+                    label=_MONTH_NAMES[m - 1][:3],
+                    value=f"£{costs[m - 1]:.1f}k",
+                    delta=f"{energies[m - 1]:.0f} MWh",
+                )
+    st.caption("Monthly energy via HDD model · Met Office 1991–2020 normals (Reading)")
+
+
+def _info_tab_scenarios(
+    bdata: dict, scenario_names: list[str], weather: dict
+) -> None:
+    """Scenario comparison dataframe with energy, carbon, saving, cost, payback."""
+    from core.physics import SCENARIOS, calculate_thermal_load
+
+    if not scenario_names:
+        st.info("Select one or more scenarios in the sidebar to compare.")
+        return
+
+    rows: list[dict] = []
+    for sn in scenario_names:
+        sc = SCENARIOS.get(sn)
+        if sc is None:
+            continue
+        try:
+            res    = calculate_thermal_load(bdata, sc, weather)
+            cost_k = round(res["scenario_energy_mwh"] * 1000 * _ELEC_GBP_PER_KWH / 1000, 1)
+            payback = res.get("payback_years")
+            rows.append({
+                "Scenario":           sn.replace(" (No Intervention)", "")
+                                        .replace(" (All Interventions)", ""),
+                "Energy (MWh/yr)":    f"{res['scenario_energy_mwh']:,.1f}",
+                "Carbon (t CO₂e/yr)": f"{res['scenario_carbon_t']:,.1f}",
+                "Energy Saving":      f"↓ {res['energy_saving_pct']:.1f}%",
+                "Carbon Saved (t)":   f"{res['carbon_saving_t']:,.1f}",
+                "Cost (£k/yr)":       f"£{cost_k:,.1f}k",
+                "Payback (yrs)":      f"{payback:.1f}" if payback else "N/A",
+            })
+        except Exception:
+            pass
+
+    if rows:
+        st.dataframe(
+            pd.DataFrame(rows),
+            hide_index=True,
+            use_container_width=True,
+        )
+        st.caption(
+            "Costs at £0.28/kWh (HESA 2022-23). "
+            "Payback = install cost ÷ annual saving. Indicative only."
+        )
+    else:
+        st.info("No scenario data could be computed for this building.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
