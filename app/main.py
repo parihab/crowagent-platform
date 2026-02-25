@@ -33,7 +33,6 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
-import requests
 from datetime import datetime, timezone
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -46,46 +45,12 @@ if ROOT_DIR not in sys.path:
 import services.weather as wx
 import services.location as loc
 import services.audit as audit
+from services.epc import fetch_epc_data
 import core.agent as crow_agent
 import core.physics as physics
 from app.visualization_3d import render_campus_3d_map
 from app.utils import validate_gemini_key
 import app.compliance as compliance
-
-# ─────────────────────────────────────────────────────────────────────────────
-# UK EPC / POSTCODE INTEGRATION
-# ─────────────────────────────────────────────────────────────────────────────
-def fetch_epc_data(postcode: str) -> dict:
-    """
-    Fetch EPC data for a given UK postcode.
-    [REQUIRES CLIENT DEFINITION: Actual EPC API endpoint and authentication details]
-
-    Args:
-        postcode (str): The UK postcode to search.
-
-    Returns:
-        dict: Parsed EPC data containing floor_area_m2, built_year, and epc_band.
-
-    Raises:
-        ValueError: If the postcode is invalid or API fails.
-    """
-    if not postcode or len(postcode.strip()) < 5:
-        raise ValueError("Invalid postcode format.")
-
-    # Mock fallback stub for API
-    try:
-        # Simulated API call
-        # response = requests.get(f"https://epc.api.stub/search?postcode={postcode}", timeout=10)
-        # response.raise_for_status()
-        pass
-    except requests.exceptions.RequestException as e:
-        st.warning(f"EPC API timeout/error: {e}. Using fallback data.")
-
-    return {
-        "floor_area_m2": 450.0,
-        "built_year": 1995,
-        "epc_band": "D"
-    }
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LOGO LOADER
@@ -593,9 +558,13 @@ def _get_secret(key: str, default: str = "") -> str:
 
 _qp = st.query_params
 
-# F5 Persistence logic for Onboarding Gate Segment
+# F5 persistence logic for onboarding segment + selected scenarios
 if "segment" in _qp:
     st.session_state.user_segment = _qp.get("segment")
+if "scenarios" in _qp:
+    _qp_scenarios = [s.strip() for s in str(_qp.get("scenarios", "")).split(",") if s.strip()]
+    if _qp_scenarios:
+        st.session_state.selected_scenario_names = _qp_scenarios
 
 if "user_segment" not in st.session_state:
     st.session_state.user_segment = None # Start unselected to trigger gate
@@ -690,9 +659,11 @@ def _update_location_query_params() -> None:
         params["city"] = st.session_state.wx_city
     params["lat"] = str(st.session_state.wx_lat)
     params["lon"] = str(st.session_state.wx_lon)
-    # Preserve segment in query params
     if st.session_state.user_segment:
         params["segment"] = st.session_state.user_segment
+    _selected = st.session_state.get("selected_scenario_names", [])
+    if _selected:
+        params["scenarios"] = ",".join(_selected)
     st.query_params.clear()
     st.query_params.update(params)
 
@@ -737,6 +708,23 @@ with st.sidebar:
         st.session_state.pop("selected_scenario_names", None)
         st.query_params.clear()
         st.rerun()
+
+    st.markdown("<div class='sb-section'>🧪 Scenarios</div>", unsafe_allow_html=True)
+    _scenario_options = list(SCENARIOS.keys())
+    _scenario_defaults = [
+        s for s in st.session_state.get("selected_scenario_names", _segment_default_scenarios(st.session_state.user_segment))
+        if s in SCENARIOS
+    ] or _segment_default_scenarios(st.session_state.user_segment)
+    _chosen = st.multiselect(
+        "Scenario selection",
+        options=_scenario_options,
+        default=_scenario_defaults,
+        key="selected_scenario_names",
+        help="Choose one or more intervention scenarios for calculations.",
+    )
+    if not _chosen:
+        st.session_state.selected_scenario_names = _segment_default_scenarios(st.session_state.user_segment)
+    _update_location_query_params()
 
     st.markdown("---")
 
@@ -1122,7 +1110,8 @@ with st.sidebar:
 # ─────────────────────────────────────────────────────────────────────────────
 # COMPUTE ALL SELECTED SCENARIOS
 # ─────────────────────────────────────────────────────────────────────────────
-_active_buildings = BUILDINGS
+_active_buildings = dict(BUILDINGS)
+_active_buildings.update(compliance.SEGMENT_BUILDINGS.get(st.session_state.user_segment, {}))
 
 if "selected_building_name" not in st.session_state or \
    st.session_state.selected_building_name not in _active_buildings:
@@ -1254,8 +1243,9 @@ with _tab_dash:
 
     st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
-    # ── KPI Cards Row ─────────────────────────────────────────────────────────
+    # ── KPI Cards Row (segment-responsive) ────────────────────────────────────
     if results:
+        seg = st.session_state.user_segment
         best_saving = max(results.values(), key=lambda r: r.get("energy_saving_pct", 0))
         best_carbon = max(results.values(), key=lambda r: r.get("carbon_saving_t", 0))
         best_saving_name = next(n for n, r in results.items()
@@ -1267,38 +1257,73 @@ with _tab_dash:
         baseline_co2    = round(baseline_energy * 1000 * 0.20482 / 1000, 1)
 
         k1, k2, k3, k4 = st.columns(4)
-        with k1:
-            st.markdown(f"""
-            <div class='kpi-card'>
-              <div class='kpi-label'>Portfolio Baseline</div>
-              <div class='kpi-value'>{baseline_energy:,.0f}<span class='kpi-unit'>MWh/yr</span></div>
-              <div class='kpi-sub'>Current energy consumption</div>
-            </div>""", unsafe_allow_html=True)
-        with k2:
-            st.markdown(f"""
-            <div class='kpi-card accent-green'>
-              <div class='kpi-label'>Best Energy Saving</div>
-              <div class='kpi-value'>{best_saving.get('energy_saving_pct',0)}<span class='kpi-unit'>%</span></div>
-              <div class='kpi-delta-pos'>↓ {best_saving.get('energy_saving_mwh',0):,.0f} MWh/yr</div>
-              <div class='kpi-sub'>{best_saving_name.split('(')[0].strip()}</div>
-            </div>""", unsafe_allow_html=True)
-        with k3:
-            st.markdown(f"""
-            <div class='kpi-card accent-teal' style='border-top-color:#00C2A8'>
-              <div class='kpi-label'>Best Carbon Reduction</div>
-              <div class='kpi-value'>{best_carbon.get('carbon_saving_t',0):,.0f}<span class='kpi-unit'>t CO₂e</span></div>
-              <div class='kpi-delta-pos'>↓ {round(best_carbon.get('carbon_saving_t',0)/max(baseline_co2,1)*100,1)}% of baseline</div>
-              <div class='kpi-sub'>{best_carbon_name.split('(')[0].strip()}</div>
-            </div>""", unsafe_allow_html=True)
-        with k4:
-            baseline_cost = round(baseline_energy * 1000 * 0.28 / 1000, 1)
-            st.markdown(f"""
-            <div class='kpi-card accent-gold'>
-              <div class='kpi-label'>Baseline Annual Cost</div>
-              <div class='kpi-value'>£{baseline_cost:,.0f}<span class='kpi-unit'>k</span></div>
-              <div class='kpi-sub'>At £0.28/kWh (HESA 2022-23)</div>
-            </div>""", unsafe_allow_html=True)
 
+        if seg == "smb_landlord":
+            baseline_kwh = baseline_energy * 1000
+            epc = compliance.estimate_epc_rating(
+                selected_building["floor_area_m2"], baseline_kwh,
+                selected_building["u_value_wall"], selected_building["u_value_roof"],
+                selected_building["u_value_glazing"], selected_building["glazing_ratio"],
+            )
+            mees = compliance.mees_gap_analysis(epc["sap_score"], target_band="C")
+            with k1:
+                _card("Current EPC / SAP", f"{epc['epc_band']} · {epc['sap_score']:.1f}", "Estimated from baseline physics")
+            with k2:
+                _card("MEES 2028 Gap", f"{mees['sap_gap']:.1f} SAP", "Gap to Band C threshold", "accent-gold")
+            with k3:
+                _card("Target EPC Band", "C", f"Target SAP: {mees['target_sap']:.0f}", "accent-teal")
+            with k4:
+                _card("Est. Upgrade Cost", f"£{mees['estimated_cost_low']:,.0f}–£{mees['estimated_cost_high']:,.0f}", "Indicative MEES package", "accent-green")
+
+        elif seg == "smb_industrial":
+            secr = compliance.calculate_carbon_baseline(
+                elec_kwh=baseline_energy * 1000,
+                gas_kwh=0.0,
+                oil_kwh=0.0,
+                lpg_kwh=0.0,
+                fleet_miles=0.0,
+                floor_area_m2=selected_building["floor_area_m2"],
+            )
+            with k1:
+                _card("Scope 1 Total", f"{secr['scope1_tco2e']:.1f} t", "Fuel + fleet baseline")
+            with k2:
+                _card("Scope 2 Total", f"{secr['scope2_tco2e']:.1f} t", "Purchased electricity", "accent-teal")
+            with k3:
+                _card("SECR Combined", f"{secr['total_tco2e']:.1f} t", "Scope 1 + Scope 2", "accent-green")
+            with k4:
+                _card("Carbon Intensity", f"{secr['intensity_kgco2_m2']:.1f} kg/m²", "Portfolio baseline", "accent-gold")
+
+        elif seg == "individual_selfbuild":
+            part_l = compliance.part_l_compliance_check(
+                floor_area_m2=selected_building["floor_area_m2"],
+                annual_energy_kwh=baseline_energy * 1000,
+                u_wall=selected_building["u_value_wall"],
+                u_roof=selected_building["u_value_roof"],
+                u_glazing=selected_building["u_value_glazing"],
+                glazing_ratio=selected_building["glazing_ratio"],
+            )
+            target_wall = compliance.PART_L_2021_U_WALL
+            wall_gap = selected_building["u_value_wall"] - target_wall
+            with k1:
+                _card("Primary Energy", f"{part_l['primary_energy_est']:.1f} kWh/m²", "Estimated baseline")
+            with k2:
+                _card("Part L Status", "PASS" if part_l["part_l_2021_pass"] else "FAIL", part_l["regs_label"], "accent-teal")
+            with k3:
+                _card("U-Value Deviation", f"{wall_gap:+.2f} W/m²K", f"Wall target {target_wall:.2f} W/m²K", "accent-gold")
+            with k4:
+                _card("FHS Readiness", "READY" if part_l["fhs_ready"] else "NOT READY", "Future Homes Standard indicator", "accent-green")
+
+        else:  # university_he default
+            best_saving_name = next(n for n, r in results.items() if r is best_saving)
+            best_carbon_name = next(n for n, r in results.items() if r is best_carbon)
+            with k1:
+                _card("Portfolio Baseline", f"{baseline_energy:,.0f}<span class='kpi-unit'>MWh/yr</span>", "Current energy consumption")
+            with k2:
+                _card("Best Saving %", f"{best_saving.get('energy_saving_pct',0)}<span class='kpi-unit'>%</span>", best_saving_name.split('(')[0].strip(), "accent-green")
+            with k3:
+                _card("Best Reduction (t)", f"{best_carbon.get('carbon_saving_t',0):,.0f}<span class='kpi-unit'>t CO₂e</span>", best_carbon_name.split('(')[0].strip(), "accent-teal")
+            with k4:
+                _card("Baseline Cost", f"£{baseline_cost:,.0f}<span class='kpi-unit'>k</span>", "At £0.28/kWh", "accent-gold")
     st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
     # ── Charts Row 1: Energy + Carbon ─────────────────────────────────────────
