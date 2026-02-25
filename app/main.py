@@ -1554,6 +1554,125 @@ with _tab_dash:
 
     st.markdown("<hr style='border-color:#E0EBF4; margin:24px 0;'>", unsafe_allow_html=True)
 
+    # ── LAYER 3: INLINE BUILDING DETAIL PANEL ─────────────────────────────────
+    selected_bname = st.session_state.selected_building_detail
+    if selected_bname and selected_bname in _active_buildings:
+        bdata = _active_buildings[selected_bname]
+        
+        icon = "🏢"
+        if "Library" in selected_bname: icon = "📚"
+        elif "Arts" in selected_bname: icon = "🎨"
+        elif "Science" in selected_bname: icon = "🔬"
+        
+        # Current Metrics
+        b_energy = bdata["baseline_energy_mwh"]
+        b_carbon = b_energy * 1000 * 0.20482 / 1000
+        b_cost = b_energy * 1000 * 0.28
+        b_epc = compliance.estimate_epc_rating(
+            floor_area_m2=bdata["floor_area_m2"],
+            annual_energy_kwh=b_energy * 1000,
+            u_wall=bdata["u_value_wall"], u_roof=bdata["u_value_roof"], u_glazing=bdata["u_value_glazing"],
+            glazing_ratio=bdata["glazing_ratio"], building_type="commercial"
+        )
+        
+        best_scen = None
+        best_res = None
+        best_saving_pct = 0
+        
+        # Find the best scenario specifically for this building
+        for sn in selected_scenario_names:
+            if sn == "Baseline (No Intervention)": continue
+            try:
+                res = calculate_thermal_load(bdata, SCENARIOS[sn], weather)
+                if res["energy_saving_pct"] > best_saving_pct:
+                    best_saving_pct = res["energy_saving_pct"]
+                    best_scen = sn
+                    best_res = res
+            except: pass
+            
+        if best_scen and best_res:
+            target_epc = compliance.estimate_epc_rating(
+                floor_area_m2=bdata["floor_area_m2"],
+                annual_energy_kwh=best_res["scenario_energy_mwh"] * 1000,
+                u_wall=best_res["u_wall"], u_roof=best_res["u_roof"], u_glazing=best_res["u_glazing"],
+                glazing_ratio=bdata["glazing_ratio"], building_type="commercial"
+            )
+            
+            # Real-world equivalents
+            cars_removed = int(best_res["carbon_saving_t"] / 2.0)  # Approx 2 tonnes per passenger car
+            trees_planted = int(best_res["carbon_saving_t"] * 40)  # Approx 25kg per tree per year
+            
+            scen_name_short = best_scen.split(" (")[0]
+            
+            st.markdown(f"""
+            <div style='background: #ffffff; border: 1px solid #E0EBF4; border-top: 4px solid #00C2A8; border-radius: 8px; padding: 20px; box-shadow: 0 6px 16px rgba(7,26,47,0.08); margin-bottom: 24px;'>
+                
+                <div style='display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; flex-wrap:wrap; gap:10px;'>
+                    <div>
+                        <h3 style='margin:0; font-family:Rajdhani,sans-serif; color:#071A2F; font-size:1.4rem;'>{icon} {selected_bname}</h3>
+                        <div style='color:#5A7A90; font-size:0.85rem; margin-top:4px;'>
+                            {bdata['building_type']} &nbsp;·&nbsp; {bdata['floor_area_m2']:,} m² &nbsp;·&nbsp; Built {bdata['built_year']}
+                        </div>
+                    </div>
+                    <div style='text-align:right; font-family:Rajdhani,sans-serif; font-weight:bold; font-size:1.1rem; color:#071A2F;'>
+                        <span style='color:{b_epc["epc_colour"]};'>{b_epc["epc_band"]}</span> 
+                        <span style='color:#A8C8D8; margin:0 6px;'>→</span> 
+                        <span style='color:{target_epc["epc_colour"]};'>{target_epc["epc_band"]} possible</span>
+                    </div>
+                </div>
+                
+                <hr style='border-color:#E0EBF4; margin:16px 0;'/>
+                
+                <div style='display:flex; flex-wrap:wrap; gap:20px;'>
+                    <div style='flex:1; min-width:250px; background:#F8FAFC; padding:16px; border-radius:6px; border:1px solid #E0EBF4;'>
+                        <div style='font-size:0.75rem; text-transform:uppercase; letter-spacing:1px; color:#5A7A90; margin-bottom:12px; font-weight:700;'>CURRENT (Baseline)</div>
+                        <div style='line-height:1.8; font-size:0.9rem; color:#071A2F;'>
+                            ⚡ <strong>{b_energy:,.0f}</strong> MWh/yr<br/>
+                            🌍 <strong>{b_carbon:,.1f}</strong> t CO₂e/yr<br/>
+                            💷 <strong>£{b_cost/1000:,.0f}k</strong>/yr
+                        </div>
+                    </div>
+                    
+                    <div style='flex:1; min-width:250px; background:rgba(29,184,122,0.05); padding:16px; border-radius:6px; border:1px solid rgba(29,184,122,0.3); border-left:3px solid #1DB87A;'>
+                        <div style='font-size:0.75rem; text-transform:uppercase; letter-spacing:1px; color:#1DB87A; margin-bottom:12px; font-weight:700;'>BEST SCENARIO ({scen_name_short})</div>
+                        <div style='line-height:1.8; font-size:0.9rem; color:#071A2F;'>
+                            ⚡ <strong>{best_res["scenario_energy_mwh"]:,.0f}</strong> MWh/yr 
+                               <span style='color:#1DB87A; font-weight:bold; font-size:0.8rem; margin-left:8px;'>↓ {best_res["energy_saving_pct"]:.0f}%</span><br/>
+                            🌍 <strong>{best_res["scenario_carbon_t"]:,.1f}</strong> t CO₂e 
+                               <span style='color:#1DB87A; font-weight:bold; font-size:0.8rem; margin-left:8px;'>↓ {best_res["carbon_saving_t"]:,.1f} t saved</span><br/>
+                            💷 <strong>£{best_res["scenario_energy_mwh"] * 1000 * 0.28 / 1000:,.0f}k</strong>/yr 
+                               <span style='color:#1DB87A; font-weight:bold; font-size:0.8rem; margin-left:8px;'>saves £{best_res["annual_saving_gbp"]/1000:,.0f}k/yr</span><br/>
+                            🏗️ Install: <strong>£{best_res["install_cost_gbp"]/1000:,.0f}k</strong><br/>
+                            ⏱️ Payback: <strong>{best_res["payback_years"]:.1f} years</strong>
+                        </div>
+                    </div>
+                </div>
+                
+                <div style='margin-top:16px; background:#F0F4F8; padding:12px 16px; border-radius:6px; font-size:0.9rem; color:#3A576B; display:flex; align-items:center; gap:12px;'>
+                    <span style='font-size:1.4rem;'>🚗</span>
+                    <div>
+                        <strong>Real-world impact:</strong> This carbon saving is equivalent to removing <strong>{cars_removed} cars</strong> from the road, 
+                        or planting <strong>{trees_planted:,} trees</strong>.
+                    </div>
+                </div>
+                
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Action buttons mapping to what will eventually be expanded tables/modals
+            act_c1, act_c2, act_c3 = st.columns(3)
+            with act_c1:
+                st.button("📋 View All Scenarios", key=f"btn_all_{selected_bname}", use_container_width=True)
+            with act_c2:
+                st.button("📅 View Monthly Profile", key=f"btn_mo_{selected_bname}", use_container_width=True)
+            with act_c3:
+                st.button("📊 Export Business Case", key=f"btn_ex_{selected_bname}", use_container_width=True)
+            
+            st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
+        else:
+            st.info(f"Select an intervention scenario in the sidebar to compare against the baseline for {selected_bname}.")
+
+
     # ── 3D/4D Campus Visualisation ────────────────────────────────────────────
     st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
     render_campus_3d_map(
