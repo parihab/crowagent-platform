@@ -33,7 +33,6 @@ import streamlit as st
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
-import requests
 from datetime import datetime, timezone
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -46,46 +45,12 @@ if ROOT_DIR not in sys.path:
 import services.weather as wx
 import services.location as loc
 import services.audit as audit
+from services.epc import fetch_epc_data
 import core.agent as crow_agent
 import core.physics as physics
 from app.visualization_3d import render_campus_3d_map
 from app.utils import validate_gemini_key
 import app.compliance as compliance
-
-# ─────────────────────────────────────────────────────────────────────────────
-# UK EPC / POSTCODE INTEGRATION
-# ─────────────────────────────────────────────────────────────────────────────
-def fetch_epc_data(postcode: str) -> dict:
-    """
-    Fetch EPC data for a given UK postcode.
-    [REQUIRES CLIENT DEFINITION: Actual EPC API endpoint and authentication details]
-
-    Args:
-        postcode (str): The UK postcode to search.
-
-    Returns:
-        dict: Parsed EPC data containing floor_area_m2, built_year, and epc_band.
-
-    Raises:
-        ValueError: If the postcode is invalid or API fails.
-    """
-    if not postcode or len(postcode.strip()) < 5:
-        raise ValueError("Invalid postcode format.")
-
-    # Mock fallback stub for API
-    try:
-        # Simulated API call
-        # response = requests.get(f"https://epc.api.stub/search?postcode={postcode}", timeout=10)
-        # response.raise_for_status()
-        pass
-    except requests.exceptions.RequestException as e:
-        st.warning(f"EPC API timeout/error: {e}. Using fallback data.")
-
-    return {
-        "floor_area_m2": 450.0,
-        "built_year": 1995,
-        "epc_band": "D"
-    }
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LOGO LOADER
@@ -362,6 +327,31 @@ SCENARIOS: dict[str, dict] = {
     },
 }
 
+SEGMENT_DEFAULT_SCENARIOS: dict[str, list[str]] = {
+    "university_he": [
+        "Baseline (No Intervention)",
+        "Combined Package (All Interventions)",
+    ],
+    "smb_landlord": [
+        "Baseline (No Intervention)",
+        "Enhanced Insulation Upgrade",
+    ],
+    "smb_industrial": [
+        "Baseline (No Intervention)",
+        "Solar Glass Installation",
+    ],
+    "individual_selfbuild": [
+        "Baseline (No Intervention)",
+        "Green Roof Installation",
+    ],
+}
+
+
+def _segment_default_scenarios(segment: str | None) -> list[str]:
+    defaults = SEGMENT_DEFAULT_SCENARIOS.get(segment or "", ["Baseline (No Intervention)"])
+    selected = [name for name in defaults if name in SCENARIOS]
+    return selected or ["Baseline (No Intervention)"]
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PORTFOLIO ARRAY LOGIC
 # ─────────────────────────────────────────────────────────────────────────────
@@ -431,7 +421,11 @@ def add_to_portfolio(postcode: str) -> None:
         return
         
     try:
-        epc_data = fetch_epc_data(postcode)
+        epc_data = fetch_epc_data(
+            postcode,
+            api_url=st.session_state.get("epc_api_url", "https://epc.opendatacommunities.org/api/v1"),
+            api_key=st.session_state.get("epc_api_key", ""),
+        )
         entry = init_portfolio_entry(postcode, st.session_state.user_segment, epc_data)
         st.session_state.portfolio.append(entry)
         st.success(f"Added {postcode} to portfolio.")
@@ -568,9 +562,14 @@ def _get_secret(key: str, default: str = "") -> str:
 
 _qp = st.query_params
 
-# F5 Persistence logic for Onboarding Gate Segment
+# F5 persistence logic for onboarding segment + selected scenarios
 if "segment" in _qp:
     st.session_state.user_segment = _qp.get("segment")
+if "scenarios" in _qp:
+    _qp_scenarios = [s.strip() for s in str(_qp.get("scenarios", "")).split(",") if s.strip()]
+    if _qp_scenarios:
+        st.session_state.scenario_selection = _qp_scenarios
+        st.session_state.scenario_multiselect = _qp_scenarios
 
 if "user_segment" not in st.session_state:
     st.session_state.user_segment = None # Start unselected to trigger gate
@@ -605,15 +604,33 @@ if "wx_enable_fallback" not in st.session_state:
     st.session_state.wx_enable_fallback = True
 if "owm_key" not in st.session_state:
     st.session_state.owm_key = _get_secret("OWM_KEY", "")
+if "epc_api_key" not in st.session_state:
+    st.session_state.epc_api_key = _get_secret("EPC_API_KEY", "")
+if "epc_api_url" not in st.session_state:
+    st.session_state.epc_api_url = _get_secret("EPC_API_URL", "https://epc.opendatacommunities.org/api/v1")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ONBOARDING GATE (App Locked Until Segment Selected)
 # ─────────────────────────────────────────────────────────────────────────────
 if not st.session_state.user_segment:
-    st.markdown("""
-    <div style="text-align: center; margin-top: 50px;">
-        <h1 style="color: #071A2F;">Welcome to CrowAgent™ Platform</h1>
-        <p style="color: #5A7A90; font-size: 1.1rem; margin-bottom: 30px;">Select your sector to configure the intelligence engine.</p>
+    _welcome_logo = (
+        f"<img src='{LOGO_URI}' width='220' style='max-width:100%; height:auto; display:inline-block; margin-bottom:10px;' alt='CrowAgent™ Logo'/>"
+        if LOGO_URI
+        else "<div style='font-family:Rajdhani,sans-serif;font-size:2rem;font-weight:700;color:#00C2A8;margin-bottom:10px;'>CrowAgent™</div>"
+    )
+    st.markdown(f"""
+    <div style="text-align: center; margin-top: 40px;">
+        {_welcome_logo}
+        <h1 style="color: #071A2F; margin-bottom: 8px;">Welcome to CrowAgent™ Platform</h1>
+        <p style="color: #5A7A90; font-size: 1.05rem; margin: 0 auto 8px auto; max-width: 820px;">
+            CrowAgent™ is a sustainability decision-intelligence workspace for UK built-environment stakeholders.
+            It brings together retrofit scenario modelling, financial insights, AI-assisted recommendations, and UK compliance guidance.
+        </p>
+        <p style="color:#7A93A7;font-size:0.8rem; margin: 0 auto 28px auto; max-width: 920px; line-height:1.45;">
+            Prototype notice: outputs are indicative and for decision support only. Always validate with certified assessors and qualified professionals
+            before procurement, design sign-off, or regulatory submission. CrowAgent™ name, logo, and product marks are trademarks of their respective owners.
+            © 2026 CrowAgent™. All rights reserved.
+        </p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -636,6 +653,8 @@ if not st.session_state.user_segment:
             """, unsafe_allow_html=True)
             if st.button(f"Select {label}", key=f"btn_gate_{seg_id}", use_container_width=True):
                 st.session_state.user_segment = seg_id
+                st.session_state.scenario_selection = _segment_default_scenarios(seg_id)
+                st.session_state.pop("scenario_multiselect", None)
                 st.query_params["segment"] = seg_id
                 st.rerun()
                 
@@ -650,9 +669,11 @@ def _update_location_query_params() -> None:
         params["city"] = st.session_state.wx_city
     params["lat"] = str(st.session_state.wx_lat)
     params["lon"] = str(st.session_state.wx_lon)
-    # Preserve segment in query params
     if st.session_state.user_segment:
         params["segment"] = st.session_state.user_segment
+    _selected = st.session_state.get("scenario_selection", [])
+    if _selected:
+        params["scenarios"] = ",".join(_selected)
     st.query_params.clear()
     st.query_params.update(params)
 
@@ -694,8 +715,29 @@ with st.sidebar:
     )
     if st.button("Change Segment / Reset", key="btn_reset_segment"):
         st.session_state.user_segment = None
+        st.session_state.pop("scenario_selection", None)
+        st.session_state.pop("scenario_multiselect", None)
         st.query_params.clear()
         st.rerun()
+
+    st.markdown("<div class='sb-section'>🧪 Scenarios</div>", unsafe_allow_html=True)
+    _scenario_options = list(SCENARIOS.keys())
+    _scenario_defaults = [
+        s for s in st.session_state.get("scenario_selection", _segment_default_scenarios(st.session_state.user_segment))
+        if s in SCENARIOS
+    ] or _segment_default_scenarios(st.session_state.user_segment)
+    _chosen = st.multiselect(
+        "Scenario selection",
+        options=_scenario_options,
+        default=_scenario_defaults,
+        key="scenario_multiselect",
+        help="Choose one or more intervention scenarios for calculations.",
+    )
+    if _chosen:
+        st.session_state.scenario_selection = _chosen
+    else:
+        st.session_state.scenario_selection = _segment_default_scenarios(st.session_state.user_segment)
+    _update_location_query_params()
 
     st.markdown("---")
 
@@ -885,18 +927,19 @@ with st.sidebar:
         )
         
         st.markdown("")  # spacing
-        st.markdown(
-          "<div style='font-size:0.9rem;color:#8FBCCE;margin-bottom:8px;'>"
-          "Provide your own API keys — do not use shared or public keys. "
-          "Met Office DataPoint (free): register at "
-          "<a href=\"https://www.metoffice.gov.uk/services/data/datapoint\" target=\"_blank\">metoffice.gov.uk/services/data/datapoint</a>. "
-          "Gemini API key (for AI Advisor): get one at "
-          "<a href=\"https://aistudio.google.com\" target=\"_blank\">aistudio.google.com</a> or "
-          "<a href=\"https://console.cloud.google.com/apis/credentials\" target=\"_blank\">console.cloud.google.com</a>."
-          "</div>",
-          unsafe_allow_html=True,
-        )
-        
+        st.markdown("""
+<div style='font-size:0.9rem;color:#8FBCCE;margin-bottom:8px;'>
+Provide your own API keys — do not use shared or public keys. 
+Met Office DataPoint (free): register at 
+<a href="https://www.metoffice.gov.uk/services/data/datapoint" target="_blank">metoffice.gov.uk/services/data/datapoint</a>. 
+EPC OpenData Communities key: request credentials via 
+<a href="https://epc.opendatacommunities.org/docs/guidance#FAQ" target="_blank">epc.opendatacommunities.org/docs/guidance#FAQ</a>. 
+Gemini API key (for AI Advisor): get one at 
+<a href="https://aistudio.google.com" target="_blank">aistudio.google.com</a> or 
+<a href="https://console.cloud.google.com/apis/credentials" target="_blank">console.cloud.google.com</a>.
+</div>
+""", unsafe_allow_html=True)
+
         # ── Weather Provider selector ─────────────────────────────────────────
         st.markdown(
             "<div style='font-size:0.78rem;color:#8FBCCE;font-weight:700;"
@@ -993,6 +1036,36 @@ with st.sidebar:
             else:
               st.markdown("<div class='val-err'>❌ " + msg + "</div>", unsafe_allow_html=True)
 
+        st.markdown("---")
+        # ── EPC OpenData Communities key ───────────────────────────────────────
+        _show_epc = st.checkbox("Show EPC key", key="show_epc_key", value=False)
+        _epc_value = st.session_state.epc_api_key
+        _epc_key = st.text_input(
+            "EPC OpenData Communities API key",
+            type="default" if _show_epc else "password",
+            placeholder="Paste your EPC API key",
+            value=_epc_value,
+            help="Used for postcode EPC lookups via epc.opendatacommunities.org",
+        )
+        if _epc_key != _epc_value:
+            _had_epc = bool(_epc_value)
+            st.session_state.epc_api_key = _epc_key.strip()
+            audit.log_event(
+                "KEY_UPDATED",
+                "EPC OpenData Communities key " + ("updated" if _had_epc else "added"),
+            )
+
+        _epc_url_value = st.session_state.epc_api_url
+        _epc_url = st.text_input(
+            "EPC API base URL",
+            value=_epc_url_value,
+            help="Default: https://epc.opendatacommunities.org/api/v1",
+        )
+        if _epc_url != _epc_url_value:
+            st.session_state.epc_api_url = _epc_url.strip() or "https://epc.opendatacommunities.org/api/v1"
+
+        st.caption("EPC key is session-only and used when adding portfolio assets by postcode.")
+
         _show_gm = st.checkbox("Show Gemini key", key="show_gm_key", value=False)
         _gm_value = st.session_state.gemini_key
         _gm_key = st.text_input(
@@ -1081,37 +1154,41 @@ with st.sidebar:
 # ─────────────────────────────────────────────────────────────────────────────
 # COMPUTE ALL SELECTED SCENARIOS
 # ─────────────────────────────────────────────────────────────────────────────
-_active_buildings = BUILDINGS
+_active_buildings = dict(BUILDINGS)
+_active_buildings.update(compliance.SEGMENT_BUILDINGS.get(st.session_state.user_segment, {}))
 
 if "selected_building_name" not in st.session_state or \
    st.session_state.selected_building_name not in _active_buildings:
     st.session_state.selected_building_name = next(iter(_active_buildings))
 selected_building_name = st.session_state.selected_building_name
+selected_building = _active_buildings.get(selected_building_name)
+if selected_building is None:
+    selected_building_name = next(iter(_active_buildings))
+    st.session_state.selected_building_name = selected_building_name
+    selected_building = _active_buildings[selected_building_name]
 
 _valid_scenario_names = list(SCENARIOS.keys())
-_default_scenarios = ["Baseline (No Intervention)"]
+_default_scenarios = _segment_default_scenarios(st.session_state.user_segment)
 
-if "selected_scenario_names" not in st.session_state:
-    st.session_state.selected_scenario_names = [
+if "scenario_selection" not in st.session_state:
+    st.session_state.scenario_selection = [
         s for s in _default_scenarios if s in SCENARIOS
     ] or _valid_scenario_names[:1]
 
 selected_scenario_names = [
-    s for s in st.session_state.selected_scenario_names if s in SCENARIOS
+    s for s in st.session_state.scenario_selection if s in SCENARIOS
 ]
 if not selected_scenario_names:
     selected_scenario_names = [
         s for s in _default_scenarios if s in SCENARIOS
     ] or _valid_scenario_names[:1]
-st.session_state.selected_scenario_names = selected_scenario_names
 
 results: dict[str, dict] = {}
 _compute_errors: list[str] = []
 
 for _sn in selected_scenario_names:
     try:
-        results[_sn] = calculate_thermal_load(_active_buildings[selected_building_name],
-                                              SCENARIOS[_sn], weather)
+        results[_sn] = calculate_thermal_load(selected_building, SCENARIOS[_sn], weather)
     except Exception as _e:
         _compute_errors.append(f"Scenario '{_sn}': {_e}")
 
@@ -1195,13 +1272,13 @@ with _tab_dash:
         st.markdown(
             f"<h2 style='margin:0;padding:0;'>{selected_building_name}</h2>"
             f"<div style='font-size:0.78rem;color:#5A7A90;margin-top:2px;'>"
-            f"{sb['description']}</div>",
+            f"{selected_building['description']}</div>",
             unsafe_allow_html=True,
         )
     with col_badge:
         st.markdown(
             f"<div style='text-align:right;padding-top:4px;'>"
-            f"<span class='chip'>{sb['built_year']}</span>"
+            f"<span class='chip'>{selected_building['built_year']}</span>"
             f"<span class='chip'>{weather['temperature_c']}°C</span>"
             f"</div>",
             unsafe_allow_html=True,
@@ -1209,51 +1286,95 @@ with _tab_dash:
 
     st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
 
-    # ── KPI Cards Row ─────────────────────────────────────────────────────────
+    # ── KPI Cards Row (segment-responsive) ────────────────────────────────────
     if results:
+        seg = st.session_state.user_segment
         best_saving = max(results.values(), key=lambda r: r.get("energy_saving_pct", 0))
         best_carbon = max(results.values(), key=lambda r: r.get("carbon_saving_t", 0))
-        best_saving_name = next(n for n, r in results.items()
-                                if r is best_saving)
-        best_carbon_name = next(n for n, r in results.items()
-                                if r is best_carbon)
-        baseline_energy = baseline_result.get("baseline_energy_mwh",
-                                              sb["baseline_energy_mwh"])
-        baseline_co2    = round(baseline_energy * 1000 * 0.20482 / 1000, 1)
+        baseline_energy = baseline_result.get("baseline_energy_mwh", selected_building["baseline_energy_mwh"])
+        baseline_co2 = round(baseline_energy * 1000 * 0.20482 / 1000, 1)
+        baseline_cost = round(baseline_energy * 1000 * 0.28 / 1000, 1)
+
+        def _card(label: str, value: str, sub: str = "", accent: str = "") -> None:
+            _cls = f"kpi-card {accent}".strip()
+            st.markdown(
+                f"""
+                <div class='{_cls}'>
+                  <div class='kpi-label'>{label}</div>
+                  <div class='kpi-value'>{value}</div>
+                  <div class='kpi-sub'>{sub}</div>
+                </div>""",
+                unsafe_allow_html=True,
+            )
 
         k1, k2, k3, k4 = st.columns(4)
-        with k1:
-            st.markdown(f"""
-            <div class='kpi-card'>
-              <div class='kpi-label'>Portfolio Baseline</div>
-              <div class='kpi-value'>{baseline_energy:,.0f}<span class='kpi-unit'>MWh/yr</span></div>
-              <div class='kpi-sub'>Current energy consumption</div>
-            </div>""", unsafe_allow_html=True)
-        with k2:
-            st.markdown(f"""
-            <div class='kpi-card accent-green'>
-              <div class='kpi-label'>Best Energy Saving</div>
-              <div class='kpi-value'>{best_saving.get('energy_saving_pct',0)}<span class='kpi-unit'>%</span></div>
-              <div class='kpi-delta-pos'>↓ {best_saving.get('energy_saving_mwh',0):,.0f} MWh/yr</div>
-              <div class='kpi-sub'>{best_saving_name.split('(')[0].strip()}</div>
-            </div>""", unsafe_allow_html=True)
-        with k3:
-            st.markdown(f"""
-            <div class='kpi-card accent-teal' style='border-top-color:#00C2A8'>
-              <div class='kpi-label'>Best Carbon Reduction</div>
-              <div class='kpi-value'>{best_carbon.get('carbon_saving_t',0):,.0f}<span class='kpi-unit'>t CO₂e</span></div>
-              <div class='kpi-delta-pos'>↓ {round(best_carbon.get('carbon_saving_t',0)/max(baseline_co2,1)*100,1)}% of baseline</div>
-              <div class='kpi-sub'>{best_carbon_name.split('(')[0].strip()}</div>
-            </div>""", unsafe_allow_html=True)
-        with k4:
-            baseline_cost = round(baseline_energy * 1000 * 0.28 / 1000, 1)
-            st.markdown(f"""
-            <div class='kpi-card accent-gold'>
-              <div class='kpi-label'>Baseline Annual Cost</div>
-              <div class='kpi-value'>£{baseline_cost:,.0f}<span class='kpi-unit'>k</span></div>
-              <div class='kpi-sub'>At £0.28/kWh (HESA 2022-23)</div>
-            </div>""", unsafe_allow_html=True)
 
+        if seg == "smb_landlord":
+            baseline_kwh = baseline_energy * 1000
+            epc = compliance.estimate_epc_rating(
+                selected_building["floor_area_m2"], baseline_kwh,
+                selected_building["u_value_wall"], selected_building["u_value_roof"],
+                selected_building["u_value_glazing"], selected_building["glazing_ratio"],
+            )
+            mees = compliance.mees_gap_analysis(epc["sap_score"], target_band="C")
+            with k1:
+                _card("Current EPC / SAP", f"{epc['epc_band']} · {epc['sap_score']:.1f}", "Estimated from baseline physics")
+            with k2:
+                _card("MEES 2028 Gap", f"{mees['sap_gap']:.1f} SAP", "Gap to Band C threshold", "accent-gold")
+            with k3:
+                _card("Target EPC Band", "C", f"Target SAP: {mees['target_sap']:.0f}", "accent-teal")
+            with k4:
+                _card("Est. Upgrade Cost", f"£{mees['estimated_cost_low']:,.0f}–£{mees['estimated_cost_high']:,.0f}", "Indicative MEES package", "accent-green")
+
+        elif seg == "smb_industrial":
+            secr = compliance.calculate_carbon_baseline(
+                elec_kwh=baseline_energy * 1000,
+                gas_kwh=0.0,
+                oil_kwh=0.0,
+                lpg_kwh=0.0,
+                fleet_miles=0.0,
+                floor_area_m2=selected_building["floor_area_m2"],
+            )
+            with k1:
+                _card("Scope 1 Total", f"{secr['scope1_tco2e']:.1f} t", "Fuel + fleet baseline")
+            with k2:
+                _card("Scope 2 Total", f"{secr['scope2_tco2e']:.1f} t", "Purchased electricity", "accent-teal")
+            with k3:
+                _card("SECR Combined", f"{secr['total_tco2e']:.1f} t", "Scope 1 + Scope 2", "accent-green")
+            with k4:
+                _card("Carbon Intensity", f"{secr['intensity_kgco2_m2']:.1f} kg/m²", "Portfolio baseline", "accent-gold")
+
+        elif seg == "individual_selfbuild":
+            part_l = compliance.part_l_compliance_check(
+                floor_area_m2=selected_building["floor_area_m2"],
+                annual_energy_kwh=baseline_energy * 1000,
+                u_wall=selected_building["u_value_wall"],
+                u_roof=selected_building["u_value_roof"],
+                u_glazing=selected_building["u_value_glazing"],
+                glazing_ratio=selected_building["glazing_ratio"],
+            )
+            target_wall = compliance.PART_L_2021_U_WALL
+            wall_gap = selected_building["u_value_wall"] - target_wall
+            with k1:
+                _card("Primary Energy", f"{part_l['primary_energy_est']:.1f} kWh/m²", "Estimated baseline")
+            with k2:
+                _card("Part L Status", "PASS" if part_l["part_l_2021_pass"] else "FAIL", part_l["regs_label"], "accent-teal")
+            with k3:
+                _card("U-Value Deviation", f"{wall_gap:+.2f} W/m²K", f"Wall target {target_wall:.2f} W/m²K", "accent-gold")
+            with k4:
+                _card("FHS Readiness", "READY" if part_l["fhs_ready"] else "NOT READY", "Future Homes Standard indicator", "accent-green")
+
+        else:  # university_he default
+            best_saving_name = next(n for n, r in results.items() if r is best_saving)
+            best_carbon_name = next(n for n, r in results.items() if r is best_carbon)
+            with k1:
+                _card("Portfolio Baseline", f"{baseline_energy:,.0f}<span class='kpi-unit'>MWh/yr</span>", "Current energy consumption")
+            with k2:
+                _card("Best Saving %", f"{best_saving.get('energy_saving_pct',0)}<span class='kpi-unit'>%</span>", best_saving_name.split('(')[0].strip(), "accent-green")
+            with k3:
+                _card("Best Reduction (t)", f"{best_carbon.get('carbon_saving_t',0):,.0f}<span class='kpi-unit'>t CO₂e</span>", best_carbon_name.split('(')[0].strip(), "accent-teal")
+            with k4:
+                _card("Baseline Cost", f"£{baseline_cost:,.0f}<span class='kpi-unit'>k</span>", "At £0.28/kWh", "accent-gold")
     st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
     # ── Charts Row 1: Energy + Carbon ─────────────────────────────────────────
@@ -1326,19 +1447,19 @@ with _tab_dash:
     with st.expander(f"📐 Building Specification — {selected_building_name}"):
         sp1, sp2 = st.columns(2)
         with sp1:
-            st.markdown(f"**Floor Area:** {sb['floor_area_m2']:,} m²")
-            st.markdown(f"**Floor-to-Floor Height:** {sb['height_m']} m")
-            st.markdown(f"**Glazing Ratio:** {sb['glazing_ratio']*100:.0f}%")
-            st.markdown(f"**Annual Occupancy:** ~{sb['occupancy_hours']:,} hours")
-            st.markdown(f"**Approximate Build Year:** {sb['built_year']}")
+            st.markdown(f"**Floor Area:** {selected_building['floor_area_m2']:,} m²")
+            st.markdown(f"**Floor-to-Floor Height:** {selected_building['height_m']} m")
+            st.markdown(f"**Glazing Ratio:** {selected_building['glazing_ratio']*100:.0f}%")
+            st.markdown(f"**Annual Occupancy:** ~{selected_building['occupancy_hours']:,} hours")
+            st.markdown(f"**Approximate Build Year:** {selected_building['built_year']}")
         with sp2:
-            st.markdown(f"**Baseline U-wall:** {sb['u_value_wall']} W/m²K")
-            st.markdown(f"**Baseline U-roof:** {sb['u_value_roof']} W/m²K")
-            st.markdown(f"**Baseline U-glazing:** {sb['u_value_glazing']} W/m²K")
-            st.markdown(f"**Baseline Energy:** {sb['baseline_energy_mwh']} MWh/yr")
+            st.markdown(f"**Baseline U-wall:** {selected_building['u_value_wall']} W/m²K")
+            st.markdown(f"**Baseline U-roof:** {selected_building['u_value_roof']} W/m²K")
+            st.markdown(f"**Baseline U-glazing:** {selected_building['u_value_glazing']} W/m²K")
+            st.markdown(f"**Baseline Energy:** {selected_building['baseline_energy_mwh']} MWh/yr")
             st.markdown(
                 f"**Baseline Carbon:** "
-                f"{round(sb['baseline_energy_mwh'] * 1000 * 0.20482 / 1000, 1)} t CO₂e/yr"
+                f"{round(selected_building['baseline_energy_mwh'] * 1000 * 0.20482 / 1000, 1)} t CO₂e/yr"
             )
         st.caption(
             "⚠️ Data is indicative and derived from published UK HE sector averages (HESA 2022-23). "
