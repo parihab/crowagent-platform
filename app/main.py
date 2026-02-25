@@ -421,7 +421,11 @@ def add_to_portfolio(postcode: str) -> None:
         return
         
     try:
-        epc_data = fetch_epc_data(postcode)
+        epc_data = fetch_epc_data(
+            postcode,
+            api_url=st.session_state.get("epc_api_url", "https://epc.opendatacommunities.org/api/v1"),
+            api_key=st.session_state.get("epc_api_key", ""),
+        )
         entry = init_portfolio_entry(postcode, st.session_state.user_segment, epc_data)
         st.session_state.portfolio.append(entry)
         st.success(f"Added {postcode} to portfolio.")
@@ -599,6 +603,10 @@ if "wx_enable_fallback" not in st.session_state:
     st.session_state.wx_enable_fallback = True
 if "owm_key" not in st.session_state:
     st.session_state.owm_key = _get_secret("OWM_KEY", "")
+if "epc_api_key" not in st.session_state:
+    st.session_state.epc_api_key = _get_secret("EPC_API_KEY", "")
+if "epc_api_url" not in st.session_state:
+    st.session_state.epc_api_url = _get_secret("EPC_API_URL", "https://epc.opendatacommunities.org/api/v1")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ONBOARDING GATE (App Locked Until Segment Selected)
@@ -914,18 +922,19 @@ with st.sidebar:
         )
         
         st.markdown("")  # spacing
-        st.markdown(
-          "<div style='font-size:0.9rem;color:#8FBCCE;margin-bottom:8px;'>"
-          "Provide your own API keys — do not use shared or public keys. "
-          "Met Office DataPoint (free): register at "
-          "<a href=\"https://www.metoffice.gov.uk/services/data/datapoint\" target=\"_blank\">metoffice.gov.uk/services/data/datapoint</a>. "
-          "Gemini API key (for AI Advisor): get one at "
-          "<a href=\"https://aistudio.google.com\" target=\"_blank\">aistudio.google.com</a> or "
-          "<a href=\"https://console.cloud.google.com/apis/credentials\" target=\"_blank\">console.cloud.google.com</a>."
-          "</div>",
-          unsafe_allow_html=True,
-        )
-        
+        st.markdown("""
+<div style='font-size:0.9rem;color:#8FBCCE;margin-bottom:8px;'>
+Provide your own API keys — do not use shared or public keys. 
+Met Office DataPoint (free): register at 
+<a href="https://www.metoffice.gov.uk/services/data/datapoint" target="_blank">metoffice.gov.uk/services/data/datapoint</a>. 
+EPC OpenData Communities key: request credentials via 
+<a href="https://epc.opendatacommunities.org/docs/guidance#FAQ" target="_blank">epc.opendatacommunities.org/docs/guidance#FAQ</a>. 
+Gemini API key (for AI Advisor): get one at 
+<a href="https://aistudio.google.com" target="_blank">aistudio.google.com</a> or 
+<a href="https://console.cloud.google.com/apis/credentials" target="_blank">console.cloud.google.com</a>.
+</div>
+""", unsafe_allow_html=True)
+
         # ── Weather Provider selector ─────────────────────────────────────────
         st.markdown(
             "<div style='font-size:0.78rem;color:#8FBCCE;font-weight:700;"
@@ -1021,6 +1030,36 @@ with st.sidebar:
               st.markdown("<div class='val-ok'>✓ " + msg + "</div>", unsafe_allow_html=True)
             else:
               st.markdown("<div class='val-err'>❌ " + msg + "</div>", unsafe_allow_html=True)
+
+        st.markdown("---")
+        # ── EPC OpenData Communities key ───────────────────────────────────────
+        _show_epc = st.checkbox("Show EPC key", key="show_epc_key", value=False)
+        _epc_value = st.session_state.epc_api_key
+        _epc_key = st.text_input(
+            "EPC OpenData Communities API key",
+            type="default" if _show_epc else "password",
+            placeholder="Paste your EPC API key",
+            value=_epc_value,
+            help="Used for postcode EPC lookups via epc.opendatacommunities.org",
+        )
+        if _epc_key != _epc_value:
+            _had_epc = bool(_epc_value)
+            st.session_state.epc_api_key = _epc_key.strip()
+            audit.log_event(
+                "KEY_UPDATED",
+                "EPC OpenData Communities key " + ("updated" if _had_epc else "added"),
+            )
+
+        _epc_url_value = st.session_state.epc_api_url
+        _epc_url = st.text_input(
+            "EPC API base URL",
+            value=_epc_url_value,
+            help="Default: https://epc.opendatacommunities.org/api/v1",
+        )
+        if _epc_url != _epc_url_value:
+            st.session_state.epc_api_url = _epc_url.strip() or "https://epc.opendatacommunities.org/api/v1"
+
+        st.caption("EPC key is session-only and used when adding portfolio assets by postcode.")
 
         _show_gm = st.checkbox("Show Gemini key", key="show_gm_key", value=False)
         _gm_value = st.session_state.gemini_key
@@ -1126,19 +1165,18 @@ if selected_building is None:
 _valid_scenario_names = list(SCENARIOS.keys())
 _default_scenarios = _segment_default_scenarios(st.session_state.user_segment)
 
-if "selected_scenario_names" not in st.session_state:
-    st.session_state.selected_scenario_names = [
+if "scenario_selection" not in st.session_state:
+    st.session_state.scenario_selection = [
         s for s in _default_scenarios if s in SCENARIOS
     ] or _valid_scenario_names[:1]
 
 selected_scenario_names = [
-    s for s in st.session_state.selected_scenario_names if s in SCENARIOS
+    s for s in st.session_state.scenario_selection if s in SCENARIOS
 ]
 if not selected_scenario_names:
     selected_scenario_names = [
         s for s in _default_scenarios if s in SCENARIOS
     ] or _valid_scenario_names[:1]
-st.session_state.selected_scenario_names = selected_scenario_names
 
 results: dict[str, dict] = {}
 _compute_errors: list[str] = []
