@@ -1398,171 +1398,197 @@ _tab_dash, _tab_fin, _tab_ai, _tab_compliance, _tab_about = st.tabs([
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 1 — DASHBOARD
 # ════════════════════════════════════════════════════════════════════════════
+
 with _tab_dash:
-    # ── Building heading ──────────────────────────────────────────────────────
-    col_hdr, col_badge = st.columns([3, 1])
-    with col_hdr:
-        st.markdown(
-            f"<h2 style='margin:0;padding:0;'>{selected_building_name}</h2>"
-            f"<div style='font-size:0.78rem;color:#5A7A90;margin-top:2px;'>"
-            f"{sb['description']}</div>",
-            unsafe_allow_html=True,
-        )
-    with col_badge:
-        st.markdown(
-            f"<div style='text-align:right;padding-top:4px;'>"
-            f"<span class='chip'>{sb['built_year']}</span>"
-            f"<span class='chip'>{weather['temperature_c']}°C</span>"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-
-    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
-
-    # ── KPI Cards Row ─────────────────────────────────────────────────────────
-    if results:
-        best_saving = max(results.values(), key=lambda r: r.get("energy_saving_pct", 0))
-        best_carbon = max(results.values(), key=lambda r: r.get("carbon_saving_t", 0))
-        best_saving_name = next(n for n, r in results.items()
-                                if r is best_saving)
-        best_carbon_name = next(n for n, r in results.items()
-                                if r is best_carbon)
-        baseline_energy = baseline_result.get("baseline_energy_mwh",
-                                              sb["baseline_energy_mwh"])
-        baseline_co2    = round(baseline_energy * 1000 * 0.20482 / 1000, 1)
-
-        k1, k2, k3, k4 = st.columns(4)
-        with k1:
-            st.markdown(f"""
-            <div class='kpi-card'>
-              <div class='kpi-label'>Portfolio Baseline</div>
-              <div class='kpi-value'>{baseline_energy:,.0f}<span class='kpi-unit'>MWh/yr</span></div>
-              <div class='kpi-sub'>Current energy consumption</div>
-            </div>""", unsafe_allow_html=True)
-        with k2:
-            st.markdown(f"""
-            <div class='kpi-card accent-green'>
-              <div class='kpi-label'>Best Energy Saving</div>
-              <div class='kpi-value'>{best_saving.get('energy_saving_pct',0)}<span class='kpi-unit'>%</span></div>
-              <div class='kpi-delta-pos'>↓ {best_saving.get('energy_saving_mwh',0):,.0f} MWh/yr</div>
-              <div class='kpi-sub'>{best_saving_name.split('(')[0].strip()}</div>
-            </div>""", unsafe_allow_html=True)
-        with k3:
-            st.markdown(f"""
-            <div class='kpi-card accent-teal' style='border-top-color:#00C2A8'>
-              <div class='kpi-label'>Best Carbon Reduction</div>
-              <div class='kpi-value'>{best_carbon.get('carbon_saving_t',0):,.0f}<span class='kpi-unit'>t CO₂e</span></div>
-              <div class='kpi-delta-pos'>↓ {round(best_carbon.get('carbon_saving_t',0)/max(baseline_co2,1)*100,1)}% of baseline</div>
-              <div class='kpi-sub'>{best_carbon_name.split('(')[0].strip()}</div>
-            </div>""", unsafe_allow_html=True)
-        with k4:
-            baseline_cost = round(baseline_energy * 1000 * 0.28 / 1000, 1)
-            st.markdown(f"""
-            <div class='kpi-card accent-gold'>
-              <div class='kpi-label'>Baseline Annual Cost</div>
-              <div class='kpi-value'>£{baseline_cost:,.0f}<span class='kpi-unit'>k</span></div>
-              <div class='kpi-sub'>At £0.28/kWh (HESA 2022-23)</div>
-            </div>""", unsafe_allow_html=True)
-
-    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
-
-    # ── Charts Row 1: Energy + Carbon ─────────────────────────────────────────
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("<div class='chart-card'>", unsafe_allow_html=True)
-        st.markdown("<div class='chart-title'>⚡ Annual Energy Consumption</div>", unsafe_allow_html=True)
-        fig_e = go.Figure()
-        for sn, res in results.items():
-            sc = SCENARIOS[sn]
-            fig_e.add_trace(go.Bar(
-                x=[sn.replace(" (No Intervention)","").replace(" (All Interventions)","")],
-                y=[res["scenario_energy_mwh"]],
-                marker_color=sc["colour"],
-                text=[f"{res['scenario_energy_mwh']:,.0f}"],
-                textposition="outside", name=sn,
-            ))
-        fig_e.update_layout(**CHART_LAYOUT, yaxis_title="MWh / year")
-        st.plotly_chart(fig_e, use_container_width=True, config={"displayModeBar": False})
-        st.markdown(
-            "<div class='chart-caption'>CrowAgent™ PINN thermal model · "
-            "CIBSE Guide A · Cross-validated against US DoE EnergyPlus</div>",
-            unsafe_allow_html=True,
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    with c2:
-        st.markdown("<div class='chart-card'>", unsafe_allow_html=True)
-        st.markdown("<div class='chart-title'>🌍 Annual Carbon Emissions</div>", unsafe_allow_html=True)
-        fig_c = go.Figure()
-        for sn, res in results.items():
-            sc = SCENARIOS[sn]
-            fig_c.add_trace(go.Bar(
-                x=[sn.replace(" (No Intervention)","").replace(" (All Interventions)","")],
-                y=[res["scenario_carbon_t"]],
-                marker_color=sc["colour"],
-                text=[f"{res['scenario_carbon_t']:,.1f} t"],
-                textposition="outside", name=sn,
-            ))
-        fig_c.update_layout(**CHART_LAYOUT, yaxis_title="Tonnes CO₂e / year")
-        st.plotly_chart(fig_c, use_container_width=True, config={"displayModeBar": False})
-        st.markdown(
-            "<div class='chart-caption'>Carbon intensity: 0.20482 kgCO₂e/kWh · "
-            "Source: BEIS Greenhouse Gas Conversion Factors 2023</div>",
-            unsafe_allow_html=True,
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # ── Technical Parameters Table ────────────────────────────────────────────
-    st.markdown("<div class='sec-hdr'>Technical Parameters</div>", unsafe_allow_html=True)
-    rows_tbl = []
-    for sn, res in results.items():
-        sc = SCENARIOS[sn]
-        rows_tbl.append({
-            "Scenario": sc["icon"] + " " + sn,
-            "U-Wall (W/m²K)": res["u_wall"],
-            "U-Roof (W/m²K)": res["u_roof"],
-            "U-Glaz (W/m²K)": res["u_glazing"],
-            "Energy (MWh/yr)": res["scenario_energy_mwh"],
-            "Saving (%)": f"{res['energy_saving_pct']}%",
-            "CO₂ Saving (t)": res["carbon_saving_t"],
-            "Install Cost": f"£{res['install_cost_gbp']:,.0f}" if res["install_cost_gbp"] > 0 else "—",
-            "Payback (yrs)": res["payback_years"] if res["payback_years"] else "—",
-        })
-    st.dataframe(pd.DataFrame(rows_tbl), use_container_width=True, hide_index=True)
-    st.caption("U-values: CIBSE Guide A · Scenario factors: BSRIA / Green Roof Organisation UK · "
-               "⚠️ Indicative only — see prototype disclaimer above")
-
-    # ── Building Specification Expander ───────────────────────────────────────
-    with st.expander(f"📐 Building Specification — {selected_building_name}"):
-        sp1, sp2 = st.columns(2)
-        with sp1:
-            st.markdown(f"**Floor Area:** {sb['floor_area_m2']:,} m²")
-            st.markdown(f"**Floor-to-Floor Height:** {sb['height_m']} m")
-            st.markdown(f"**Glazing Ratio:** {sb['glazing_ratio']*100:.0f}%")
-            st.markdown(f"**Annual Occupancy:** ~{sb['occupancy_hours']:,} hours")
-            st.markdown(f"**Approximate Build Year:** {sb['built_year']}")
-        with sp2:
-            st.markdown(f"**Baseline U-wall:** {sb['u_value_wall']} W/m²K")
-            st.markdown(f"**Baseline U-roof:** {sb['u_value_roof']} W/m²K")
-            st.markdown(f"**Baseline U-glazing:** {sb['u_value_glazing']} W/m²K")
-            st.markdown(f"**Baseline Energy:** {sb['baseline_energy_mwh']} MWh/yr")
-            st.markdown(
-                f"**Baseline Carbon:** "
-                f"{round(sb['baseline_energy_mwh'] * 1000 * 0.20482 / 1000, 1)} t CO₂e/yr"
-            )
-        st.caption(
-            "⚠️ Data is indicative and derived from published UK HE sector averages (HESA 2022-23). "
-            "Not specific to any real institution. Do not use for actual estate planning "
-            "without site-specific survey."
-        )
-
-    # ── 3D/4D Campus Visualisation ────────────────────────────────────────────
-    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
-    render_campus_3d_map(
-        selected_scenario_names=selected_scenario_names,
-        weather=weather,
+    # ── CAMPUS AGGREGATION FOR SCORECARD ──────────────────────────────────────
+    campus_area = sum(b.get("floor_area_m2", 0) for b in _active_buildings.values())
+    campus_energy = sum(b.get("baseline_energy_mwh", 0) for b in _active_buildings.values())
+    campus_carbon = campus_energy * 1000 * 0.20482 / 1000
+    campus_cost = campus_energy * 1000 * 0.28
+    
+    # Estimate Campus EPC proxy (weighted average U-values)
+    avg_u_wall = sum(b.get("u_value_wall", 0) * b.get("floor_area_m2", 0) for b in _active_buildings.values()) / (campus_area or 1)
+    avg_u_roof = sum(b.get("u_value_roof", 0) * b.get("floor_area_m2", 0) for b in _active_buildings.values()) / (campus_area or 1)
+    avg_u_glazing = sum(b.get("u_value_glazing", 0) * b.get("floor_area_m2", 0) for b in _active_buildings.values()) / (campus_area or 1)
+    avg_glazing_ratio = sum(b.get("glazing_ratio", 0) * b.get("floor_area_m2", 0) for b in _active_buildings.values()) / (campus_area or 1)
+    
+    campus_epc = compliance.estimate_epc_rating(
+        floor_area_m2=campus_area,
+        annual_energy_kwh=campus_energy * 1000,
+        u_wall=avg_u_wall, u_roof=avg_u_roof, u_glazing=avg_u_glazing,
+        glazing_ratio=avg_glazing_ratio, building_type="commercial"
     )
+    
+    # Find best campus-wide scenario
+    best_scen_name = "None"
+    best_scen_saving_pct = 0
+    best_scen_carbon_saved = 0
+    best_scen_cost_saved = 0
+    best_scen_payback = 0
+    
+    for sn in selected_scenario_names:
+        if sn == "Baseline (No Intervention)": continue
+        sc_energy = 0
+        sc_carbon_saved = 0
+        sc_cost_saved = 0
+        sc_install_cost = 0
+        for bname, bdata in _active_buildings.items():
+            try:
+                res = calculate_thermal_load(bdata, SCENARIOS[sn], weather)
+                sc_energy += res["scenario_energy_mwh"]
+                sc_carbon_saved += res["carbon_saving_t"]
+                sc_cost_saved += res["annual_saving_gbp"]
+                # Assuming install cost scales per building/scenario application
+                sc_install_cost += SCENARIOS[sn]["install_cost_gbp"] 
+            except Exception:
+                pass
+        
+        saving_pct = ((campus_energy - sc_energy) / campus_energy * 100) if campus_energy else 0
+        if saving_pct > best_scen_saving_pct:
+            best_scen_saving_pct = saving_pct
+            best_scen_name = sn
+            best_scen_carbon_saved = sc_carbon_saved
+            best_scen_cost_saved = sc_cost_saved
+            best_scen_payback = (sc_install_cost / sc_cost_saved) if sc_cost_saved > 0 else 0
 
+    # ── LAYER 1: CAMPUS SCORECARD HERO ────────────────────────────────────────
+    st.markdown(f"""
+    <div style='background:#071A2F; border: 2px solid #00C2A8; border-radius: 8px; padding: 20px; color: #CBD8E6; margin-bottom: 24px; box-shadow: 0 4px 12px rgba(7,26,47,0.15);'>
+        <h2 style='color:#00C2A8; margin-top:0; margin-bottom:4px; font-family:Rajdhani,sans-serif; font-weight: 700; letter-spacing: 0.5px;'>
+            🌍 Greenfield Campus — Sustainability Snapshot
+        </h2>
+        <div style='font-size:0.85rem; color:#8FBCCE; margin-bottom:16px;'>
+            📍 {st.session_state.wx_location_name} &nbsp;·&nbsp; {len(_active_buildings)} buildings &nbsp;·&nbsp; Baseline scenario
+        </div>
+        
+        <div style='display:flex; gap:24px; flex-wrap:wrap; border-top:1px solid #1A3A5C; border-bottom:1px solid #1A3A5C; padding:16px 0; margin-bottom:16px;'>
+            <div style='flex:1; min-width:150px;'>
+                <div style='font-size:0.75rem; text-transform:uppercase; letter-spacing:1px; color:#8FBCCE;'>Total Energy</div>
+                <div style='font-size:1.8rem; font-weight:700; color:#fff; font-family:Rajdhani,sans-serif; line-height: 1.1;'>
+                    {campus_energy:,.0f} <span style='font-size:1rem; color:#8FBCCE;'>MWh/yr</span>
+                </div>
+                <div style='margin-top:6px; display:inline-block; background:{campus_epc["epc_colour"]}; color:#fff; padding:3px 10px; border-radius:4px; font-size:0.85rem; font-weight:bold;'>
+                    {campus_epc["epc_band"]}-rated Average
+                </div>
+            </div>
+            <div style='flex:1; min-width:150px;'>
+                <div style='font-size:0.75rem; text-transform:uppercase; letter-spacing:1px; color:#8FBCCE;'>Total Carbon</div>
+                <div style='font-size:1.8rem; font-weight:700; color:#fff; font-family:Rajdhani,sans-serif; line-height: 1.1;'>
+                    {campus_carbon:,.0f} <span style='font-size:1rem; color:#8FBCCE;'>t CO₂e/yr</span>
+                </div>
+            </div>
+            <div style='flex:1; min-width:150px;'>
+                <div style='font-size:0.75rem; text-transform:uppercase; letter-spacing:1px; color:#8FBCCE;'>Annual Energy Cost</div>
+                <div style='font-size:1.8rem; font-weight:700; color:#fff; font-family:Rajdhani,sans-serif; line-height: 1.1;'>
+                    £{campus_cost/1000:,.0f}k <span style='font-size:1rem; color:#8FBCCE;'>/yr</span>
+                </div>
+                <div style='font-size:0.8rem; color:#A8C8D8; margin-top:4px;'>≈ £{campus_cost/365:,.0f} per day</div>
+            </div>
+        </div>
+        
+        <div style='background:#0D2640; border-left:4px solid #1DB87A; padding:12px 16px; border-radius:4px;'>
+            <div style='color:#1DB87A; font-weight:700; font-size:0.9rem; margin-bottom:4px; font-family:Rajdhani,sans-serif;'>
+                ✨ Best available saving: {best_scen_name.split(' (')[0]}
+            </div>
+            <div style='font-size:0.85rem; color:#CBD8E6;'>
+                Saves <strong>{best_scen_saving_pct:.0f}%</strong> (£{best_scen_cost_saved/1000:,.0f}k/yr) 
+                &nbsp;·&nbsp; Payback: <strong>{best_scen_payback:.1f} yrs</strong> 
+                &nbsp;·&nbsp; Carbon reduction: <strong>{best_scen_carbon_saved:.0f} tonnes/yr</strong>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── LAYER 2: EPC-STYLE BUILDING CARDS ─────────────────────────────────────
+    st.markdown("<div class='sec-hdr'>🏢 Campus Buildings (Select to analyse)</div>", unsafe_allow_html=True)
+    
+    # Track selected building in session state to link with detail panels later
+    if "selected_building_detail" not in st.session_state:
+        st.session_state.selected_building_detail = list(_active_buildings.keys())[0]
+
+    # Create dynamic columns for the cards
+    card_cols = st.columns(len(_active_buildings))
+    
+    for idx, (bname, bdata) in enumerate(_active_buildings.items()):
+        # Building Baseline Specs
+        b_energy = bdata["baseline_energy_mwh"]
+        b_carbon = b_energy * 1000 * 0.20482 / 1000
+        b_cost = b_energy * 1000 * 0.28
+        
+        # Determine EPC Grade
+        b_epc = compliance.estimate_epc_rating(
+            floor_area_m2=bdata["floor_area_m2"],
+            annual_energy_kwh=b_energy * 1000,
+            u_wall=bdata["u_value_wall"],
+            u_roof=bdata["u_value_roof"],
+            u_glazing=bdata["u_value_glazing"],
+            glazing_ratio=bdata["glazing_ratio"],
+            building_type="commercial"
+        )
+        
+        # Calculate Best Fix for this specific building
+        best_fix_name = "None"
+        best_fix_pct = 0
+        best_fix_payback = 0
+        
+        for sn in selected_scenario_names:
+            if sn == "Baseline (No Intervention)": continue
+            try:
+                res = calculate_thermal_load(bdata, SCENARIOS[sn], weather)
+                pct = res["energy_saving_pct"]
+                if pct > best_fix_pct:
+                    best_fix_pct = pct
+                    best_fix_name = sn.split(" (")[0]
+                    best_fix_payback = res.get("payback_years", 0)
+            except: pass
+            
+        icon = "🏢"
+        if "Library" in bname: icon = "📚"
+        elif "Arts" in bname: icon = "🎨"
+        elif "Science" in bname: icon = "🔬"
+        
+        is_selected = st.session_state.selected_building_detail == bname
+        border_col = "#00C2A8" if is_selected else "#E0EBF4"
+        bg_col = "#ffffff" if is_selected else "#F8FAFC"
+        shadow = "box-shadow: 0 4px 12px rgba(0,194,168,0.15);" if is_selected else "box-shadow: 0 2px 4px rgba(7,26,47,0.05);"
+        
+        with card_cols[idx]:
+            st.markdown(f"""
+            <div style='border: 2px solid {border_col}; border-radius: 8px; background: {bg_col}; padding: 18px 16px; {shadow} height: 100%; transition: all 0.2s;'>
+                <div style='font-family:Rajdhani,sans-serif; font-size:1.15rem; font-weight:700; color:#071A2F; margin-bottom:12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>
+                    {icon} {bname.replace("Greenfield ", "")}
+                </div>
+                
+                <div style='display:flex; align-items:center; gap:10px; margin-bottom:14px;'>
+                    <div style='background:{b_epc["epc_colour"]}; color:white; font-size:1.4rem; font-weight:bold; font-family:Rajdhani,sans-serif; padding:2px 14px; border-radius:4px;'>
+                        {b_epc["epc_band"]}
+                    </div>
+                    <div style='height:8px; flex:1; background:linear-gradient(to right, #00873D 20%, #F0B429 50%, #C0392B 80%); border-radius:4px; opacity:0.4;'></div>
+                </div>
+                
+                <div style='font-size:0.85rem; color:#3A576B; line-height:1.7; margin-bottom:14px;'>
+                    <strong style='color:#071A2F;'>{b_energy:,.0f}</strong> MWh/yr<br>
+                    <strong style='color:#071A2F;'>{b_carbon:,.1f}</strong> tonnes CO₂e<br>
+                    <strong style='color:#071A2F;'>£{b_cost/1000:,.0f}k</strong>/yr
+                </div>
+                
+                <div style='background:#F0F4F8; padding:10px 12px; border-radius:6px; font-size:0.8rem; color:#071A2F; border-left: 3px solid #00C2A8;'>
+                    <div style='font-weight:700; color:#00C2A8; margin-bottom:2px;'>Best fix: {best_fix_name}</div>
+                    Saves {best_fix_pct:.0f}% &nbsp;·&nbsp; {best_fix_payback:.1f}yr payback
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Invisible streamlit button overlaid strictly for selection logic
+            if st.button(f"Select {bname.replace('Greenfield ', '')}", key=f"sel_{bname}", use_container_width=True, type="primary" if is_selected else "secondary"):
+                st.session_state.selected_building_detail = bname
+                st.rerun()
+
+    st.markdown("<hr style='border-color:#E0EBF4; margin:24px 0;'>", unsafe_allow_html=True)
+
+    # (Ensure the `render_campus_3d_map` call is directly below this code, exactly as it was)
+    # ── 3D/4D Campus Visualisation ────────────────────────────────────────────
+    # render_campus_3d_map(...)
 
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 2 — FINANCIAL ANALYSIS
