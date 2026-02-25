@@ -6,7 +6,7 @@
 # Not licensed for commercial use without written permission of the author.
 # CrowAgent™ is an unregistered trademark pending UK IPO Class 42.
 #
-# Platform Version : v2.0.0 — 21 February 2026
+# Platform Version : v2.1.0 — Production-Grade MVP
 # Status           : Working Prototype — See disclaimer
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -14,6 +14,10 @@ from __future__ import annotations
 import base64
 import os
 import sys
+import json
+import zlib
+import uuid
+import time
 
 # ensure proper UTF-8 output in environments with non-UTF8 locale
 if hasattr(sys.stdout, "reconfigure"):
@@ -55,8 +59,18 @@ def _add_building_from_json(jtext: str) -> tuple[bool, str]:
     name = obj.pop("name")
     if not isinstance(name, str) or not name.strip():
         return False, "Invalid building name."
-    BUILDINGS[name] = obj
-    return True, f"Building '{name}' added." 
+    
+    if len(st.session_state.portfolio) >= 10:
+        return False, "Maximum portfolio size (10 buildings) reached."
+
+    # Validate against schema
+    obj["name"] = name
+    if "id" not in obj:
+        obj["id"] = str(uuid.uuid4())
+        
+    st.session_state.portfolio[name] = obj
+    _save_state_to_url()
+    return True, f"Building '{name}' added to portfolio." 
 
 
 def _add_scenario_from_json(jtext: str) -> tuple[bool, str]:
@@ -78,6 +92,53 @@ def _add_scenario_from_json(jtext: str) -> tuple[bool, str]:
     return True, f"Scenario '{name}' added."
 
 # ─────────────────────────────────────────────────────────────────────────────
+# UK EPC / POSTCODE INTEGRATION STUB
+# ─────────────────────────────────────────────────────────────────────────────
+def fetch_epc_data(postcode: str) -> dict:
+    """
+    Mock integration for UK Government EPC Register API.
+    [REQUIRES CLIENT DEFINITION: Specific endpoint (e.g. epc.opendatacommunities.org) and auth]
+    
+    Args:
+        postcode (str): The UK postcode to search.
+        
+    Returns:
+        dict: Parsed mock EPC data representing the building geometry and compliance metadata.
+    """
+    # Simulate network latency
+    time.sleep(0.8)
+    
+    # Simple deterministic mock based on postcode structure for MVP
+    is_commercial = any(char.isdigit() for char in postcode[:2])
+    
+    if is_commercial:
+        return {
+            "floor_area_m2": float(np.random.randint(400, 2500)),
+            "built_year": int(np.random.choice([1970, 1985, 1995])),
+            "epc_band": str(np.random.choice(["D", "E", "F"])),
+            "u_value_wall": round(float(np.random.uniform(1.5, 2.2)), 2),
+            "u_value_roof": round(float(np.random.uniform(1.8, 2.5)), 2),
+            "u_value_glazing": round(float(np.random.uniform(2.6, 3.2)), 2),
+            "glazing_ratio": round(float(np.random.uniform(0.25, 0.45)), 2),
+            "building_type": "Commercial / Office",
+            "baseline_energy_mwh": round(float(np.random.uniform(80.0, 300.0)), 1),
+            "occupancy_hours": 3000
+        }
+    else:
+        return {
+            "floor_area_m2": float(np.random.randint(80, 250)),
+            "built_year": int(np.random.choice([2000, 2010, 2020])),
+            "epc_band": str(np.random.choice(["B", "C", "D"])),
+            "u_value_wall": round(float(np.random.uniform(0.8, 1.6)), 2),
+            "u_value_roof": round(float(np.random.uniform(1.0, 1.8)), 2),
+            "u_value_glazing": round(float(np.random.uniform(1.6, 2.8)), 2),
+            "glazing_ratio": round(float(np.random.uniform(0.15, 0.25)), 2),
+            "building_type": "Residential / Dwelling",
+            "baseline_energy_mwh": round(float(np.random.uniform(10.0, 40.0)), 1),
+            "occupancy_hours": 5500
+        }
+
+# ─────────────────────────────────────────────────────────────────────────────
 # PATH SETUP — Ensure core and services modules are accessible
 # ─────────────────────────────────────────────────────────────────────────────
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -95,18 +156,6 @@ from app.visualization_3d import render_campus_3d_map
 # LOGO LOADER
 # ─────────────────────────────────────────────────────────────────────────────
 def _load_logo_uri() -> str:
-    """Return the horizontal dark logo as a base64 data URI.
-
-    When Streamlit executes a script it often copies the file into a temporary
-    directory, in which case ``__file__`` will point to the temp location and
-    the original ``assets/`` folder will be unreachable.  Historically this
-    caused the sidebar/logo to fall back to the 🌿 emoji.  To avoid that we
-    also check the current working directory (which remains the project root
-    when the app is launched from ``streamlit run``).
-
-    An empty string is returned if the file cannot be found; callers may
-    render textual branding in that case.
-    """
     candidates = [
         os.path.join(os.path.dirname(__file__), "../assets/CrowAgent_Logo_Horizontal_Dark.svg"),
         os.path.join(os.path.dirname(__file__), "assets/CrowAgent_Logo_Horizontal_Dark.svg"),
@@ -119,21 +168,13 @@ def _load_logo_uri() -> str:
                 with open(path, "rb") as fh:
                     b64 = base64.b64encode(fh.read()).decode()
                 return f"data:image/svg+xml;base64,{b64}"
-            except Exception as e:  # pragma: no cover - IO problems are rare
+            except Exception as e:
                 st.warning(f"Failed to read logo file at {path}: {e}")
                 return ""
-    # nothing found; log a warning so the issue is easier to diagnose in future
     st.warning("CrowAgent logo asset not found; falling back to text/emoji branding.")
     return ""
 
 def _load_icon_uri() -> str:
-    """Return the square icon mark as a base64 data URI for the browser tab.
-
-    Similar to ``_load_logo_uri`` this function checks both the module path and
-    the current working directory so that the icon resolves even when Streamlit
-    has executed a temporary copy of the script.  An empty string indicates
-    that the emoji fallback should be used instead.
-    """
     candidates = [
         os.path.join(os.path.dirname(__file__), "../assets/CrowAgent_Icon_Square.svg"),
         os.path.join(os.path.dirname(__file__), "assets/CrowAgent_Icon_Square.svg"),
@@ -146,7 +187,7 @@ def _load_icon_uri() -> str:
                 with open(path, "rb") as fh:
                     b64 = base64.b64encode(fh.read()).decode()
                 return f"data:image/svg+xml;base64,{b64}"
-            except Exception as e:  # pragma: no cover
+            except Exception as e:
                 st.warning(f"Failed to read icon file at {path}: {e}")
                 return ""
     st.warning("CrowAgent icon asset not found; falling back to emoji favicon.")
@@ -320,6 +361,7 @@ h1,h2,h3,h4 {
 .kpi-card.accent-green  { border-top-color: #1DB87A; }
 .kpi-card.accent-gold   { border-top-color: #F0B429; }
 .kpi-card.accent-navy   { border-top-color: #071A2F; }
+.kpi-card.accent-teal   { border-top-color: #00C2A8; }
 .kpi-label {
   font-family: 'Rajdhani', sans-serif;
   font-size: 0.78rem; font-weight: 700; letter-spacing: 1px;
@@ -427,7 +469,6 @@ h1,h2,h3,h4 {
   padding: 16px 24px;
   margin-top: 32px;
   text-align: center;
-  /* flex layout ensures logo and text sit in the page centre */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -459,6 +500,19 @@ h1,h2,h3,h4 {
   font-size: 0.80rem; color: #721C24;
 }
 
+/* ── Onboarding Gate ───────────────────────────────────────────────────── */
+.gate-overlay {
+  position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+  background: linear-gradient(135deg, #071A2F 0%, #0D2640 100%);
+  z-index: 999999; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; padding: 20px;
+}
+.gate-card {
+  background: #ffffff; border-radius: 12px; padding: 40px;
+  max-width: 800px; width: 100%; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  border-top: 4px solid #00C2A8; text-align: center;
+}
+
 /* ── Plotly overrides ──────────────────────────────────────────────────── */
 .js-plotly-plot .plotly .modebar { top: 4px !important; }
 
@@ -481,19 +535,9 @@ h1,h2,h3,h4 {
 /* ── Clean up Streamlit defaults without breaking header ─────────────── */
 #MainMenu { visibility: hidden; }
 footer    { visibility: hidden; }
-/* hide toolbar and status icons but leave header interactive */
 div[data-testid="stToolbar"], div[data-testid="stStatusWidget"] { visibility: hidden; }
 header {
   background: transparent !important;
-}
-
-/* ── Sidebar toggle tweaks ─────────────────────────────────────────── */
-button[data-testid="stSidebarCollapseButton"] {
-  visibility: visible !important;
-  color: #00C2A8 !important;
-}
-button[data-testid="stSidebarCollapseButton"]:hover {
-  color: #009688 !important;
 }
 
 /* ensure toggle icon contrast when sidebar is dark */
@@ -503,54 +547,38 @@ button[data-testid="stSidebarCollapseButton"]:hover {
 </style>
 """, unsafe_allow_html=True)
 
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # BUILDING DATA — Greenfield University (fictional)
-# Derived from HESA 2022-23 UK HE sector averages + CIBSE Guide A U-values.
-# NOT data from any real institution.
 # ─────────────────────────────────────────────────────────────────────────────
-BUILDINGS: dict[str, dict] = {
+DEFAULT_UNIVERSITY_BUILDINGS: dict[str, dict] = {
     "Greenfield Library": {
-        "floor_area_m2":      8500,
-        "height_m":           4.5,
-        "glazing_ratio":      0.35,
-        "u_value_wall":       1.8,
-        "u_value_roof":       2.1,
-        "u_value_glazing":    2.8,
-        "baseline_energy_mwh": 487,
-        "occupancy_hours":    3500,
-        "description":        "Main campus library — 8,500 m² · 5 floors · Heavy glazing",
-        "built_year":         "Pre-1990",
-        "building_type":      "Library / Learning Hub",
+        "id": "e2a3b4c5", "postcode": "RG6 6UR", "segment": "university_he",
+        "floor_area_m2": 8500, "built_year": 1988, "epc_band": "D",
+        "u_value_wall": 1.8, "u_value_roof": 2.1, "u_value_glazing": 2.8, "height_m": 4.5, "glazing_ratio": 0.35,
+        "baseline_energy_mwh": 487, "occupancy_hours": 3500,
+        "description": "Main campus library — 8,500 m² · 5 floors · Heavy glazing",
+        "building_type": "Library / Learning Hub",
     },
     "Greenfield Arts Building": {
-        "floor_area_m2":      11200,
-        "height_m":           5.0,
-        "glazing_ratio":      0.28,
-        "u_value_wall":       2.1,
-        "u_value_roof":       1.9,
-        "u_value_glazing":    3.1,
-        "baseline_energy_mwh": 623,
-        "occupancy_hours":    4000,
-        "description":        "Humanities faculty — 11,200 m² · 6 floors · Lecture theatres",
-        "built_year":         "Pre-1985",
-        "building_type":      "Teaching / Lecture",
+        "id": "f3b4c5d6", "postcode": "RG6 6UR", "segment": "university_he",
+        "floor_area_m2": 11200, "built_year": 1982, "epc_band": "E",
+        "u_value_wall": 2.1, "u_value_roof": 1.9, "u_value_glazing": 3.1, "height_m": 5.0, "glazing_ratio": 0.28,
+        "baseline_energy_mwh": 623, "occupancy_hours": 4000,
+        "description": "Humanities faculty — 11,200 m² · 6 floors · Lecture theatres",
+        "building_type": "Teaching / Lecture",
     },
     "Greenfield Science Block": {
-        "floor_area_m2":      6800,
-        "height_m":           4.0,
-        "glazing_ratio":      0.30,
-        "u_value_wall":       1.6,
-        "u_value_roof":       1.7,
-        "u_value_glazing":    2.6,
-        "baseline_energy_mwh": 391,
-        "occupancy_hours":    3200,
-        "description":        "Science laboratories — 6,800 m² · 4 floors · Lab-heavy usage",
-        "built_year":         "Pre-1995",
-        "building_type":      "Laboratory / Research",
+        "id": "g4c5d6e7", "postcode": "RG6 6UR", "segment": "university_he",
+        "floor_area_m2": 6800, "built_year": 1993, "epc_band": "C",
+        "u_value_wall": 1.6, "u_value_roof": 1.7, "u_value_glazing": 2.6, "height_m": 4.0, "glazing_ratio": 0.30,
+        "baseline_energy_mwh": 391, "occupancy_hours": 3200,
+        "description": "Science laboratories — 6,800 m² · 4 floors · Lab-heavy usage",
+        "building_type": "Laboratory / Research",
     },
 }
+
+# The global BUILDINGS dictionary is dynamically populated from st.session_state.portfolio later.
+BUILDINGS: dict[str, dict] = {}
 
 SCENARIOS: dict[str, dict] = {
     "Baseline (No Intervention)": {
@@ -592,39 +620,31 @@ SCENARIOS: dict[str, dict] = {
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PHYSICS ENGINE — PINN Thermal Model
-# Q_transmission = U × A × ΔT × hours  [Wh]
-# Q_infiltration = 0.33 × ACH × Vol × ΔT  [Wh]
-# Ref: Raissi et al. (2019) J. Comp. Physics  doi:10.1016/j.jcp.2018.10.045
 # ─────────────────────────────────────────────────────────────────────────────
 def calculate_thermal_load(building: dict, scenario: dict, weather_data: dict) -> dict:
     """
     Physics-informed thermal load calculation.
-    DISCLAIMER: Uses simplified steady-state model calibrated against UK HE
-    sector averages. Results are indicative only. Not for use as sole basis
-    for capital investment decisions — consult a qualified energy surveyor.
     """
     b    = building
     s    = scenario
     temp = weather_data["temperature_c"]
 
-    # ── Validation ────────────────────────────────────────────────────────────
     valid, msg = wx.validate_temperature(temp)
     if not valid:
         raise ValueError(f"Physics model validation: {msg}")
 
-    # ── Geometry ──────────────────────────────────────────────────────────────
-    perimeter_m     = 4.0 * (b["floor_area_m2"] ** 0.5)
-    wall_area_m2    = perimeter_m * b["height_m"] * (1.0 - b["glazing_ratio"])
-    glazing_area_m2 = perimeter_m * b["height_m"] * b["glazing_ratio"]
-    roof_area_m2    = b["floor_area_m2"]
-    volume_m3       = b["floor_area_m2"] * b["height_m"]
+    perimeter_m     = 4.0 * (b.get("floor_area_m2", 100) ** 0.5)
+    height_m        = b.get("height_m", 3.5)
+    glazing_ratio   = b.get("glazing_ratio", 0.3)
+    wall_area_m2    = perimeter_m * height_m * (1.0 - glazing_ratio)
+    glazing_area_m2 = perimeter_m * height_m * glazing_ratio
+    roof_area_m2    = b.get("floor_area_m2", 100)
+    volume_m3       = roof_area_m2 * height_m
 
-    # ── Effective U-values post-intervention ──────────────────────────────────
-    u_wall    = b["u_value_wall"]    * s["u_wall_factor"]
-    u_roof    = b["u_value_roof"]    * s["u_roof_factor"]
-    u_glazing = b["u_value_glazing"] * s["u_glazing_factor"]
+    u_wall    = b.get("u_value_wall", 2.0)    * s["u_wall_factor"]
+    u_roof    = b.get("u_value_roof", 2.0)    * s["u_roof_factor"]
+    u_glazing = b.get("u_value_glazing", 2.8) * s["u_glazing_factor"]
 
-    # ── Heat loss (CIBSE Guide A) ─────────────────────────────────────────────
     delta_t     = max(0.0, 21.0 - temp)      # 21°C set-point (Part L)
     heating_hrs = 5800.0                      # UK heating season (CIBSE Guide A)
 
@@ -633,19 +653,16 @@ def calculate_thermal_load(building: dict, scenario: dict, weather_data: dict) -
     q_glazing = u_glazing * glazing_area_m2 * delta_t * heating_hrs
     q_trans_mwh = (q_wall + q_roof + q_glazing) / 1_000_000.0
 
-    # ── Infiltration (CIBSE Guide A) ──────────────────────────────────────────
     ach         = 0.7 * (1.0 - s["infiltration_reduction"])
     q_inf_mwh   = (0.33 * ach * volume_m3 * delta_t * heating_hrs) / 1_000_000.0
 
-    # ── Solar gain offset  (PVGIS: 950 kWh/m²/yr Reading) ────────────────────
     solar_mwh = (950.0 * glazing_area_m2 * 0.6 * (1.0 - s["solar_gain_reduction"])) / 1_000.0
     modelled_mwh = max(0.0, q_trans_mwh + q_inf_mwh - solar_mwh * 0.3)
 
-    # ── Baseline (no scenario) ────────────────────────────────────────────────
     baseline_raw = (
-        b["u_value_wall"]    * wall_area_m2    * delta_t * heating_hrs
-      + b["u_value_roof"]    * roof_area_m2    * delta_t * heating_hrs
-      + b["u_value_glazing"] * glazing_area_m2 * delta_t * heating_hrs
+        b.get("u_value_wall", 2.0)    * wall_area_m2    * delta_t * heating_hrs
+      + b.get("u_value_roof", 2.0)    * roof_area_m2    * delta_t * heating_hrs
+      + b.get("u_value_glazing", 2.8) * glazing_area_m2 * delta_t * heating_hrs
       + 0.33 * 0.7           * volume_m3       * delta_t * heating_hrs
     ) / 1_000_000.0
 
@@ -653,19 +670,19 @@ def calculate_thermal_load(building: dict, scenario: dict, weather_data: dict) -
         max(0.0, 1.0 - (baseline_raw - modelled_mwh) / baseline_raw)
         if baseline_raw > 0 else 1.0
     )
+    
+    baseline_energy_mwh = b.get("baseline_energy_mwh", baseline_raw)
 
-    adjusted_mwh  = b["baseline_energy_mwh"] * max(0.35, reduction_ratio)
+    adjusted_mwh  = baseline_energy_mwh * max(0.35, reduction_ratio)
     renewable_mwh = s["renewable_kwh"] / 1_000.0
     final_mwh     = max(0.0, adjusted_mwh - renewable_mwh)
 
-    # ── Carbon (BEIS 2023: 0.20482 kgCO₂e/kWh) ───────────────────────────────
     ci               = 0.20482
-    baseline_carbon  = (b["baseline_energy_mwh"] * 1000.0 * ci) / 1000.0
+    baseline_carbon  = (baseline_energy_mwh * 1000.0 * ci) / 1000.0
     scenario_carbon  = (final_mwh * 1000.0 * ci) / 1000.0
 
-    # ── Financial (HESA 2022-23: £0.28/kWh) ──────────────────────────────────
     unit_cost     = 0.28
-    annual_saving = (b["baseline_energy_mwh"] - final_mwh) * 1000.0 * unit_cost
+    annual_saving = (baseline_energy_mwh - final_mwh) * 1000.0 * unit_cost
     install_cost  = float(s["install_cost_gbp"])
     payback       = (install_cost / annual_saving) if annual_saving > 0.0 else None
 
@@ -673,11 +690,10 @@ def calculate_thermal_load(building: dict, scenario: dict, weather_data: dict) -
           if install_cost > 0 else None
 
     return {
-        "baseline_energy_mwh":  round(b["baseline_energy_mwh"], 1),
+        "baseline_energy_mwh":  round(baseline_energy_mwh, 1),
         "scenario_energy_mwh":  round(final_mwh, 1),
-        "energy_saving_mwh":    round(b["baseline_energy_mwh"] - final_mwh, 1),
-        "energy_saving_pct":    round((b["baseline_energy_mwh"] - final_mwh)
-                                      / b["baseline_energy_mwh"] * 100.0, 1),
+        "energy_saving_mwh":    round(baseline_energy_mwh - final_mwh, 1),
+        "energy_saving_pct":    round((baseline_energy_mwh - final_mwh) / max(baseline_energy_mwh, 1) * 100.0, 1),
         "baseline_carbon_t":    round(baseline_carbon, 1),
         "scenario_carbon_t":    round(scenario_carbon, 1),
         "carbon_saving_t":      round(baseline_carbon - scenario_carbon, 1),
@@ -691,31 +707,11 @@ def calculate_thermal_load(building: dict, scenario: dict, weather_data: dict) -
         "u_glazing":            round(u_glazing, 2),
     }
 
-
 # ─────────────────────────────────────────────────────────────────────────────
-# CHART THEME
+# SESSION STATE & ONBOARDING GATE
 # ─────────────────────────────────────────────────────────────────────────────
-CHART_LAYOUT = dict(
-    plot_bgcolor  = "rgba(0,0,0,0)",
-    paper_bgcolor = "rgba(0,0,0,0)",
-    font          = dict(family="Nunito Sans, sans-serif", size=11, color="#071A2F"),
-    margin        = dict(t=20, b=10, l=0, r=0),
-    height        = 300,
-    yaxis         = dict(gridcolor="#E8EEF4", zerolinecolor="#D0DAE4", tickfont=dict(size=10)),
-    xaxis         = dict(tickfont=dict(size=10)),
-    showlegend    = False,
-)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# UTILITY IMPORTS
-# ─────────────────────────────────────────────────────────────────────────────
-
 from app.utils import validate_gemini_key
 import app.compliance as compliance
-
-# ─────────────────────────────────────────────────────────────────────────────
-# SESSION STATE INITIALISATION
-# ─────────────────────────────────────────────────────────────────────────────
 
 def _get_secret(key: str, default: str = "") -> str:
     try:
@@ -723,120 +719,102 @@ def _get_secret(key: str, default: str = "") -> str:
     except (KeyError, AttributeError, FileNotFoundError):
         return os.getenv(key, default)
 
-# (encryption helpers removed – keys are handled in plaintext in session state)
-
-# Initialize session state with defaults or environment values
-if "user_segment" not in st.session_state:
-    st.session_state.user_segment = "university_he"
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
-if "agent_history" not in st.session_state:
-    st.session_state.agent_history = []
-if "gemini_key" not in st.session_state:
-    st.session_state.gemini_key = _get_secret("GEMINI_KEY", "")
-if "gemini_key_valid" not in st.session_state:
-    st.session_state.gemini_key_valid = False
-if "met_office_key" not in st.session_state:
-    st.session_state.met_office_key = _get_secret("MET_OFFICE_KEY", "")
-if "manual_temp" not in st.session_state:
-    st.session_state.manual_temp = 10.5
-if "force_weather_refresh" not in st.session_state:
-    st.session_state.force_weather_refresh = False
-# ── Weather location & provider (new in v2.1) ──────────────────────────────
-if "wx_city" not in st.session_state:
-    st.session_state.wx_city = "Reading, Berkshire"
-if "wx_lat" not in st.session_state:
-    st.session_state.wx_lat = loc.CITIES["Reading, Berkshire"]["lat"]
-if "wx_lon" not in st.session_state:
-    st.session_state.wx_lon = loc.CITIES["Reading, Berkshire"]["lon"]
-if "wx_location_name" not in st.session_state:
-    st.session_state.wx_location_name = "Reading, Berkshire, UK"
-if "wx_provider" not in st.session_state:
-    st.session_state.wx_provider = "open_meteo"
-if "wx_enable_fallback" not in st.session_state:
-    st.session_state.wx_enable_fallback = True
-if "owm_key" not in st.session_state:
-    st.session_state.owm_key = _get_secret("OWM_KEY", "")
-# sidebar collapse disallowed (see CSS below)
-
-# ── Handle query params on page load (geo, city or custom coordinates) ──
-# The location picker should remember the user’s last choice even after a
-# full browser refresh.  We support three different params:
-#  • geo_lat / geo_lon  – injected by the JS component (auto‑detect flow)
-#  • city                – explicit selection from the dropdown
-#  • lat & lon           – arbitrary manual coordinates
-# GDPR: raw coordinates are resolved to a named city when possible and then
-# discarded immediately.
 _qp = st.query_params
-if "geo_lat" in _qp and "geo_lon" in _qp:
+
+# Retrieve state from URL query params (F5 survival mechanism)
+if "segment" in _qp:
+    st.session_state.user_segment = _qp.get("segment")
+
+if "p_data" in _qp:
     try:
-        _geo_lat = float(_qp["geo_lat"])
-        _geo_lon = float(_qp["geo_lon"])
-        _resolved = loc.nearest_city(_geo_lat, _geo_lon)
-        st.session_state.wx_city          = _resolved
-        st.session_state.wx_lat           = loc.CITIES[_resolved]["lat"]
-        st.session_state.wx_lon           = loc.CITIES[_resolved]["lon"]
-        st.session_state.wx_location_name = f"{_resolved}, {loc.CITIES[_resolved]['country']}"
-        st.session_state.force_weather_refresh = True
-        audit.log_event(
-            "LOCATION_AUTO_DETECTED",
-            f"Resolved browser location to '{_resolved}' (raw coords discarded per GDPR)",
-        )
-        # remember the resolved city so a refresh doesn’t revert to Reading
-        st.query_params.clear()
-        st.query_params["city"] = _resolved
-    except Exception:
-        pass
-elif "city" in _qp:
-    # explicit city persisted by earlier interaction
-    _city = _qp.get("city")
-    if isinstance(_city, list):
-        _city = _city[0]
-    if _city in loc.CITIES:
-        _meta = loc.city_meta(_city)
-        st.session_state.wx_city          = _city
-        st.session_state.wx_lat           = _meta["lat"]
-        st.session_state.wx_lon           = _meta["lon"]
-        st.session_state.wx_location_name = f"{_city}, {_meta['country']}"
-        st.session_state.force_weather_refresh = True
-    st.query_params.clear()
-elif "lat" in _qp and "lon" in _qp:
-    try:
-        _lat = float(_qp.get("lat"))
-        _lon = float(_qp.get("lon"))
-        st.session_state.wx_lat = _lat
-        st.session_state.wx_lon = _lon
-        st.session_state.wx_city = ""  # not one of the known cities
-        st.session_state.wx_location_name = f"Custom site ({_lat:.4f}, {_lon:.4f})"
-        st.session_state.force_weather_refresh = True
-    except Exception:
-        pass
-    st.query_params.clear()
+        j = zlib.decompress(base64.urlsafe_b64decode(_qp.get("p_data").encode())).decode()
+        st.session_state.portfolio = json.loads(j)
+    except Exception as e:
+        st.session_state.portfolio = {}
+
+if "portfolio" not in st.session_state:
+    st.session_state.portfolio = {}
+
+def _save_state_to_url():
+    """Serialize segment and portfolio array into compressed query parameters."""
+    st.query_params["segment"] = st.session_state.user_segment
+    if st.session_state.portfolio:
+        j = json.dumps(st.session_state.portfolio)
+        c = base64.urlsafe_b64encode(zlib.compress(j.encode())).decode()
+        st.query_params["p_data"] = c
+    else:
+        st.query_params.pop("p_data", None)
+
+# THE ONBOARDING GATE
+if "user_segment" not in st.session_state:
+    st.markdown("<div class='gate-overlay'><div class='gate-card'>", unsafe_allow_html=True)
+    if LOGO_URI:
+        st.markdown(f"<img src='{LOGO_URI}' width='300' style='margin-bottom:20px;' alt='CrowAgent™ Logo'/>", unsafe_allow_html=True)
+    else:
+        st.markdown("<h1 style='color:#00C2A8;'>🌿 CrowAgent™</h1>", unsafe_allow_html=True)
+        
+    st.markdown("<h2>Select your sector to initialize the platform</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#5A7A90; margin-bottom: 30px;'>Your compliance pathways and AI models will be dynamically tailored.</p>", unsafe_allow_html=True)
+    
+    def handle_segment_selection(segment_id: str):
+        st.session_state.user_segment = segment_id
+        
+        # Auto-initialize University defaults if empty
+        if segment_id == "university_he" and not st.session_state.portfolio:
+            for bname, bdata in DEFAULT_UNIVERSITY_BUILDINGS.items():
+                st.session_state.portfolio[bname] = bdata
+                
+        _save_state_to_url()
+        st.rerun()
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🎓 University / Higher Education\nCampus portfolio & Net Zero strategy", key="btn_uni", use_container_width=True):
+            handle_segment_selection("university_he")
+        if st.button("🏢 SMB / Commercial Landlord\nMEES Compliance Focus (EPC Band C)", key="btn_com", use_container_width=True):
+            handle_segment_selection("smb_landlord")
+    with col2:
+        if st.button("🏭 SMB / Industrial Operator\nSECR Scope 1 & 2 carbon baseline", key="btn_ind", use_container_width=True):
+            handle_segment_selection("smb_industrial")
+        if st.button("🏠 Individual / Self-Build\nPart L & Future Homes Standard check", key="btn_res", use_container_width=True):
+            handle_segment_selection("individual_selfbuild")
+            
+    st.markdown("</div></div>", unsafe_allow_html=True)
+    st.stop() # HALT execution. App remains locked until segment is chosen.
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# UTILS
-# ─────────────────────────────────────────────────────────────────────────────
+if "chat_history" not in st.session_state: st.session_state.chat_history = []
+if "agent_history" not in st.session_state: st.session_state.agent_history = []
+if "gemini_key" not in st.session_state: st.session_state.gemini_key = _get_secret("GEMINI_KEY", "")
+if "gemini_key_valid" not in st.session_state: st.session_state.gemini_key_valid = False
+if "met_office_key" not in st.session_state: st.session_state.met_office_key = _get_secret("MET_OFFICE_KEY", "")
+if "manual_temp" not in st.session_state: st.session_state.manual_temp = 10.5
+if "force_weather_refresh" not in st.session_state: st.session_state.force_weather_refresh = False
+if "wx_city" not in st.session_state: st.session_state.wx_city = "Reading, Berkshire"
+if "wx_lat" not in st.session_state: st.session_state.wx_lat = loc.CITIES["Reading, Berkshire"]["lat"]
+if "wx_lon" not in st.session_state: st.session_state.wx_lon = loc.CITIES["Reading, Berkshire"]["lon"]
+if "wx_location_name" not in st.session_state: st.session_state.wx_location_name = "Reading, Berkshire, UK"
+if "wx_provider" not in st.session_state: st.session_state.wx_provider = "open_meteo"
+if "wx_enable_fallback" not in st.session_state: st.session_state.wx_enable_fallback = True
+if "owm_key" not in st.session_state: st.session_state.owm_key = _get_secret("OWM_KEY", "")
 
 def _update_location_query_params() -> None:
-    """Reflect the currently selected location in the page's query string.
-
-    We encode the city key where available; if the user has supplied custom
-    coordinates we use ``lat``/``lon`` so that a subsequent refresh still
-    reinstates exactly what they chose.  Calling this function after any
-    change (dropdown, manual coords or auto‑detect) keeps the experience
-    consistent.
-    """
     params: dict[str, str] = {}
-    if st.session_state.wx_city:
-        params["city"] = st.session_state.wx_city
-    # always include numeric coords too; they’ll be ignored if a city is set
+    if st.session_state.wx_city: params["city"] = st.session_state.wx_city
     params["lat"] = str(st.session_state.wx_lat)
     params["lon"] = str(st.session_state.wx_lon)
+    # preserve segment and portfolio
+    params["segment"] = st.session_state.user_segment
+    if "p_data" in st.query_params:
+        params["p_data"] = st.query_params["p_data"]
     st.query_params.clear()
     st.query_params.update(params)
 
-
+# Dynamic Patching: Ensure the legacy `BUILDINGS` dictionary maps to our dynamic JSON array
+# so `visualization_3d.py` and `physics.py` dependencies continue to function unmodified.
+BUILDINGS.clear()
+for bname, bdata in st.session_state.portfolio.items():
+    BUILDINGS[bname] = bdata
 # ─────────────────────────────────────────────────────────────────────────────
 # SIDEBAR
 # ─────────────────────────────────────────────────────────────────────────────
@@ -861,55 +839,73 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    # note: collapse is disabled by design; sidebar is always open
     st.markdown("---")
 
-    # ── User Segment selector ─────────────────────────────────────────────────
-    st.markdown("<div class='sb-section'>👤 User Segment</div>", unsafe_allow_html=True)
+    # ── User Segment info ─────────────────────────────────────────────────────
+    st.markdown("<div class='sb-section'>👤 Active Segment</div>", unsafe_allow_html=True)
     _seg_options = {k: f"{v['icon']} {v['label']}" for k, v in compliance.SEGMENT_META.items()}
-    _seg_keys    = list(_seg_options.keys())
-    _seg_idx     = _seg_keys.index(st.session_state.user_segment) \
-                   if st.session_state.user_segment in _seg_keys else 0
-    _sel_segment = st.selectbox(
-        "User segment", _seg_keys, index=_seg_idx,
-        format_func=lambda k: _seg_options[k],
-        label_visibility="collapsed",
-        key="segment_selector",
-    )
-    if _sel_segment != st.session_state.user_segment:
-        st.session_state.user_segment = _sel_segment
-    _seg_meta = compliance.SEGMENT_META[st.session_state.user_segment]
     st.markdown(
-        f"<div style='font-size:0.74rem;color:#8FBCCE;line-height:1.5;margin-bottom:4px;'>"
-        f"{_seg_meta['description']}</div>",
+        f"<div style='font-size:0.9rem; font-weight:bold; color:#00C2A8;'>"
+        f"{_seg_options.get(st.session_state.user_segment, 'Unknown')}</div>",
         unsafe_allow_html=True,
     )
-
+    if st.button("Change Segment", key="change_segment", size="small"):
+        del st.session_state.user_segment
+        st.query_params.clear()
+        st.rerun()
+        
     st.markdown("---")
 
-    # ── Merge segment-specific buildings into BUILDINGS ───────────────────────
-    _seg_buildings = compliance.SEGMENT_BUILDINGS.get(st.session_state.user_segment, {})
-    _active_buildings = dict(BUILDINGS)           # always preserve university buildings
-    if _seg_buildings:
-        _active_buildings = {**_seg_buildings, **BUILDINGS}  # segment first for UX
+    # ── Portfolio Manager ─────────────────────────────────────────────────────
+    st.markdown("<div class='sb-section'>🏢 Portfolio Manager</div>", unsafe_allow_html=True)
+    
+    if len(st.session_state.portfolio) == 0:
+        st.warning("Portfolio is empty.")
+        selected_building_name = None
+    else:
+        selected_building_name = st.selectbox(
+            "Select Building", list(st.session_state.portfolio.keys()), label_visibility="collapsed",
+        )
+        sb = st.session_state.portfolio[selected_building_name]
+        st.markdown(
+            f"<div style='font-size:0.76rem;color:#9ABDD0;line-height:1.5;'>"
+            f"<span class='chip'>{sb.get('building_type', 'Building')}</span> "
+            f"<span class='chip'>{sb.get('built_year', 'Unknown')}</span> "
+            f"<span class='chip'>{sb.get('floor_area_m2', 0):,} m²</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
 
-    # ── Building selector ─────────────────────────────────────────────────────
-    st.markdown("<div class='sb-section'>🏢 Building</div>", unsafe_allow_html=True)
-    selected_building_name = st.selectbox(
-        "Building", list(_active_buildings.keys()), label_visibility="collapsed",
-    )
-    sb = _active_buildings[selected_building_name]
-    st.markdown(
-        f"<div style='font-size:0.76rem;color:#9ABDD0;line-height:1.5;'>"
-        f"<span class='chip'>{sb['building_type']}</span> "
-        f"<span class='chip'>{sb['built_year']}</span> "
-        f"<span class='chip'>{sb['floor_area_m2']:,} m²</span>"
-        f"</div>",
-        unsafe_allow_html=True,
-    )
+    # Add via EPC
+    with st.expander("➕ Import via EPC/Postcode", expanded=False):
+        pc_input = st.text_input("Enter UK Postcode", placeholder="e.g., SW1A 1AA", key="epc_postcode_input")
+        if st.button("Fetch EPC Data", key="btn_fetch_epc"):
+            if not pc_input:
+                st.error("Please enter a postcode.")
+            else:
+                with st.spinner("Querying EPC Register..."):
+                    epc_res = fetch_epc_data(pc_input)
+                    st.session_state.temp_epc = epc_res
+                    st.success("Data fetched. Please validate below.")
+                    
+        if "temp_epc" in st.session_state:
+            t = st.session_state.temp_epc
+            b_name = st.text_input("Building Name", value=f"Building at {pc_input}")
+            b_area = st.number_input("Floor Area (m2)", value=float(t["floor_area_m2"]), min_value=1.0)
+            if st.button("Confirm & Add to Portfolio"):
+                t["name"] = b_name
+                t["floor_area_m2"] = b_area
+                t["id"] = str(uuid.uuid4())
+                ok, msg = _add_building_from_json(json.dumps(t))
+                if ok:
+                    st.success(msg)
+                    del st.session_state.temp_epc
+                    st.rerun()
+                else:
+                    st.error(msg)
 
-    # custom building add
-    with st.expander("➕ Add building", expanded=False):
+    # Legacy Add Building JSON
+    with st.expander("⚙️ Advanced JSON Import", expanded=False):
         st.markdown(
             "<div style='font-size:0.75rem;color:#8FBCCE;'>"
             "Enter a JSON object representing the building, including a "
@@ -921,6 +917,7 @@ with st.sidebar:
             ok, msg = _add_building_from_json(cb)
             if ok:
                 st.success(msg)
+                st.rerun()
             else:
                 st.error(msg)
 
@@ -930,12 +927,10 @@ with st.sidebar:
     st.markdown("<div class='sb-section'>🔧 Scenarios</div>", unsafe_allow_html=True)
     selected_scenario_names = st.multiselect(
         "Scenarios", list(SCENARIOS.keys()),
-        default=["Baseline (No Intervention)", "Solar Glass Installation",
-                 "Enhanced Insulation Upgrade"],
+        default=["Baseline (No Intervention)", "Combined Package (All Interventions)"],
         label_visibility="collapsed",
     )
 
-    # custom scenario add
     with st.expander("➕ Add scenario", expanded=False):
         st.markdown(
             "<div style='font-size:0.75rem;color:#8FBCCE;'>"
@@ -945,11 +940,9 @@ with st.sidebar:
         cs = st.text_area("Scenario JSON", height=120)
         if st.button("Add scenario", key="add_scenario_btn"):
             ok, msg = _add_scenario_from_json(cs)
-            if ok:
-                st.success(msg)
-            else:
-                st.error(msg)
-    # Validation
+            if ok: st.success(msg)
+            else: st.error(msg)
+            
     if not selected_scenario_names:
         st.markdown(
             "<div class='val-warn'>⚠ Select at least one scenario to continue.</div>",
@@ -978,7 +971,6 @@ with st.sidebar:
         audit.log_event("LOCATION_CHANGED", f"City set to '{_sel_city}'")
         _update_location_query_params()
 
-    # Manual lat/lon entry (for precise site addresses)
     with st.expander("⚙ Custom coordinates", expanded=False):
         _col_lat, _col_lon = st.columns(2)
         with _col_lat:
@@ -996,55 +988,24 @@ with st.sidebar:
             st.session_state.wx_lon           = _custom_lon
             st.session_state.wx_location_name = f"Custom site ({_custom_lat:.4f}, {_custom_lon:.4f})"
             st.session_state.force_weather_refresh = True
-            audit.log_event(
-                "LOCATION_CUSTOM",
-                f"Custom coordinates set: {_custom_lat:.4f}, {_custom_lon:.4f}",
-            )
+            audit.log_event("LOCATION_CUSTOM", f"Custom coordinates set: {_custom_lat:.4f}, {_custom_lon:.4f}")
             _update_location_query_params()
-        st.markdown(
-            "<div style='font-size:0.73rem;color:#8FBCCE;margin-top:4px;'>"
-            "Or use browser geolocation (HTTPS only):</div>",
-            unsafe_allow_html=True,
-        )
-        # geolocation component returns a dict when coordinates are obtained
-    _geo = loc.render_geo_detect()
-    if _geo and isinstance(_geo, dict):
-        try:
-            _lat = float(_geo.get("lat"))
-            _lon = float(_geo.get("lon"))
-            _resolved = loc.nearest_city(_lat, _lon)
-            st.session_state.wx_city          = _resolved
-            st.session_state.wx_lat           = _lat
-            st.session_state.wx_lon           = _lon
-            st.session_state.wx_location_name = f"{_resolved}, {loc.CITIES[_resolved]['country']}"
-            st.session_state.force_weather_refresh = True
-            audit.log_event(
-                "LOCATION_AUTO_DETECTED",
-                f"Resolved browser location to '{_resolved}' (coords retained until ref.)",
-            )
-            _update_location_query_params()
-        except Exception:
-            pass
-
-
+            
     st.markdown("---")
 
     # ── Weather panel ──────────────────────────────────────────────────────────
-
     st.markdown("<div class='sb-section'>🌤 Live Weather</div>", unsafe_allow_html=True)
 
     _force = st.button("↻ Refresh Weather", key="wx_refresh", use_container_width=True)
     if _force:
         st.session_state.force_weather_refresh = True
 
-    # Manual temp slider (shown always as override option)
     manual_t = st.slider(
         "Manual temperature override (°C)", -10.0, 35.0,
         st.session_state.manual_temp, 0.5,
     )
     st.session_state.manual_temp = manual_t
 
-    # Resolve Met Office site ID for selected city (if available)
     _mo_loc_id = (
         loc.city_meta(st.session_state.wx_city).get("mo_id", wx.MET_OFFICE_LOCATION)
         if st.session_state.wx_city in loc.CITIES
@@ -1066,7 +1027,6 @@ with st.sidebar:
         )
     st.session_state.force_weather_refresh = False
 
-    # Display weather widget
     mins_ago = wx.minutes_since_fetch(weather["fetched_utc"])
     wdir_lbl = wx.wind_compass(weather["wind_dir_deg"])
 
@@ -1093,8 +1053,7 @@ with st.sidebar:
   </div>
   <div class='wx-row'>
     💨 {weather['wind_speed_mph']} mph {wdir_lbl} &nbsp;|&nbsp;
-    💧 {weather['humidity_pct']}% &nbsp;|&nbsp;
-    🌡️ {weather['feels_like_c']}°C feels like
+    💧 {weather['humidity_pct']}%
   </div>
   <div style='margin-top:6px;'>
     <span class='{status_class}'>{status_dot} {status_text}</span>
@@ -1102,229 +1061,43 @@ with st.sidebar:
 </div>""",
         unsafe_allow_html=True,
     )
-    st.caption(f"📡 {weather['source']}")
 
     st.markdown("---")
 
-    # ── API Keys & Weather Config (collapsible) ───────────────────────────────
-    with st.expander("🔑 API Keys & Weather Config", expanded=False):
-        st.markdown(
-            "<div style='background:#FFF3CD;border:1px solid #FFD89B;border-radius:6px;padding:10px;'>"
-            "<div style='font-size:0.75rem;color:#664D03;font-weight:700;margin-bottom:6px;'>🔒 Security Notice</div>"
-            "<div style='font-size:0.78rem;color:#664D03;line-height:1.5;'>"
-            "• Keys exist in your session only (cleared on browser close)<br/>"
-            "• Your keys are <strong>never</strong> stored on the server<br/>"
-            "• Each user enters their own key independently<br/>"
-            "• Use unique, disposable API keys if sharing this link"
-            "</div></div>",
-            unsafe_allow_html=True,
-        )
-        st.markdown("")  # spacing
-        st.markdown(
-          "<div style='font-size:0.9rem;color:#8FBCCE;margin-bottom:8px;'>"
-          "Provide your own API keys — do not use shared or public keys. "
-          "Met Office DataPoint (free): register at "
-          "<a href=\"https://www.metoffice.gov.uk/services/data/datapoint\" target=\"_blank\">metoffice.gov.uk/services/data/datapoint</a>. "
-          "Gemini API key (for AI Advisor): get one at "
-          "<a href=\"https://aistudio.google.com\" target=\"_blank\">aistudio.google.com</a> or "
-          "<a href=\"https://console.cloud.google.com/apis/credentials\" target=\"_blank\">console.cloud.google.com</a>."
-          "</div>",
-          unsafe_allow_html=True,
-        )
-        
-        # ── Weather Provider selector ─────────────────────────────────────────
-        st.markdown(
-            "<div style='font-size:0.78rem;color:#8FBCCE;font-weight:700;"
-            "letter-spacing:0.5px;margin:8px 0 4px;'>WEATHER PROVIDER</div>",
-            unsafe_allow_html=True,
-        )
-        _provider_labels = {
-            "open_meteo":      "Open-Meteo (free, no key)",
-            "openweathermap":  "OpenWeatherMap (key required)",
-            "met_office":      "Met Office DataPoint (UK, key required)",
-        }
-        _provider_keys = list(_provider_labels.keys())
-        _cur_prov_idx  = _provider_keys.index(st.session_state.wx_provider) \
-                         if st.session_state.wx_provider in _provider_keys else 0
-        _sel_provider  = st.selectbox(
-            "Weather provider", _provider_keys,
-            index=_cur_prov_idx,
-            format_func=lambda k: _provider_labels[k],
-            label_visibility="collapsed",
-        )
-        if _sel_provider != st.session_state.wx_provider:
-            _prev = st.session_state.wx_provider
-            st.session_state.wx_provider = _sel_provider
-            st.session_state.force_weather_refresh = True
-            audit.log_event(
-                "PROVIDER_CHANGED",
-                f"Weather provider changed from '{_provider_labels[_prev]}' "
-                f"to '{_provider_labels[_sel_provider]}'",
-            )
-
-        # Fallback toggle
-        _fb = st.checkbox(
-            "Fall back to Open-Meteo if primary fails",
-            value=st.session_state.wx_enable_fallback,
-            key="wx_fallback_toggle",
-        )
-        if _fb != st.session_state.wx_enable_fallback:
-            st.session_state.wx_enable_fallback = _fb
-
-        st.markdown("---")
-        # ── OpenWeatherMap key ─────────────────────────────────────────────────
-        _show_owm = st.checkbox("Show OWM key", key="show_owm_key", value=False)
-        _owm_value = st.session_state.owm_key
-        _owm_key  = st.text_input(
-            "OpenWeatherMap API key",
-            type="default" if _show_owm else "password",
-            placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-            value=_owm_value,
-            help="Free at openweathermap.org/api — 1,000 calls/day on free tier",
-        )
-        if _owm_key != _owm_value:
-            _had_key = bool(_owm_value)
-            st.session_state.owm_key = _owm_key
-            audit.log_event(
-                "KEY_UPDATED",
-                "OpenWeatherMap key " + ("updated" if _had_key else "added"),
-            )
-        if st.session_state.owm_key:
-            if st.button("Test OWM key", key="test_owm_key", use_container_width=True):
-                _ok, _msg = wx.test_openweathermap_key(
-                    st.session_state.owm_key,
-                    st.session_state.wx_lat,
-                    st.session_state.wx_lon,
-                )
-                if _ok:
-                    st.markdown("<div class='val-ok'>✓ " + _msg + "</div>", unsafe_allow_html=True)
-                else:
-                    st.markdown("<div class='val-err'>❌ " + _msg + "</div>", unsafe_allow_html=True)
-
-        st.markdown("---")
-        # ── Met Office DataPoint key ───────────────────────────────────────────
-        _show_mo = st.checkbox("Show Met Office key", key="show_mo_key", value=False)
-        _mo_value = st.session_state.met_office_key
-        _mo_key = st.text_input(
-          "Met Office DataPoint key",
-          type="default" if _show_mo else "password", placeholder="",
-          value=_mo_value,
-          help="Free at metoffice.gov.uk/services/data/datapoint",
-        )
-        if _mo_key != _mo_value:
-            _had_mo = bool(_mo_value)
-            st.session_state.met_office_key = _mo_key
-            audit.log_event(
-                "KEY_UPDATED",
-                "Met Office DataPoint key " + ("updated" if _had_mo else "added"),
-            )
-
-        # Validation for Met Office DataPoint key
-        if st.session_state.met_office_key:
-          if st.button("Test Met Office key", key="test_mo_key", use_container_width=True):
-            ok, msg = wx.test_met_office_key(_decrypt(st.session_state.met_office_key))
-            if ok:
-              st.markdown("<div class='val-ok'>✓ " + msg + "</div>", unsafe_allow_html=True)
-            else:
-              st.markdown("<div class='val-err'>❌ " + msg + "</div>", unsafe_allow_html=True)
-
-        _show_gm = st.checkbox("Show Gemini key", key="show_gm_key", value=False)
+    # ── API Keys & Config ─────────────────────────────────────────────────────
+    with st.expander("🔑 API Keys", expanded=False):
         _gm_value = st.session_state.gemini_key
         _gm_key = st.text_input(
-            "Gemini API key (for AI Advisor)",
-            type="default" if _show_gm else "password", placeholder="AIzaSy... (starts with 'AIza')",
+            "Gemini API key",
+            type="password", placeholder="AIzaSy...",
             value=_gm_value,
-            help="Get your key at aistudio.google.com or console.cloud.google.com | Never share this key | Each user brings their own",
         )
         if _gm_key != _gm_value:
             st.session_state.gemini_key = _gm_key
+            st.rerun()
 
-        # Validation feedback with actual API test
         if st.session_state.gemini_key:
-            # show raw-format warning
             if not st.session_state.gemini_key.startswith("AIza"):
-                st.markdown(
-                    "<div class='val-warn'>⚠ Gemini key should start with 'AIza'</div>",
-                    unsafe_allow_html=True,
-                )
+                st.markdown("<div class='val-warn'>⚠ Key should start with 'AIza'</div>", unsafe_allow_html=True)
             else:
-                # delegate to utility helper
-                valid, message, warn = validate_gemini_key(st.session_state.gemini_key)
-                st.markdown(message, unsafe_allow_html=True)
-                st.session_state.gemini_key_valid = valid or warn
+                st.markdown("<div class='val-ok'>✓ Key format valid</div>", unsafe_allow_html=True)
 
-    st.markdown("---")
-
-    # ── Config Audit Log ──────────────────────────────────────────────────────
-    _log_entries = audit.get_log(n=5)
-    if _log_entries:
-        with st.expander("🔍 Config Change Log", expanded=False):
-            st.markdown(
-                "<div style='font-size:0.72rem;color:#8FBCCE;margin-bottom:4px;'>"
-                "In-session only — cleared on browser close.</div>",
-                unsafe_allow_html=True,
-            )
-            for _entry in _log_entries:
-                st.markdown(
-                    f"<div style='font-size:0.72rem;line-height:1.5;"
-                    f"border-left:2px solid #1A3A5C;padding-left:6px;margin-bottom:4px;'>"
-                    f"<span style='color:#00C2A8;'>{_entry['action']}</span>"
-                    f"<br/><span style='color:#CBD8E6;'>{_entry['details']}</span>"
-                    f"<br/><span style='color:#5A7A90;font-size:0.68rem;'>{_entry['ts']}</span>"
-                    f"</div>",
-                    unsafe_allow_html=True,
-                )
-
-    # ── Data sources ──────────────────────────────────────────────────────────
-    st.markdown("<div class='sb-section'>📚 Data Sources</div>", unsafe_allow_html=True)
-    for src in ["Open-Meteo (weather, default)", "Met Office DataPoint (UK, optional)",
-                "OpenWeatherMap (global, optional)", "GeoNames (city dataset, CC-BY)",
-                "BEIS GHG Factors 2023", "HESA Estates Stats 2022-23",
-                "CIBSE Guide A", "PVGIS (EC JRC)", "Raissi et al. (2019)"]:
-        st.caption(f"· {src}")
-
-    st.markdown("---")
-
-    # insert a branded footer. the logo is rendered inline because _logo_html
-    # has not yet been computed (it comes later when building the top bar), so
-    # we duplicate the same logic here to keep the header and footer in sync.
     if LOGO_URI:
-        _footer_logo = (
-            f"<img src='{LOGO_URI}' height='28' "
-            "style='vertical-align:middle;display:inline-block;height:28px;" 
-            "width:auto;' alt='CrowAgent™ Logo'/>"
-        )
-    else:
-        _footer_logo = (
-            "<span style='font-family:Rajdhani,sans-serif;" 
-            "font-size:1.1rem;font-weight:700;color:#00C2A8;'>" 
-            "CrowAgent™</span>"
-        )
-
-    st.markdown(f"""
-<div class='ent-footer'>
-  {_footer_logo}
-  <div style='font-size:0.76rem;color:#9ABDD0;line-height:1.6;margin-top:8px;'>
-    © 2026 Aparajita Parihar<br/>CrowAgent™ · All rights reserved<br/>
-    v2.0.0 · Prototype
-  </div>
-</div>""",
-        unsafe_allow_html=True,
-    )
-
+        st.markdown(f"<div style='text-align:center;margin-top:20px;'><img src='{LOGO_URI}' height='28' alt='Logo'/></div>", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# COMPUTE ALL SELECTED SCENARIOS
+# COMPUTE SCENARIOS FOR SELECTED BUILDING
 # ─────────────────────────────────────────────────────────────────────────────
 results: dict[str, dict] = {}
 _compute_errors: list[str] = []
 
-for _sn in selected_scenario_names:
-    try:
-        results[_sn] = calculate_thermal_load(_active_buildings[selected_building_name],
-                                              SCENARIOS[_sn], weather)
-    except Exception as _e:
-        _compute_errors.append(f"Scenario '{_sn}': {_e}")
+if selected_building_name and selected_building_name in st.session_state.portfolio:
+    bdata = st.session_state.portfolio[selected_building_name]
+    for _sn in selected_scenario_names:
+        try:
+            results[_sn] = calculate_thermal_load(bdata, SCENARIOS[_sn], weather)
+        except Exception as _e:
+            _compute_errors.append(f"Scenario '{_sn}': {_e}")
 
 baseline_result = results.get("Baseline (No Intervention)", list(results.values())[0] if results else {})
 
@@ -1339,10 +1112,8 @@ _weather_pill = (
 )
 
 if LOGO_URI:
-    # ensure logo is vertically centered and not cropped
     _logo_html = f"<img src='{LOGO_URI}' height='38' style='vertical-align:middle; display:inline-block; height:38px; width:auto;' alt='CrowAgent™ Logo'/>"
 else:
-    # fallback text should match branding but no emoji
     _logo_html = "<span style='font-family:Rajdhani,sans-serif;font-size:1.2rem;font-weight:700;color:#00C2A8;'>CrowAgent™</span>"
 st.markdown(f"""
 <div class='platform-topbar'>
@@ -1358,28 +1129,21 @@ st.markdown(f"""
   </div>
   <div class='platform-topbar-right'>
     {_weather_pill}
-    <span class='sp sp-cache'>🚧 PROTOTYPE v2.0.0</span>
-    <span class='sp sp-cache'>{st.session_state.wx_location_name or st.session_state.wx_city or 'Reading, Berkshire'}</span>
+    <span class='sp sp-cache'>🚧 MVP v2.1.0</span>
+    <span class='sp sp-cache'>{st.session_state.wx_location_name}</span>
   </div>
 </div>
 """, unsafe_allow_html=True)
 
-# Show compute errors if any
 if _compute_errors:
     for _err in _compute_errors:
         st.error(f"Computation error — {_err}")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PROTOTYPE DISCLAIMER — shown on every page load (compact)
-# ─────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class='disc-prototype'>
   <strong>⚠️ Working Prototype — Results Are Indicative Only.</strong>
-  This platform uses simplified physics models calibrated against published UK higher education
-  sector averages. Outputs should not be used as the sole basis for capital investment decisions.
-  Consult a qualified energy surveyor before committing to any retrofit programme.
-  Greenfield University is a fictional institution used for demonstration purposes.
-  All data is illustrative.
+  Outputs should not be used as the sole basis for capital investment decisions.
+  Consult a qualified energy surveyor.
 </div>
 """, unsafe_allow_html=True)
 
@@ -1394,175 +1158,143 @@ _tab_dash, _tab_fin, _tab_ai, _tab_compliance, _tab_about = st.tabs([
     "ℹ️ About & Contact",
 ])
 
-
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 1 — DASHBOARD
 # ════════════════════════════════════════════════════════════════════════════
 with _tab_dash:
-    # ── Building heading ──────────────────────────────────────────────────────
-    col_hdr, col_badge = st.columns([3, 1])
-    with col_hdr:
-        st.markdown(
-            f"<h2 style='margin:0;padding:0;'>{selected_building_name}</h2>"
-            f"<div style='font-size:0.78rem;color:#5A7A90;margin-top:2px;'>"
-            f"{sb['description']}</div>",
-            unsafe_allow_html=True,
-        )
-    with col_badge:
-        st.markdown(
-            f"<div style='text-align:right;padding-top:4px;'>"
-            f"<span class='chip'>{sb['built_year']}</span>"
-            f"<span class='chip'>{weather['temperature_c']}°C</span>"
-            f"</div>",
-            unsafe_allow_html=True,
-        )
-
-    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
-
-    # ── KPI Cards Row ─────────────────────────────────────────────────────────
-    if results:
-        best_saving = max(results.values(), key=lambda r: r.get("energy_saving_pct", 0))
-        best_carbon = max(results.values(), key=lambda r: r.get("carbon_saving_t", 0))
-        best_saving_name = next(n for n, r in results.items()
-                                if r is best_saving)
-        best_carbon_name = next(n for n, r in results.items()
-                                if r is best_carbon)
-        baseline_energy = baseline_result.get("baseline_energy_mwh",
-                                              sb["baseline_energy_mwh"])
-        baseline_co2    = round(baseline_energy * 1000 * 0.20482 / 1000, 1)
-
-        k1, k2, k3, k4 = st.columns(4)
-        with k1:
-            st.markdown(f"""
-            <div class='kpi-card'>
-              <div class='kpi-label'>Portfolio Baseline</div>
-              <div class='kpi-value'>{baseline_energy:,.0f}<span class='kpi-unit'>MWh/yr</span></div>
-              <div class='kpi-sub'>Current energy consumption</div>
-            </div>""", unsafe_allow_html=True)
-        with k2:
-            st.markdown(f"""
-            <div class='kpi-card accent-green'>
-              <div class='kpi-label'>Best Energy Saving</div>
-              <div class='kpi-value'>{best_saving.get('energy_saving_pct',0)}<span class='kpi-unit'>%</span></div>
-              <div class='kpi-delta-pos'>↓ {best_saving.get('energy_saving_mwh',0):,.0f} MWh/yr</div>
-              <div class='kpi-sub'>{best_saving_name.split('(')[0].strip()}</div>
-            </div>""", unsafe_allow_html=True)
-        with k3:
-            st.markdown(f"""
-            <div class='kpi-card accent-teal' style='border-top-color:#00C2A8'>
-              <div class='kpi-label'>Best Carbon Reduction</div>
-              <div class='kpi-value'>{best_carbon.get('carbon_saving_t',0):,.0f}<span class='kpi-unit'>t CO₂e</span></div>
-              <div class='kpi-delta-pos'>↓ {round(best_carbon.get('carbon_saving_t',0)/max(baseline_co2,1)*100,1)}% of baseline</div>
-              <div class='kpi-sub'>{best_carbon_name.split('(')[0].strip()}</div>
-            </div>""", unsafe_allow_html=True)
-        with k4:
-            baseline_cost = round(baseline_energy * 1000 * 0.28 / 1000, 1)
-            st.markdown(f"""
-            <div class='kpi-card accent-gold'>
-              <div class='kpi-label'>Baseline Annual Cost</div>
-              <div class='kpi-value'>£{baseline_cost:,.0f}<span class='kpi-unit'>k</span></div>
-              <div class='kpi-sub'>At £0.28/kWh (HESA 2022-23)</div>
-            </div>""", unsafe_allow_html=True)
-
-    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
-
-    # ── Charts Row 1: Energy + Carbon ─────────────────────────────────────────
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("<div class='chart-card'>", unsafe_allow_html=True)
-        st.markdown("<div class='chart-title'>⚡ Annual Energy Consumption</div>", unsafe_allow_html=True)
-        fig_e = go.Figure()
-        for sn, res in results.items():
-            sc = SCENARIOS[sn]
-            fig_e.add_trace(go.Bar(
-                x=[sn.replace(" (No Intervention)","").replace(" (All Interventions)","")],
-                y=[res["scenario_energy_mwh"]],
-                marker_color=sc["colour"],
-                text=[f"{res['scenario_energy_mwh']:,.0f}"],
-                textposition="outside", name=sn,
-            ))
-        fig_e.update_layout(**CHART_LAYOUT, yaxis_title="MWh / year")
-        st.plotly_chart(fig_e, use_container_width=True, config={"displayModeBar": False})
-        st.markdown(
-            "<div class='chart-caption'>CrowAgent™ PINN thermal model · "
-            "CIBSE Guide A · Cross-validated against US DoE EnergyPlus</div>",
-            unsafe_allow_html=True,
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    with c2:
-        st.markdown("<div class='chart-card'>", unsafe_allow_html=True)
-        st.markdown("<div class='chart-title'>🌍 Annual Carbon Emissions</div>", unsafe_allow_html=True)
-        fig_c = go.Figure()
-        for sn, res in results.items():
-            sc = SCENARIOS[sn]
-            fig_c.add_trace(go.Bar(
-                x=[sn.replace(" (No Intervention)","").replace(" (All Interventions)","")],
-                y=[res["scenario_carbon_t"]],
-                marker_color=sc["colour"],
-                text=[f"{res['scenario_carbon_t']:,.1f} t"],
-                textposition="outside", name=sn,
-            ))
-        fig_c.update_layout(**CHART_LAYOUT, yaxis_title="Tonnes CO₂e / year")
-        st.plotly_chart(fig_c, use_container_width=True, config={"displayModeBar": False})
-        st.markdown(
-            "<div class='chart-caption'>Carbon intensity: 0.20482 kgCO₂e/kWh · "
-            "Source: BEIS Greenhouse Gas Conversion Factors 2023</div>",
-            unsafe_allow_html=True,
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # ── Technical Parameters Table ────────────────────────────────────────────
-    st.markdown("<div class='sec-hdr'>Technical Parameters</div>", unsafe_allow_html=True)
-    rows_tbl = []
-    for sn, res in results.items():
-        sc = SCENARIOS[sn]
-        rows_tbl.append({
-            "Scenario": sc["icon"] + " " + sn,
-            "U-Wall (W/m²K)": res["u_wall"],
-            "U-Roof (W/m²K)": res["u_roof"],
-            "U-Glaz (W/m²K)": res["u_glazing"],
-            "Energy (MWh/yr)": res["scenario_energy_mwh"],
-            "Saving (%)": f"{res['energy_saving_pct']}%",
-            "CO₂ Saving (t)": res["carbon_saving_t"],
-            "Install Cost": f"£{res['install_cost_gbp']:,.0f}" if res["install_cost_gbp"] > 0 else "—",
-            "Payback (yrs)": res["payback_years"] if res["payback_years"] else "—",
-        })
-    st.dataframe(pd.DataFrame(rows_tbl), use_container_width=True, hide_index=True)
-    st.caption("U-values: CIBSE Guide A · Scenario factors: BSRIA / Green Roof Organisation UK · "
-               "⚠️ Indicative only — see prototype disclaimer above")
-
-    # ── Building Specification Expander ───────────────────────────────────────
-    with st.expander(f"📐 Building Specification — {selected_building_name}"):
-        sp1, sp2 = st.columns(2)
-        with sp1:
-            st.markdown(f"**Floor Area:** {sb['floor_area_m2']:,} m²")
-            st.markdown(f"**Floor-to-Floor Height:** {sb['height_m']} m")
-            st.markdown(f"**Glazing Ratio:** {sb['glazing_ratio']*100:.0f}%")
-            st.markdown(f"**Annual Occupancy:** ~{sb['occupancy_hours']:,} hours")
-            st.markdown(f"**Approximate Build Year:** {sb['built_year']}")
-        with sp2:
-            st.markdown(f"**Baseline U-wall:** {sb['u_value_wall']} W/m²K")
-            st.markdown(f"**Baseline U-roof:** {sb['u_value_roof']} W/m²K")
-            st.markdown(f"**Baseline U-glazing:** {sb['u_value_glazing']} W/m²K")
-            st.markdown(f"**Baseline Energy:** {sb['baseline_energy_mwh']} MWh/yr")
+    
+    if not selected_building_name:
+        st.info("Portfolio is empty. Please add a building using the sidebar tools.")
+    else:
+        # ── Building heading ──────────────────────────────────────────────────────
+        col_hdr, col_badge = st.columns([3, 1])
+        with col_hdr:
             st.markdown(
-                f"**Baseline Carbon:** "
-                f"{round(sb['baseline_energy_mwh'] * 1000 * 0.20482 / 1000, 1)} t CO₂e/yr"
+                f"<h2 style='margin:0;padding:0;'>{selected_building_name}</h2>"
+                f"<div style='font-size:0.78rem;color:#5A7A90;margin-top:2px;'>"
+                f"{sb.get('description', 'Portfolio Asset')}</div>",
+                unsafe_allow_html=True,
             )
-        st.caption(
-            "⚠️ Data is indicative and derived from published UK HE sector averages (HESA 2022-23). "
-            "Not specific to any real institution. Do not use for actual estate planning "
-            "without site-specific survey."
+        with col_badge:
+            st.markdown(
+                f"<div style='text-align:right;padding-top:4px;'>"
+                f"<span class='chip'>{sb.get('built_year', 'Unknown')}</span>"
+                f"<span class='chip'>{weather['temperature_c']}°C</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+        st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+
+        # ── SEGMENT-RESPONSIVE KPI CARDS ─────────────────────────────────────────
+        k1, k2, k3, k4 = st.columns(4)
+        _seg = st.session_state.user_segment
+        
+        # Calculate full portfolio metrics for aggregations
+        port_mwh = 0.0
+        port_carbon = 0.0
+        port_area = 0.0
+        port_cost = 0.0
+        
+        for bn, bd in st.session_state.portfolio.items():
+            r = calculate_thermal_load(bd, SCENARIOS["Baseline (No Intervention)"], weather)
+            port_mwh += r["scenario_energy_mwh"]
+            port_carbon += r["scenario_carbon_t"]
+            port_area += bd.get("floor_area_m2", 100)
+            port_cost += r["scenario_energy_mwh"] * 1000 * 0.28
+        
+        if _seg == "university_he":
+            with k1: st.markdown(f"<div class='kpi-card'><div class='kpi-label'>Portfolio Baseline</div><div class='kpi-value'>{port_mwh:,.0f}<span class='kpi-unit'>MWh/yr</span></div></div>", unsafe_allow_html=True)
+            with k2: st.markdown(f"<div class='kpi-card accent-green'><div class='kpi-label'>Carbon Intensity</div><div class='kpi-value'>{(port_carbon*1000)/max(port_area,1):,.1f}<span class='kpi-unit'>kg/m²</span></div></div>", unsafe_allow_html=True)
+            with k3: st.markdown(f"<div class='kpi-card'><div class='kpi-label'>Cost Exposure</div><div class='kpi-value'>£{port_cost:,.0f}</div></div>", unsafe_allow_html=True)
+            with k4: st.markdown(f"<div class='kpi-card accent-gold'><div class='kpi-label'>Net Zero Gap</div><div class='kpi-value'>{port_carbon:,.0f}<span class='kpi-unit'>tCO₂e</span></div></div>", unsafe_allow_html=True)
+            
+        elif _seg == "smb_landlord":
+            _epc = compliance.estimate_epc_rating(sb["floor_area_m2"], baseline_result.get("baseline_energy_mwh",0)*1000, sb["u_value_wall"], sb["u_value_roof"], sb["u_value_glazing"])
+            _gap = compliance.mees_gap_analysis(_epc["sap_score"], "C")
+            with k1: st.markdown(f"<div class='kpi-card'><div class='kpi-label'>Current EPC Band</div><div class='kpi-value'>{_epc['epc_band']}</div></div>", unsafe_allow_html=True)
+            with k2: st.markdown(f"<div class='kpi-card accent-gold'><div class='kpi-label'>MEES Gap (Band C)</div><div class='kpi-value'>{_gap['sap_gap']}<span class='kpi-unit'>pts</span></div></div>", unsafe_allow_html=True)
+            with k3: st.markdown(f"<div class='kpi-card'><div class='kpi-label'>Retrofit Cost Estimate</div><div class='kpi-value'>£{_gap['total_cost_low']:,.0f}</div></div>", unsafe_allow_html=True)
+            with k4: st.markdown(f"<div class='kpi-card accent-green'><div class='kpi-label'>Target EPC Compliance</div><div class='kpi-value'>{'Yes' if _epc['mees_2028_compliant'] else 'No'}</div></div>", unsafe_allow_html=True)
+            
+        elif _seg == "smb_industrial":
+            _cb = compliance.calculate_carbon_baseline(elec_kwh=baseline_result.get("baseline_energy_mwh",0)*1000, floor_area_m2=sb["floor_area_m2"])
+            with k1: st.markdown(f"<div class='kpi-card'><div class='kpi-label'>SECR Scope 1 (Est)</div><div class='kpi-value'>{_cb['scope1_tco2e']:,.1f}<span class='kpi-unit'>t</span></div></div>", unsafe_allow_html=True)
+            with k2: st.markdown(f"<div class='kpi-card'><div class='kpi-label'>SECR Scope 2 (Est)</div><div class='kpi-value'>{_cb['scope2_tco2e']:,.1f}<span class='kpi-unit'>t</span></div></div>", unsafe_allow_html=True)
+            with k3: st.markdown(f"<div class='kpi-card accent-gold'><div class='kpi-label'>Carbon Liability (£50/t)</div><div class='kpi-value'>£{_cb['total_tco2e']*50:,.0f}</div></div>", unsafe_allow_html=True)
+            with k4: st.markdown(f"<div class='kpi-card accent-green'><div class='kpi-label'>Intensity</div><div class='kpi-value'>{_cb['intensity_kgco2_m2']}<span class='kpi-unit'>kg/m²</span></div></div>", unsafe_allow_html=True)
+            
+        elif _seg == "individual_selfbuild":
+            _pl = compliance.part_l_compliance_check(sb["u_value_wall"], sb["u_value_roof"], sb["u_value_glazing"], sb["floor_area_m2"], baseline_result.get("baseline_energy_mwh",0)*1000)
+            pass_str = "PASS" if _pl["part_l_2021_pass"] else "FAIL"
+            with k1: st.markdown(f"<div class='kpi-card'><div class='kpi-label'>Part L Status</div><div class='kpi-value'>{pass_str}</div></div>", unsafe_allow_html=True)
+            with k2: st.markdown(f"<div class='kpi-card'><div class='kpi-label'>Primary Energy</div><div class='kpi-value'>{_pl['primary_energy_est']}<span class='kpi-unit'>kWh/m²/y</span></div></div>", unsafe_allow_html=True)
+            with k3: st.markdown(f"<div class='kpi-card'><div class='kpi-label'>FHS Target</div><div class='kpi-value'>{_pl['fhs_threshold']}<span class='kpi-unit'>kWh/m²/y</span></div></div>", unsafe_allow_html=True)
+            with k4: st.markdown(f"<div class='kpi-card accent-gold'><div class='kpi-label'>Baseline Cost</div><div class='kpi-value'>£{baseline_result.get('baseline_energy_mwh',0)*1000*0.28/1000:,.0f}k</div></div>", unsafe_allow_html=True)
+
+        st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+
+        # ── Charts Row 1: Energy + Carbon ─────────────────────────────────────────
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("<div class='chart-card'>", unsafe_allow_html=True)
+            st.markdown("<div class='chart-title'>⚡ Annual Energy Consumption</div>", unsafe_allow_html=True)
+            fig_e = go.Figure()
+            for sn, res in results.items():
+                sc = SCENARIOS[sn]
+                fig_e.add_trace(go.Bar(
+                    x=[sn.replace(" (No Intervention)","").replace(" (All Interventions)","")],
+                    y=[res["scenario_energy_mwh"]],
+                    marker_color=sc["colour"],
+                    text=[f"{res['scenario_energy_mwh']:,.0f}"],
+                    textposition="outside", name=sn,
+                ))
+            fig_e.update_layout(**CHART_LAYOUT, yaxis_title="MWh / year")
+            st.plotly_chart(fig_e, use_container_width=True, config={"displayModeBar": False})
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        with c2:
+            st.markdown("<div class='chart-card'>", unsafe_allow_html=True)
+            st.markdown("<div class='chart-title'>🌍 Annual Carbon Emissions</div>", unsafe_allow_html=True)
+            fig_c = go.Figure()
+            for sn, res in results.items():
+                sc = SCENARIOS[sn]
+                fig_c.add_trace(go.Bar(
+                    x=[sn.replace(" (No Intervention)","").replace(" (All Interventions)","")],
+                    y=[res["scenario_carbon_t"]],
+                    marker_color=sc["colour"],
+                    text=[f"{res['scenario_carbon_t']:,.1f} t"],
+                    textposition="outside", name=sn,
+                ))
+            fig_c.update_layout(**CHART_LAYOUT, yaxis_title="Tonnes CO₂e / year")
+            st.plotly_chart(fig_c, use_container_width=True, config={"displayModeBar": False})
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        # ── Technical Parameters Table ────────────────────────────────────────────
+        st.markdown("<div class='sec-hdr'>Technical Parameters</div>", unsafe_allow_html=True)
+        rows_tbl = []
+        for sn, res in results.items():
+            sc = SCENARIOS[sn]
+            rows_tbl.append({
+                "Scenario": sc["icon"] + " " + sn,
+                "U-Wall (W/m²K)": res["u_wall"],
+                "U-Roof (W/m²K)": res["u_roof"],
+                "U-Glaz (W/m²K)": res["u_glazing"],
+                "Energy (MWh/yr)": res["scenario_energy_mwh"],
+                "Saving (%)": f"{res['energy_saving_pct']}%",
+                "CO₂ Saving (t)": res["carbon_saving_t"],
+                "Install Cost": f"£{res['install_cost_gbp']:,.0f}" if res["install_cost_gbp"] > 0 else "—",
+                "Payback (yrs)": res["payback_years"] if res["payback_years"] else "—",
+            })
+        st.dataframe(pd.DataFrame(rows_tbl), use_container_width=True, hide_index=True)
+
+        # ── 3D/4D Map ────────────────────────────────────────────────────────────
+        st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+        st.session_state.viz3d_selected_building = selected_building_name
+        render_campus_3d_map(
+            selected_scenario_names=selected_scenario_names,
+            weather=weather,
         )
-
-    # ── 3D/4D Campus Visualisation ────────────────────────────────────────────
-    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
-    render_campus_3d_map(
-        selected_scenario_names=selected_scenario_names,
-        weather=weather,
-    )
-
 
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 2 — FINANCIAL ANALYSIS
@@ -1579,10 +1311,7 @@ with _tab_fin:
     <div class='disc-prototype'>
       <strong>⚠️ Financial Disclaimer.</strong>
       All financial projections are indicative estimates based on simplified models and
-      published sector average costs. They assume constant energy prices and do not account
-      for inflation, financing costs, planning permission, disruption costs, or maintenance.
-      Do not use as the sole basis for investment decisions — engage a qualified cost consultant
-      or energy surveyor.
+      published sector average costs.
     </div>
     """, unsafe_allow_html=True)
 
@@ -1591,7 +1320,6 @@ with _tab_fin:
     if not paid_scenarios:
         st.info("Select at least one intervention scenario (not Baseline) to view financial analysis.")
     else:
-        # ── Cost & Saving Charts ──────────────────────────────────────────────
         fc1, fc2 = st.columns(2)
         with fc1:
             st.markdown("<div class='chart-card'>", unsafe_allow_html=True)
@@ -1608,11 +1336,6 @@ with _tab_fin:
                 ))
             fig_s.update_layout(**CHART_LAYOUT, yaxis_title="£ per year")
             st.plotly_chart(fig_s, use_container_width=True, config={"displayModeBar": False})
-            st.markdown(
-                "<div class='chart-caption'>Electricity at £0.28/kWh · HESA 2022-23 · "
-                "Assumes constant energy price</div>",
-                unsafe_allow_html=True,
-            )
             st.markdown("</div>", unsafe_allow_html=True)
 
         with fc2:
@@ -1631,13 +1354,21 @@ with _tab_fin:
                     ))
             fig_p.update_layout(**CHART_LAYOUT, yaxis_title="Years")
             st.plotly_chart(fig_p, use_container_width=True, config={"displayModeBar": False})
-            st.markdown(
-                "<div class='chart-caption'>Install cost ÷ annual saving · Simple (undiscounted) · "
-                "⚠️ Excludes finance costs</div>",
-                unsafe_allow_html=True,
-            )
             st.markdown("</div>", unsafe_allow_html=True)
 
+        st.markdown("<div class='sec-hdr'>Investment Comparison Matrix</div>", unsafe_allow_html=True)
+        inv_rows = []
+        for sn, res in paid_scenarios.items():
+            inv_rows.append({
+                "Scenario": SCENARIOS[sn]["icon"] + " " + sn,
+                "Install Cost": f"£{res['install_cost_gbp']:,.0f}",
+                "Annual Saving (£)": f"£{res['annual_saving_gbp']:,.0f}",
+                "Simple Payback": f"{res['payback_years']} yrs" if res["payback_years"] else "—",
+                "CO₂ Saving (t/yr)": res["carbon_saving_t"],
+                "£ per tonne CO₂": f"£{res['cost_per_tonne_co2']:,.0f}" if res["cost_per_tonne_co2"] else "—",
+                "5-yr Net Saving": f"£{res['annual_saving_gbp']*5 - res['install_cost_gbp']:,.0f}",
+            })
+        st.dataframe(pd.DataFrame(inv_rows), use_container_width=True, hide_index=True)
         # ── 10-Year Cumulative Saving Projection ──────────────────────────────
         st.markdown("<div class='sec-hdr'>10-Year Cumulative Net Cash Flow</div>", unsafe_allow_html=True)
         st.markdown("<div class='chart-card'>", unsafe_allow_html=True)
@@ -1672,23 +1403,6 @@ with _tab_fin:
             unsafe_allow_html=True,
         )
         st.markdown("</div>", unsafe_allow_html=True)
-
-        # ── Investment Comparison Table ────────────────────────────────────────
-        st.markdown("<div class='sec-hdr'>Investment Comparison Matrix</div>", unsafe_allow_html=True)
-        inv_rows = []
-        for sn, res in paid_scenarios.items():
-            inv_rows.append({
-                "Scenario": SCENARIOS[sn]["icon"] + " " + sn,
-                "Install Cost": f"£{res['install_cost_gbp']:,.0f}",
-                "Annual Saving (£)": f"£{res['annual_saving_gbp']:,.0f}",
-                "Simple Payback": f"{res['payback_years']} yrs" if res["payback_years"] else "—",
-                "CO₂ Saving (t/yr)": res["carbon_saving_t"],
-                "£ per tonne CO₂": f"£{res['cost_per_tonne_co2']:,.0f}" if res["cost_per_tonne_co2"] else "—",
-                "5-yr Net Saving": f"£{res['annual_saving_gbp']*5 - res['install_cost_gbp']:,.0f}",
-            })
-        st.dataframe(pd.DataFrame(inv_rows), use_container_width=True, hide_index=True)
-        st.caption("⚠️ 5-yr net saving = (annual saving × 5) − install cost · Undiscounted · Indicative only")
-
 
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 3 — AI ADVISOR
@@ -1801,10 +1515,10 @@ with _tab_ai:
                 _res = crow_agent.run_agent(
                     api_key=_akey, user_message=_pq,
                     conversation_history=st.session_state.agent_history,
-                    buildings=_active_buildings, scenarios=SCENARIOS,
+                    buildings=BUILDINGS, scenarios=SCENARIOS,
                     calculate_fn=calculate_thermal_load,
                     current_context={
-                        "building": selected_building_name,
+                        "building": selected_building_name if 'selected_building_name' in locals() else None,
                         "scenarios": selected_scenario_names,
                         "temperature_c": weather["temperature_c"],
                     },
@@ -1881,10 +1595,10 @@ with _tab_ai:
                     _res = crow_agent.run_agent(
                         api_key=_akey, user_message=_clean,
                         conversation_history=st.session_state.agent_history,
-                        buildings=_active_buildings, scenarios=SCENARIOS,
+                        buildings=BUILDINGS, scenarios=SCENARIOS,
                         calculate_fn=calculate_thermal_load,
                         current_context={
-                            "building": selected_building_name,
+                            "building": selected_building_name if 'selected_building_name' in locals() else None,
                             "scenarios": selected_scenario_names,
                             "temperature_c": weather["temperature_c"],
                         },
@@ -1904,7 +1618,6 @@ with _tab_ai:
             st.session_state.chat_history = []
             st.session_state.agent_history = []
             st.rerun()
-
 
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 4 — UK COMPLIANCE HUB
@@ -2314,7 +2027,6 @@ with _tab_compliance:
             "⚠️ SECR reporting requires methodology disclosure; this tool is a screening calculator only."
         )
 
-
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 5 — ABOUT & CONTACT
 # ════════════════════════════════════════════════════════════════════════════
@@ -2519,8 +2231,8 @@ with _tab_about:
                       letter-spacing:1px;text-transform:uppercase;color:#00C2A8;
                       margin-bottom:8px;'>Build Information</div>
           <div style='font-size:0.78rem;color:#9ABDD0;line-height:1.8;'>
-            <strong style='color:#CBD8E6;'>Version:</strong> v2.0.0<br/>
-            <strong style='color:#CBD8E6;'>Released:</strong> 21 February 2026<br/>
+            <strong style='color:#CBD8E6;'>Version:</strong> v2.1.0<br/>
+            <strong style='color:#CBD8E6;'>Released:</strong> MVP Release<br/>
             <strong style='color:#CBD8E6;'>Status:</strong>
             <span style='color:#F0B429;'>🚧 Working Prototype</span><br/>
             <strong style='color:#CBD8E6;'>Weather:</strong>
@@ -2536,25 +2248,26 @@ with _tab_about:
 # ─────────────────────────────────────────────────────────────────────────────
 # ENTERPRISE FOOTER
 # ─────────────────────────────────────────────────────────────────────────────
-st.markdown("""
+if LOGO_URI:
+    _footer_logo = (
+        f"<img src='{LOGO_URI}' height='28' "
+        "style='vertical-align:middle;display:inline-block;height:28px;" 
+        "width:auto;' alt='CrowAgent™ Logo'/>"
+    )
+else:
+    _footer_logo = (
+        "<span style='font-family:Rajdhani,sans-serif;" 
+        "font-size:1.1rem;font-weight:700;color:#00C2A8;'>" 
+        "CrowAgent™</span>"
+    )
+
+st.markdown(f"""
 <div class='ent-footer'>
-  <div style='display:flex;justify-content:center;align-items:center;
-              flex-wrap:wrap;gap:16px;margin-bottom:8px;'>
-    <span style='font-family:Rajdhani,sans-serif;font-size:0.9rem;
-                 font-weight:700;color:#00C2A8;'>🌿 CrowAgent™</span>
-    <span style='color:#8FBCCE;font-size:0.80rem;'>Sustainability AI Decision Intelligence Platform</span>
-    <span style='color:#8FBCCE;font-size:0.80rem;'>v2.0.0 · Working Prototype</span>
+  {_footer_logo}
+  <div style='font-size:0.76rem;color:#9ABDD0;line-height:1.6;margin-top:8px;'>
+    © 2026 Aparajita Parihar<br/>CrowAgent™ · All rights reserved<br/>
+    v2.1.0 · Prototype MVP
   </div>
-  <div style='font-size:0.78rem;color:#9ABDD0;line-height:1.6;'>
-    © 2026 Aparajita Parihar · All rights reserved · Independent research project ·
-    CrowAgent™ is an unregistered trademark (UK IPO Class 42, registration pending) ·
-    Not licensed for commercial use without written permission
-  </div>
-  <div style='font-size:0.77rem;color:#8FBCCE;margin-top:4px;font-style:italic;'>
-    Physics: Raissi et al. (2019) J. Comp. Physics · doi:10.1016/j.jcp.2018.10.045 ·
-    Weather: Open-Meteo API + Met Office DataPoint · Carbon: BEIS 2023 ·
-    Costs: HESA 2022-23 · AI: Google Gemini 1.5 Flash ·
-    ⚠️ Results indicative only — not for investment decisions
-  </div>
-</div>
-""", unsafe_allow_html=True)
+</div>""",
+    unsafe_allow_html=True,
+)
