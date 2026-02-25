@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import math
+import requests
 from typing import Dict, List
 
 import overpy
@@ -153,11 +154,13 @@ def _assign_osm_polygons(
 
         if best_i is not None:
             used.add(best_i)
-            polygon = osm_rows[best_i]["polygon"]
+            polygon  = osm_rows[best_i]["polygon"]
+            height_m = osm_rows[best_i].get("height_m", 12.0)
         else:
-            polygon = _synthetic_polygon(b_lat, b_lon)
+            polygon  = _synthetic_polygon(b_lat, b_lon)
+            height_m = 12.0
 
-        result.append({**row, "polygon": polygon})
+        result.append({**row, "polygon": polygon, "height_m": height_m})
 
     return result
 
@@ -214,9 +217,14 @@ def _compute_all_buildings(
     center_lon: float,
 ) -> list[dict]:
     """
-    Run the physics engine for all 3 campus buildings under one scenario.
-    Returns a list of row-dicts ready for pydeck, with fill_color and elevation
-    already calculated.  Building positions are offsets from (center_lat, center_lon).
+    Run the physics engine for all campus buildings under *scenario_name*.
+
+    Returns row-dicts suitable for pydeck's PolygonLayer.  Physical heights
+    (``elevation``) start at a campus default and are later overridden by the
+    real OSM footprint height once polygon assignment has run.
+
+    Each row includes both baseline and scenario energy/carbon figures so the
+    tooltip can show the full comparison in one hover card.
     """
     from core.physics import BUILDINGS, SCENARIOS, calculate_thermal_load
 
@@ -226,7 +234,6 @@ def _compute_all_buildings(
 
     bcoords = _building_coords(center_lat, center_lon)
     rows: list[dict] = []
-    carbon_values: list[float] = []
 
     for bname, bdata in BUILDINGS.items():
         coords = bcoords.get(bname)
@@ -237,27 +244,29 @@ def _compute_all_buildings(
         except Exception:
             continue
 
+        payback = res.get("payback_years")
+        cost_k  = round(res["scenario_energy_mwh"] * 1000 * _ELEC_GBP_PER_KWH / 1000, 1)
+
         rows.append({
-            "name":              bname,
-            "lat":               coords["lat"],
-            "lon":               coords["lon"],
-            "energy_mwh":        round(res["scenario_energy_mwh"], 1),
-            "carbon_t":          round(res["scenario_carbon_t"], 1),
-            "carbon_saving_t":   round(res["carbon_saving_t"], 1),
-            "energy_saving_pct": round(res["energy_saving_pct"], 1),
+            # Identity
+            "name":                 bname,
+            "building_type":        bdata.get("building_type", "University Building"),
+            "lat":                  coords["lat"],
+            "lon":                  coords["lon"],
+            # Scenario comparison — shown in tooltip
+            "scenario":             scenario_name,
+            "baseline_energy_mwh":  round(res["baseline_energy_mwh"], 1),
+            "energy_mwh":           round(res["scenario_energy_mwh"], 1),
+            "energy_saving_pct":    round(res["energy_saving_pct"], 1),
+            "baseline_carbon_t":    round(res["baseline_carbon_t"], 1),
+            "carbon_t":             round(res["scenario_carbon_t"], 1),
+            "carbon_saving_t":      round(res["carbon_saving_t"], 1),
+            "cost_k":               cost_k,
+            "payback_years":        f"{payback:.1f}" if payback else "N/A",
+            # Visual defaults — elevation replaced by OSM height after matching
+            "fill_color":           [0, 194, 168, 210],   # platform teal
+            "elevation":            12.0,                  # overridden by OSM
         })
-        carbon_values.append(res["scenario_carbon_t"])
-
-    if not rows:
-        return []
-
-    min_c = min(carbon_values)
-    max_c = max(carbon_values)
-
-    for row in rows:
-        row["fill_color"] = _carbon_to_rgba(row["carbon_t"], min_c, max_c)
-        # Column height: proportional to energy (visual scale, not metres)
-        row["elevation"] = max(20, row["energy_mwh"] * 0.5)
 
     return rows
 
@@ -267,39 +276,46 @@ def _compute_all_buildings(
 # ─────────────────────────────────────────────────────────────────────────────
 
 _TOOLTIP_HTML = """
-<div style='background:rgba(7,26,47,0.96);color:#E0EAF0;
-            padding:12px 15px;border-radius:8px;
+<div style='background:rgba(5,20,40,0.97);color:#E0EAF0;
+            padding:14px 16px;border-radius:10px;
             font-family:Nunito Sans,sans-serif;
-            border-left:4px solid #00C2A8;min-width:210px;
-            box-shadow:0 4px 16px rgba(0,0,0,0.45);'>
-  <div style='font-weight:700;color:#00C2A8;margin-bottom:5px;
-              font-size:0.90rem;letter-spacing:0.02em;'>{name}</div>
-  <div style='font-size:0.78rem;color:#5A9EC8;margin-bottom:7px;
-              font-style:italic;'>{scenario}</div>
-  <div style='font-size:0.80rem;line-height:2.0;'>
-    ⚡ Energy: <strong>{energy_mwh}</strong> MWh/yr<br/>
-    🌍 Carbon: <strong>{carbon_t}</strong> t CO₂e/yr<br/>
-    ↓ Saved: <strong>{carbon_saving_t}</strong> t
-      &nbsp;(<strong>{energy_saving_pct}%</strong>)
-  </div>
-  <div style='font-size:0.68rem;color:#3A5A70;margin-top:6px;'>
-    Click card below for full analysis
-  </div>
-</div>"""
+            border-left:4px solid #00C2A8;min-width:248px;
+            box-shadow:0 6px 24px rgba(0,0,0,0.55);'>
+  <!-- ── Header ── -->
+  <div style='font-weight:700;color:#00C2A8;font-size:0.92rem;
+              letter-spacing:0.02em;margin-bottom:2px;'>{name}</div>
+  <div style='font-size:0.73rem;color:#5A9EC8;font-style:italic;
+              margin-bottom:8px;'>{building_type} &nbsp;·&nbsp; {scenario}</div>
 
-_TOOLTIP_HTML_4D = """
-<div style='background:rgba(7,26,47,0.96);color:#E0EAF0;
-            padding:12px 15px;border-radius:8px;
-            font-family:Nunito Sans,sans-serif;
-            border-left:4px solid #FFD700;min-width:200px;
-            box-shadow:0 4px 16px rgba(0,0,0,0.45);'>
-  <div style='font-weight:700;color:#FFD700;margin-bottom:5px;
-              font-size:0.90rem;'>{name}</div>
-  <div style='font-size:0.78rem;color:#5A9EC8;margin-bottom:7px;
-              font-style:italic;'>{month} · {outdoor_temp}°C outdoor</div>
-  <div style='font-size:0.80rem;line-height:2.0;'>
-    ⚡ Seasonal energy: <strong>{energy_mwh}</strong> MWh<br/>
-    🌍 Carbon:          <strong>{carbon_t}</strong> t CO₂e
+  <!-- ── Energy ── -->
+  <div style='font-size:0.69rem;text-transform:uppercase;letter-spacing:0.06em;
+              color:#8FBCCE;margin-bottom:3px;'>⚡ Energy Performance</div>
+  <div style='font-size:0.79rem;line-height:1.85;margin-bottom:6px;'>
+    Baseline:&nbsp;<strong>{baseline_energy_mwh}</strong> MWh/yr<br/>
+    Scenario:&nbsp;<strong>{energy_mwh}</strong> MWh/yr<br/>
+    <span style='color:#00C2A8;'>Saving: ↓ <strong>{energy_saving_pct}%</strong></span>
+  </div>
+
+  <div style='height:1px;background:rgba(255,255,255,0.08);margin:6px 0;'></div>
+
+  <!-- ── Carbon ── -->
+  <div style='font-size:0.69rem;text-transform:uppercase;letter-spacing:0.06em;
+              color:#8FBCCE;margin-bottom:3px;'>🌍 Carbon Emissions</div>
+  <div style='font-size:0.79rem;line-height:1.85;margin-bottom:6px;'>
+    Baseline:&nbsp;<strong>{baseline_carbon_t}</strong> t CO₂e/yr<br/>
+    Scenario:&nbsp;<strong>{carbon_t}</strong> t CO₂e/yr<br/>
+    <span style='color:#00C2A8;'>Saved: ↓ <strong>{carbon_saving_t}</strong> t</span>
+  </div>
+
+  <div style='height:1px;background:rgba(255,255,255,0.08);margin:6px 0;'></div>
+
+  <!-- ── Finance ── -->
+  <div style='font-size:0.78rem;line-height:1.7;'>
+    💷 Energy cost: <strong>£{cost_k}k/yr</strong>
+    &nbsp;·&nbsp; ⏱ Payback: <strong>{payback_years}</strong> yrs
+  </div>
+  <div style='font-size:0.66rem;color:#3A5A70;margin-top:8px;'>
+    Click a building card below for full analysis ↓
   </div>
 </div>"""
 
@@ -313,43 +329,42 @@ def _build_deck(
     tooltip_html: str = _TOOLTIP_HTML,
     map_style: str = _MAP_STYLE_LIGHT,
 ) -> "pdk.Deck":
-    """Assemble a pydeck Deck with realistic 3D building footprints.
+    """Assemble a Google Maps-style 3D pydeck Deck.
 
     Layers (bottom → top)
     ─────────────────────
-    1. PolygonLayer — real OSM surroundings (grey, extruded, not pickable)
-    2. PolygonLayer — campus buildings (carbon-coloured extrusions, pickable)
-    3. ScatterplotLayer — location pin at city centre (blue dot)
+    1. PolygonLayer — real OSM surrounding buildings (grey, actual heights)
+    2. PolygonLayer — campus buildings (teal/gold, actual OSM heights, pickable)
+    3. ScatterplotLayer — location pin (blue dot)
 
-    Each campus row **must** have a ``polygon`` key ([[lon,lat],…]).
-    If missing, a synthetic square is generated on the fly.
+    Campus building ``elevation`` is the real physical height from the matched
+    OSM polygon (or 12 m default).  Energy/carbon are carried only in the row
+    metadata for the hover tooltip — they do NOT drive height or colour.
     """
     import copy
 
     display_rows = copy.deepcopy(rows)
     for row in display_rows:
-        # Ensure polygon key exists (fallback to synthetic square)
         if "polygon" not in row:
             row["polygon"] = _synthetic_polygon(row["lat"], row["lon"])
-        # Gold highlight for selected building
+        # Gold highlight for the selected building; teal for all others
         if selected_building and row["name"] == selected_building:
-            row["fill_color"] = [255, 215, 0, 240]
+            row["fill_color"] = [255, 215, 0, 230]
+        else:
+            row["fill_color"] = row.get("fill_color", [0, 194, 168, 210])
 
-    is_dark   = "dark" in map_style
-    osm_fill  = [75, 85, 100, 75]  if is_dark else [185, 198, 218, 65]
-    osm_line  = [115, 130, 150, 150] if is_dark else [145, 155, 170, 170]
-    hi_fill   = [255, 215, 0, 60]   # gold highlight for hovered campus polygon
+    # OSM surrounding buildings — neutral grey tones on light basemap
+    osm_fill = [195, 205, 220, 70]
+    osm_line = [148, 158, 175, 160]
 
     layers: list = []
 
-    # 1 — Real OSM surrounding buildings (context, not interactive)
-    surround_rows = []
-    campus_names  = {r["name"] for r in display_rows}
+    # 1 — Real OSM surroundings (actual building heights, not interactive)
+    surround_rows: list[dict] = []
     if osm_rows:
-        campus_polys = {tuple(map(tuple, r["polygon"])): True for r in display_rows}
+        campus_polys = {tuple(map(tuple, r["polygon"])) for r in display_rows}
         for osm in osm_rows:
-            key = tuple(map(tuple, osm["polygon"]))
-            if key not in campus_polys:           # skip polys reused as campus
+            if tuple(map(tuple, osm["polygon"])) not in campus_polys:
                 surround_rows.append(osm)
 
     if surround_rows:
@@ -367,30 +382,30 @@ def _build_deck(
             wireframe=False,
         ))
 
-    # 2 — Campus energy/carbon PolygonLayer (extruded, pickable, interactive)
+    # 2 — Campus buildings (real footprint, actual height, rich tooltip)
     layers.append(pdk.Layer(
         "PolygonLayer",
         data=pd.DataFrame(display_rows),
         get_polygon="polygon",
-        get_elevation="elevation",
+        get_elevation="elevation",   # physical height in metres (from OSM)
         elevation_scale=1,
         extruded=True,
         get_fill_color="fill_color",
-        get_line_color=[255, 255, 255, 180],
+        get_line_color=[255, 255, 255, 200],
         line_width_min_pixels=2,
         pickable=True,
         auto_highlight=True,
-        highlight_color=hi_fill,
+        highlight_color=[255, 215, 0, 80],
         wireframe=False,
     ))
 
-    # 3 — Location pin (blue dot at city centre)
+    # 3 — Location pin
     layers.append(pdk.Layer(
         "ScatterplotLayer",
         data=pd.DataFrame([{"lat": center_lat, "lon": center_lon}]),
         get_position="[lon, lat]",
-        get_radius=12,
-        get_fill_color=[30, 144, 255, 230],
+        get_radius=10,
+        get_fill_color=[30, 144, 255, 240],
         get_line_color=[255, 255, 255, 255],
         stroked=True,
         line_width_min_pixels=2,
@@ -402,9 +417,9 @@ def _build_deck(
         initial_view_state=pdk.ViewState(
             latitude=center_lat,
             longitude=center_lon,
-            zoom=15.8,
-            pitch=52,
-            bearing=-8,
+            zoom=16,
+            pitch=55,
+            bearing=-5,
         ),
         tooltip={"html": tooltip_html,
                  "style": {"backgroundColor": "transparent", "border": "none"}},
@@ -461,30 +476,35 @@ def _render_3d_map(
     osm_rows: list[dict] | None = None,
     selected_building: str | None = None,
 ) -> None:
-    """Render campus as real 3D polygon extrusions (light Google Maps basemap).
+    """Render the Google Maps-style 3D digital twin on a light CARTO basemap.
 
-    Campus building footprints are matched to nearest OSM polygons once per
-    location and cached in session_state.  Scenario changes only update the
-    colour/elevation — no OSM re-fetch.
+    Campus buildings are shown as real PolygonLayer extrusions at their actual
+    physical heights (from OSM).  Sustainability data lives only in the hover
+    tooltip — height and colour convey identity, not energy magnitude.
+
+    Polygon assignment (nearest-OSM matching) is cached in session_state per
+    location so scenario changes and building selections do not re-hit OSM.
     """
     rows = _compute_all_buildings(scenario_name, weather, center_lat, center_lon)
     if not rows:
         st.info("No building data available for the selected scenario.")
         return
 
-    # Assign / recall real OSM polygon footprints (cached per location)
+    # Assign / recall OSM polygon footprints (cached per location)
     cache_key = _get_polygon_cache_key(center_lat, center_lon)
     if cache_key not in st.session_state:
         st.session_state[cache_key] = _assign_osm_polygons(rows, osm_rows or [])
 
-    cached   = st.session_state[cache_key]           # [{name, lat, lon, polygon}, …]
-    poly_map = {r["name"]: r["polygon"] for r in cached}
+    cached   = st.session_state[cache_key]
+    poly_map = {r["name"]: (r["polygon"], r.get("height_m", 12.0)) for r in cached}
 
     for row in rows:
-        row["polygon"] = poly_map.get(
-            row["name"], _synthetic_polygon(row["lat"], row["lon"])
+        polygon, height_m = poly_map.get(
+            row["name"],
+            (_synthetic_polygon(row["lat"], row["lon"]), 12.0),
         )
-        row["scenario"] = scenario_name  # for tooltip
+        row["polygon"]   = polygon
+        row["elevation"] = height_m   # real physical height, not energy
 
     try:
         deck = _build_deck(
@@ -500,126 +520,26 @@ def _render_3d_map(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 4D TIMELINE VIEW
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _render_4d_timeline(
-    weather: dict,
-    center_lat: float,
-    center_lon: float,
-    osm_rows: list[dict] | None = None,
-    selected_building: str | None = None,
-) -> None:
-    """
-    4D mode: scrub through Jan–Dec with a time slider.
-    Monthly energy/carbon is computed via the seasonal HDD model so that
-    winter months show taller/redder columns than summer months, reflecting
-    real UK heating demand patterns.  Uses dark basemap for contrast.
-    """
-    from core.physics import BUILDINGS
-
-    _CI = 0.20482   # BEIS 2023 kgCO2e / kWh
-
-    month = st.slider(
-        "Month",
-        min_value=1, max_value=12, value=1,
-        help="Scrub Jan–Dec to see seasonal energy & carbon variation across the campus",
-        key="viz3d_month_slider",
-    )
-
-    month_temp  = _MONTHLY_TEMPS[month]
-    month_label = _MONTH_NAMES[month - 1]
-    bcoords     = _building_coords(center_lat, center_lon)
-    rows: list[dict] = []
-    carbon_values: list[float] = []
-
-    for bname, bdata in BUILDINGS.items():
-        coords = bcoords.get(bname)
-        if coords is None:
-            continue
-
-        energy_mwh = round(_seasonal_energy_mwh(bdata["baseline_energy_mwh"], month_temp), 1)
-        carbon_t   = round(energy_mwh * 1000.0 * _CI / 1000.0, 1)
-
-        rows.append({
-            "name":              bname,
-            "lat":               coords["lat"],
-            "lon":               coords["lon"],
-            "energy_mwh":        energy_mwh,
-            "carbon_t":          carbon_t,
-            "carbon_saving_t":   0.0,
-            "energy_saving_pct": 0.0,
-            "month":             month_label,
-            "outdoor_temp":      month_temp,
-        })
-        carbon_values.append(carbon_t)
-
-    if not rows:
-        return
-
-    min_c = min(carbon_values)
-    max_c = max(carbon_values) if max(carbon_values) > min_c else min_c + 1.0
-
-    for row in rows:
-        row["fill_color"] = _carbon_to_rgba(row["carbon_t"], min_c, max_c)
-        row["elevation"]  = max(20, row["energy_mwh"] * 0.5)
-
-    # Polygon assignment: cached per location — slider moves only change colours
-    cache_key = _get_polygon_cache_key(center_lat, center_lon)
-    if cache_key not in st.session_state:
-        st.session_state[cache_key] = _assign_osm_polygons(rows, osm_rows or [])
-
-    poly_map = {r["name"]: r["polygon"] for r in st.session_state[cache_key]}
-    for row in rows:
-        row["polygon"] = poly_map.get(
-            row["name"], _synthetic_polygon(row["lat"], row["lon"])
-        )
-
-    avg_carbon = sum(r["carbon_t"] for r in rows) / len(rows)
-    st.markdown(
-        f"<div style='font-size:0.82rem;color:#FFD700;font-weight:600;"
-        f"margin-bottom:6px;'>"
-        f"📅 {month_label} — Campus avg. carbon: {avg_carbon:.1f} t CO₂e "
-        f"&nbsp;·&nbsp; Outdoor temp: {month_temp}°C</div>",
-        unsafe_allow_html=True,
-    )
-
-    try:
-        deck = _build_deck(
-            rows, center_lat, center_lon,
-            osm_rows=osm_rows,
-            selected_building=selected_building,
-            tooltip_html=_TOOLTIP_HTML_4D,
-            map_style=_MAP_STYLE_DARK,
-        )
-        st.pydeck_chart(deck, use_container_width=True)
-    except Exception as exc:
-        st.warning(f"3D map could not render ({exc})")
-        _render_2d_fallback(rows)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
 # PUBLIC ENTRY POINT — called from app/main.py Dashboard tab
 # ─────────────────────────────────────────────────────────────────────────────
 
 def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> None:
     """
-    Renders the 3D/4D campus energy & carbon map on the Dashboard tab.
+    Google Maps-style 3D campus digital twin shown on the Dashboard tab.
 
     Layout
     ──────
-    [mode toggle + scenario selector]
-    [pydeck map — OSM surroundings + energy columns + location pin]
-    [map hint bar + legend]
+    [location search bar]
+    [scenario selector]
+    [hint text — hover / select prompt]
+    [pydeck map — real OSM surroundings (grey) + campus buildings (teal/gold) + pin]
+    [legend + attribution]
     [building selector cards — 3 columns]
     [Google Maps-style info panel — shown only when a building is selected]
 
-    Parameters
-    ----------
-    selected_scenario_names : list[str]
-        Scenarios currently selected in the sidebar multiselect.
-    weather : dict
-        Live or manual weather data from services/weather.py.
+    Campus buildings are shown as realistic PolygonLayer extrusions at their
+    actual physical heights from OSM.  Energy & carbon data appear only in
+    the hover tooltip — height and colour express building identity, not data.
     """
     if not _PYDECK_AVAILABLE:
         st.warning(
@@ -638,62 +558,75 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
     # ── Real selected location ────────────────────────────────────────────────
     center_lat, center_lon, location_label = _get_map_center()
 
-    # ── Section header with live location label ───────────────────────────────
+    # ── Section header ────────────────────────────────────────────────────────
     st.markdown(
-        f"<div class='sec-hdr'>🗺️ 3D Campus Energy &amp; Carbon Map"
+        f"<div class='sec-hdr'>🗺️ 3D Campus Digital Twin"
         f"<span style='font-size:0.72rem;color:#5A7A90;font-weight:400;"
         f"margin-left:12px;'>📍 {location_label}</span></div>",
         unsafe_allow_html=True,
     )
 
-    # ── View mode + scenario selector ────────────────────────────────────────
-    ctrl_l, ctrl_r = st.columns([3, 2])
-    with ctrl_l:
-        view_mode = st.radio(
-            "Visualisation mode",
-            ["3D Energy Map", "4D Carbon Timeline"],
-            horizontal=True,
+    # ── Postcode / location search ────────────────────────────────────────────
+    src_col, btn_col = st.columns([5, 1])
+    with src_col:
+        search_query = st.text_input(
+            "Search location",
+            placeholder="Enter postcode or place name — e.g. SW1A 1AA, Edinburgh, Tokyo…",
+            key="viz3d_location_search",
             label_visibility="collapsed",
-            key="viz3d_mode",
         )
-    with ctrl_r:
-        if view_mode == "3D Energy Map":
-            scenario_for_map = st.selectbox(
-                "Scenario",
-                selected_scenario_names,
-                key="viz3d_scenario",
-                label_visibility="collapsed",
-            )
-        else:
-            st.markdown(
-                "<div style='font-size:0.75rem;color:#5A7A90;padding-top:8px;'>"
-                "Baseline · seasonal temperature profile</div>",
-                unsafe_allow_html=True,
-            )
-            scenario_for_map = "Baseline (No Intervention)"
+    with btn_col:
+        search_clicked = st.button("🔍 Search", key="viz3d_search_btn",
+                                   use_container_width=True)
 
-    # ── Fetch real surrounding buildings from OSM at the selected location ──────
-    # If the location changed, drop any stale polygon-assignment cache.
+    if search_clicked and search_query.strip():
+        with st.spinner(f"Searching for '{search_query}'…"):
+            geo = geocode_location(search_query.strip())
+        if geo:
+            new_lat, new_lon, display_name = geo
+            if (round(new_lat, 4), round(new_lon, 4)) != (round(center_lat, 4),
+                                                           round(center_lon, 4)):
+                # Drop stale polygon cache for the previous location
+                st.session_state.pop(
+                    _get_polygon_cache_key(center_lat, center_lon), None
+                )
+                st.session_state.wx_lat           = new_lat
+                st.session_state.wx_lon           = new_lon
+                st.session_state.wx_location_name = display_name
+                st.session_state.viz3d_selected_building = None
+                st.rerun()
+        else:
+            st.warning(f"Location '{search_query}' not found — try a different postcode or name.")
+
+    # ── Scenario selector ─────────────────────────────────────────────────────
+    scenario_for_map = st.selectbox(
+        "Scenario for map tooltip",
+        selected_scenario_names,
+        key="viz3d_scenario",
+        label_visibility="collapsed",
+    )
+
+    # ── Location-change cache invalidation ────────────────────────────────────
     prev_loc = st.session_state.get("viz3d_last_location")
     cur_loc  = (round(center_lat, 4), round(center_lon, 4))
     if prev_loc != cur_loc:
-        old_key = _get_polygon_cache_key(*(prev_loc or cur_loc))
-        st.session_state.pop(old_key, None)
+        st.session_state.pop(_get_polygon_cache_key(*(prev_loc or cur_loc)), None)
         st.session_state["viz3d_last_location"] = cur_loc
 
+    # ── Fetch real surrounding buildings from OSM ─────────────────────────────
     with st.spinner(f"Loading buildings around {location_label}…"):
         osm_rows = fetch_osm_buildings(center_lat, center_lon, radius_m=600)
 
-    # ── Hover tip above the map ───────────────────────────────────────────────
+    # ── Hover/selection hint ──────────────────────────────────────────────────
     if selected_building:
-        hint = (f"<b style='color:#FFD700;'>Gold column</b> = "
-                f"{selected_building.replace('Greenfield ', '')} &nbsp;·&nbsp; "
-                "Select a different building below to switch &nbsp;·&nbsp; "
-                "Hover any column for live data")
+        hint = (f"<b style='color:#FFD700;'>Gold</b> = "
+                f"{selected_building.replace('Greenfield ', '')} "
+                "&nbsp;·&nbsp; Hover any teal building for energy &amp; carbon data "
+                "&nbsp;·&nbsp; Click a card below to switch")
     else:
-        hint = ("👇 <b style='color:#00C2A8;'>Select a building below</b> to "
-                "explore its energy profile &nbsp;·&nbsp; "
-                "Hover any column for a quick tooltip")
+        hint = ("👇 <b style='color:#00C2A8;'>Select a campus building below</b> "
+                "for a full analysis &nbsp;·&nbsp; "
+                "Hover the <b style='color:#00C2A8;'>teal buildings</b> for a quick tooltip")
 
     st.markdown(
         f"<div style='font-size:0.75rem;color:#8FBCCE;margin-bottom:4px;'>"
@@ -701,48 +634,38 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
         unsafe_allow_html=True,
     )
 
-    # ── Render chosen map mode ────────────────────────────────────────────────
-    if view_mode == "3D Energy Map":
-        _render_3d_map(
-            scenario_for_map, weather,
-            center_lat, center_lon,
-            osm_rows=osm_rows,
-            selected_building=selected_building,
-        )
-    else:
-        _render_4d_timeline(
-            weather, center_lat, center_lon,
-            osm_rows=osm_rows,
-            selected_building=selected_building,
-        )
+    # ── Render 3D map ─────────────────────────────────────────────────────────
+    _render_3d_map(
+        scenario_for_map, weather,
+        center_lat, center_lon,
+        osm_rows=osm_rows,
+        selected_building=selected_building,
+    )
 
-    # ── Legend + attribution bar ──────────────────────────────────────────────
+    # ── Legend + attribution ──────────────────────────────────────────────────
     st.markdown(
         """<div style='display:flex;gap:18px;align-items:center;flex-wrap:wrap;
                        font-size:0.74rem;color:#8FBCCE;margin-top:5px;'>
   <span style='display:flex;align-items:center;gap:5px;'>
     <span style='display:inline-block;width:12px;height:12px;
-                 background:#00C2A8;border-radius:2px;'></span>Low carbon
+                 background:#00C2A8;border-radius:2px;'></span>Campus building
   </span>
   <span style='display:flex;align-items:center;gap:5px;'>
     <span style='display:inline-block;width:12px;height:12px;
-                 background:#FFA500;border-radius:2px;'></span>Medium
+                 background:#FFD700;border-radius:2px;'></span>Selected building
   </span>
   <span style='display:flex;align-items:center;gap:5px;'>
     <span style='display:inline-block;width:12px;height:12px;
-                 background:#DC3232;border-radius:2px;'></span>High carbon
-  </span>
-  <span style='display:flex;align-items:center;gap:5px;'>
-    <span style='display:inline-block;width:12px;height:12px;
-                 background:#FFD700;border-radius:2px;'></span>Selected
+                 background:#C3CDD8;border-radius:2px;'></span>OSM surroundings
   </span>
   <span style='display:flex;align-items:center;gap:5px;'>
     <span style='display:inline-block;width:10px;height:10px;border-radius:50%;
-                 background:#1E90FF;'></span>Campus pin
+                 background:#1E90FF;'></span>Location pin
   </span>
   <span style='font-size:0.70rem;color:#3A5A70;margin-left:auto;'>
-    Height = energy &nbsp;·&nbsp; Tiles: © CARTO &nbsp;·&nbsp;
-    Surroundings: © OpenStreetMap contributors &nbsp;·&nbsp;
+    Heights: real OSM data &nbsp;·&nbsp;
+    Tiles: © CARTO Positron &nbsp;·&nbsp;
+    Buildings: © OpenStreetMap contributors &nbsp;·&nbsp;
     WebGL · Drag to rotate · Scroll to zoom
   </span>
 </div>""",
@@ -760,12 +683,12 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
     card_cols = st.columns(len(building_names))
 
     for col, bname in zip(card_cols, building_names):
-        icon    = _BUILDING_ICONS.get(bname, "🏢")
-        short   = bname.replace("Greenfield ", "")
-        is_sel  = (selected_building == bname)
-        border  = "#FFD700" if is_sel else "#1A3A5C"
-        bg      = "#0D2640" if is_sel else "#071A2F"
-        label   = f"{'✓ ' if is_sel else ''}{short}"
+        icon   = _BUILDING_ICONS.get(bname, "🏢")
+        short  = bname.replace("Greenfield ", "")
+        is_sel = (selected_building == bname)
+        border = "#FFD700" if is_sel else "#1A3A5C"
+        bg     = "#0D2640" if is_sel else "#071A2F"
+        label  = f"{'✓ ' if is_sel else ''}{short}"
 
         with col:
             st.markdown(
@@ -773,24 +696,15 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
                                border-radius:8px;padding:10px 12px;
                                text-align:center;margin-bottom:6px;'>
   <div style='font-size:1.4rem;'>{icon}</div>
-  <div style='font-size:0.78rem;font-weight:600;color:#E0EAF0;
-              margin:4px 0 2px;'>{short}</div>
-  <div style='font-size:0.68rem;color:#5A7A90;'>
-    Greenfield Campus
-  </div>
+  <div style='font-size:0.78rem;font-weight:600;color:#E0EAF0;margin:4px 0 2px;'>{short}</div>
+  <div style='font-size:0.68rem;color:#5A7A90;'>Greenfield Campus</div>
 </div>""",
                 unsafe_allow_html=True,
             )
-            if st.button(
-                label,
-                key=f"viz3d_card_{bname}",
-                use_container_width=True,
-                type="primary" if is_sel else "secondary",
-            ):
-                if is_sel:
-                    st.session_state.viz3d_selected_building = None
-                else:
-                    st.session_state.viz3d_selected_building = bname
+            if st.button(label, key=f"viz3d_card_{bname}",
+                         use_container_width=True,
+                         type="primary" if is_sel else "secondary"):
+                st.session_state.viz3d_selected_building = None if is_sel else bname
                 st.rerun()
 
     # ── Google Maps-style info panel ──────────────────────────────────────────
@@ -1067,8 +981,36 @@ def _info_tab_scenarios(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# OSM BUILDING FOOTPRINTS
+# GEOCODING + OSM BUILDING FOOTPRINTS
 # ─────────────────────────────────────────────────────────────────────────────
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def geocode_location(query: str) -> tuple[float, float, str] | None:
+    """Resolve a postcode or place name to ``(lat, lon, display_name)``.
+
+    Uses the OSM Nominatim API — free, no API key required.
+    Results are cached for 1 hour to avoid hammering the free service.
+    Returns ``None`` on timeout, empty result, or any network error.
+    """
+    try:
+        resp = requests.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={"q": query, "format": "json", "limit": 1},
+            headers={"User-Agent": "CrowAgent-Platform/2.0 (sustainability-ai)"},
+            timeout=6,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data:
+            return (
+                float(data[0]["lat"]),
+                float(data[0]["lon"]),
+                data[0].get("display_name", query),
+            )
+    except Exception:
+        pass
+    return None
+
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def fetch_osm_buildings(lat: float, lon: float, radius_m: int = 700) -> List[Dict]:
