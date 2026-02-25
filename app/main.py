@@ -15,6 +15,7 @@ import base64
 import os
 import sys
 import json
+import math
 
 # ensure proper UTF-8 output in environments with non-UTF8 locale
 if hasattr(sys.stdout, "reconfigure"):
@@ -33,6 +34,7 @@ import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 import requests
+import pydeck as pdk
 from datetime import datetime, timezone
 
 
@@ -40,13 +42,6 @@ from datetime import datetime, timezone
 # helper functions for user-added definitions (used by sidebar forms and tests)
 # ----------------------------------------------------------------------------
 def _add_building_from_json(jtext: str) -> tuple[bool, str]:
-    """Attempt to parse JSON and add it to BUILDINGS.
-
-    Expected input is a JSON object containing at least a ``name`` key; the
-    remainder of keys should match the structure used in the BUILDINGS dict in
-    this module.  Returns ``(True, message)`` on success or ``(False, err)`` on
-    failure.
-    """
     try:
         obj = json.loads(jtext)
     except Exception as exc:
@@ -61,11 +56,6 @@ def _add_building_from_json(jtext: str) -> tuple[bool, str]:
 
 
 def _add_scenario_from_json(jtext: str) -> tuple[bool, str]:
-    """Parse JSON and insert into SCENARIOS.
-
-    JSON must include a ``name`` key; remaining keys should align with existing
-    scenario dictionaries (u_wall_factor, install_cost_gbp, etc.).
-    """
     try:
         obj = json.loads(jtext)
     except Exception as exc:
@@ -90,13 +80,11 @@ import services.location as loc
 import services.audit as audit
 import core.agent as crow_agent
 import core.physics as physics
-from app.visualization_3d import render_campus_3d_map
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LOGO LOADER
 # ─────────────────────────────────────────────────────────────────────────────
 def _load_logo_uri() -> str:
-    """Return the horizontal dark logo as a base64 data URI."""
     candidates = [
         os.path.join(os.path.dirname(__file__), "../assets/CrowAgent_Logo_Horizontal_Dark.svg"),
         os.path.join(os.path.dirname(__file__), "assets/CrowAgent_Logo_Horizontal_Dark.svg"),
@@ -116,7 +104,6 @@ def _load_logo_uri() -> str:
     return ""
 
 def _load_icon_uri() -> str:
-    """Return the square icon mark as a base64 data URI for the browser tab."""
     candidates = [
         os.path.join(os.path.dirname(__file__), "../assets/CrowAgent_Icon_Square.svg"),
         os.path.join(os.path.dirname(__file__), "assets/CrowAgent_Icon_Square.svg"),
@@ -501,7 +488,7 @@ with st.sidebar:
     st.markdown("---")
 
     st.markdown("<div class='sb-section'>🔧 Scenarios</div>", unsafe_allow_html=True)
-    selected_scenario_names = st.multiselect("Scenarios", list(SCENARIOS.keys()), default=["Baseline (No Intervention)", "Solar Glass Installation", "Enhanced Insulation Upgrade"], label_visibility="collapsed")
+    selected_scenario_names = st.multiselect("Scenarios", list(SCENARIOS.keys()), default=["Baseline (No Intervention)", "Solar Glass Installation", "Enhanced Insulation Upgrade", "Combined Package (All Interventions)"], label_visibility="collapsed")
     
     with st.expander("➕ Add scenario", expanded=False):
         st.markdown("<div style='font-size:0.75rem;color:#8FBCCE;'>Enter JSON (must include \"name\")</div>", unsafe_allow_html=True)
@@ -669,7 +656,7 @@ st.markdown("<div class='disc-prototype'><strong>⚠️ Working Prototype — Re
 _tab_dash, _tab_fin, _tab_ai, _tab_compliance, _tab_about = st.tabs(["📊 Dashboard", "📈 Financial Analysis", "🤖 AI Advisor", "🏛️ UK Compliance Hub", "ℹ️ About & Contact"])
 
 # ════════════════════════════════════════════════════════════════════════════
-# TAB 1 — DASHBOARD (REDESIGNED Phase 1 + 2)
+# TAB 1 — DASHBOARD (REDESIGNED Phase 1-6)
 # ════════════════════════════════════════════════════════════════════════════
 with _tab_dash:
     # ── CAMPUS AGGREGATION FOR SCORECARD ──────────────────────────────────────
@@ -678,7 +665,6 @@ with _tab_dash:
     campus_carbon = campus_energy * 1000 * 0.20482 / 1000
     campus_cost = campus_energy * 1000 * 0.28
     
-    # Estimate Campus EPC proxy
     avg_u_wall = sum(b.get("u_value_wall", 0) * b.get("floor_area_m2", 0) for b in _active_buildings.values()) / (campus_area or 1)
     avg_u_roof = sum(b.get("u_value_roof", 0) * b.get("floor_area_m2", 0) for b in _active_buildings.values()) / (campus_area or 1)
     avg_u_glazing = sum(b.get("u_value_glazing", 0) * b.get("floor_area_m2", 0) for b in _active_buildings.values()) / (campus_area or 1)
@@ -929,22 +915,175 @@ with _tab_dash:
             </div>
             """, unsafe_allow_html=True)
             
-            act_c1, act_c2, act_c3 = st.columns(3)
-            with act_c1: st.button("📋 View All Scenarios", key=f"btn_all_{selected_bname}", use_container_width=True)
-            with act_c2: st.button("📅 View Monthly Profile", key=f"btn_mo_{selected_bname}", use_container_width=True)
-            with act_c3: st.button("📊 Export Business Case", key=f"btn_ex_{selected_bname}", use_container_width=True)
-            
-            st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
         else:
             st.info(f"Select an intervention scenario in the sidebar to compare against the baseline for {selected_bname}.")
 
-
-    # ── 3D/4D Campus Visualisation ────────────────────────────────────────────
     st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
-    render_campus_3d_map(
-        selected_scenario_names=selected_scenario_names,
-        weather=weather,
-    )
+
+    # ── LAYER 4: SIMPLIFIED MAP (PHASE 3) ─────────────────────────────────────
+    with st.expander("📍 View Campus Map (2D Context)", expanded=False):
+        center_lat = st.session_state.wx_lat
+        center_lon = st.session_state.wx_lon
+        cos_lat = math.cos(math.radians(center_lat))
+        
+        # Synthetic offsets to place the 3 main buildings
+        offsets = {
+            "Greenfield Library": (60, -130),
+            "Greenfield Arts Building": (170, 110),
+            "Greenfield Science Block": (-150, 70),
+        }
+        
+        map_data = []
+        for bname, (n_m, e_m) in offsets.items():
+            if bname in _active_buildings:
+                lat = center_lat + n_m / 111000.0
+                lon = center_lon + e_m / (111000.0 * cos_lat)
+                
+                b_energy = _active_buildings[bname]["baseline_energy_mwh"]
+                epc = compliance.estimate_epc_rating(
+                    floor_area_m2=_active_buildings[bname]["floor_area_m2"],
+                    annual_energy_kwh=b_energy * 1000,
+                    u_wall=_active_buildings[bname]["u_value_wall"],
+                    u_roof=_active_buildings[bname]["u_value_roof"],
+                    u_glazing=_active_buildings[bname]["u_value_glazing"],
+                    glazing_ratio=_active_buildings[bname]["glazing_ratio"],
+                    building_type="commercial"
+                )
+                
+                # Convert hex to rgb list for pydeck
+                hex_col = epc["epc_colour"].lstrip('#')
+                rgb = [int(hex_col[i:i+2], 16) for i in (0, 2, 4)] + [200]
+                
+                map_data.append({
+                    "name": bname.replace("Greenfield ", ""),
+                    "lat": lat,
+                    "lon": lon,
+                    "color": rgb,
+                    "grade": epc["epc_band"]
+                })
+        
+        if map_data:
+            scatter_layer = pdk.Layer(
+                "ScatterplotLayer",
+                map_data,
+                get_position="[lon, lat]",
+                get_fill_color="color",
+                get_radius=25,
+                pickable=True
+            )
+            text_layer = pdk.Layer(
+                "TextLayer",
+                map_data,
+                get_position="[lon, lat]",
+                get_text="name",
+                get_color=[50, 50, 50, 255],
+                get_size=16,
+                get_alignment_baseline="'bottom'",
+            )
+            
+            view_state = pdk.ViewState(latitude=center_lat, longitude=center_lon, zoom=15.5, pitch=0)
+            st.pydeck_chart(pdk.Deck(
+                layers=[scatter_layer, text_layer], 
+                initial_view_state=view_state, 
+                map_style="light", 
+                tooltip={"text": "{name}\nEPC Grade: {grade}"}
+            ))
+
+    st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
+
+    # ── LAYER 5: WHAT-IF SCENARIO PLANNER & EXPORT (PHASE 4, 5, 6) ────────────
+    st.markdown("<div class='sec-hdr'>⚡ What If? — Campus-Wide Scenario Planner</div>", unsafe_allow_html=True)
+    
+    non_baseline_scenarios = [s for s in selected_scenario_names if s != "Baseline (No Intervention)"]
+    if not non_baseline_scenarios:
+        st.info("Select at least one intervention scenario in the sidebar to use the planner.")
+    else:
+        target_sn = st.selectbox("Compare Baseline vs:", non_baseline_scenarios, label_visibility="collapsed")
+        
+        # Calculate Target Campus Totals
+        sc_energy = 0
+        sc_install = 0
+        for bname, bdata in _active_buildings.items():
+            try:
+                res = calculate_thermal_load(bdata, SCENARIOS[target_sn], weather)
+                sc_energy += res["scenario_energy_mwh"]
+                sc_install += SCENARIOS[target_sn]["install_cost_gbp"]
+            except Exception: pass
+            
+        sc_carbon = sc_energy * 1000 * 0.20482 / 1000
+        sc_cost = sc_energy * 1000 * 0.28
+        
+        saved_carbon = campus_carbon - sc_carbon
+        saved_cost = campus_cost - sc_cost
+        payback = sc_install / saved_cost if saved_cost > 0 else 0
+        
+        cars = int(saved_carbon / 2.0)
+        flights = int(saved_carbon / 0.8) # approx 0.8 t per transatlantic economy flight
+        
+        pct_remaining = (sc_carbon / campus_carbon) * 100 if campus_carbon else 100
+        
+        st.markdown(f"""
+        <div style='background:#ffffff; border:1px solid #E0EBF4; border-radius:8px; padding:20px; box-shadow:0 4px 12px rgba(7,26,47,0.05); margin-bottom:16px;'>
+            <h3 style='margin-top:0; color:#071A2F; font-family:Rajdhani,sans-serif;'>Campus Net Zero Pathway</h3>
+            <div style='margin-bottom:12px; font-size:0.9rem; color:#5A7A90;'>Carbon Budget Progress</div>
+            
+            <div style='margin-bottom:6px; display:flex; justify-content:space-between; font-weight:bold; color:#071A2F;'>
+                <span>Baseline: {campus_carbon:,.0f} t CO₂e</span>
+            </div>
+            <div style='background:#E0EBF4; width:100%; height:24px; border-radius:12px; overflow:hidden; margin-bottom:12px;'>
+                <div style='background:#E84C4C; width:100%; height:100%;'></div>
+            </div>
+            
+            <div style='margin-bottom:6px; display:flex; justify-content:space-between; font-weight:bold; color:#1DB87A;'>
+                <span>{target_sn.split(' (')[0]}: {sc_carbon:,.0f} t CO₂e</span>
+                <span>↓ You save {saved_carbon:,.0f} t CO₂e/yr</span>
+            </div>
+            <div style='background:#E0EBF4; width:100%; height:24px; border-radius:12px; overflow:hidden; margin-bottom:24px;'>
+                <div style='background:#1DB87A; width:{pct_remaining}%; height:100%;'></div>
+            </div>
+            
+            <div style='display:flex; flex-wrap:wrap; gap:16px; border-top:1px solid #E0EBF4; padding-top:16px;'>
+                <div style='flex:1; min-width:200px;'>
+                    <div style='color:#5A7A90; font-size:0.85rem;'>Energy Cost</div>
+                    <div style='font-size:1.1rem; font-weight:bold; color:#071A2F;'>£{campus_cost/1000:,.0f}k → £{sc_cost/1000:,.0f}k <span style='color:#1DB87A;'>(save £{saved_cost/1000:,.0f}k/yr)</span></div>
+                </div>
+                <div style='flex:1; min-width:200px;'>
+                    <div style='color:#5A7A90; font-size:0.85rem;'>Investment Required</div>
+                    <div style='font-size:1.1rem; font-weight:bold; color:#071A2F;'>£{sc_install/1000:,.0f}k <span style='color:#5A7A90; font-size:0.9rem; font-weight:normal;'>· {payback:.1f} yr payback</span></div>
+                </div>
+            </div>
+            
+            <div style='margin-top:16px; background:#F0F4F8; padding:12px 16px; border-radius:6px; font-size:0.9rem; color:#3A576B;'>
+                🌍 <strong>Real-world equivalent:</strong> Removing <strong>{cars:,} cars</strong> from the road every year, or avoiding <strong>{flights:,} transatlantic flights</strong>.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # ── EXPORT BUSINESS CASE CSV (PHASE 6) ────────────────────────────────
+        csv_lines = [
+            "CrowAgent Business Case Summary",
+            f"Location,{st.session_state.wx_location_name}",
+            f"Scenario,{target_sn}",
+            "",
+            "Metric,Baseline,Target,Difference",
+            f"Energy (MWh/yr),{campus_energy:.1f},{sc_energy:.1f},{-abs(campus_energy-sc_energy):.1f}",
+            f"Carbon (t CO2e/yr),{campus_carbon:.1f},{sc_carbon:.1f},{-abs(campus_carbon-sc_carbon):.1f}",
+            f"Cost (£/yr),{campus_cost:.2f},{sc_cost:.2f},{-abs(campus_cost-sc_cost):.2f}",
+            "",
+            "Financials",
+            f"Total Investment (£),{sc_install:.2f}",
+            f"Annual Savings (£),{saved_cost:.2f}",
+            f"Simple Payback (yrs),{payback:.2f}"
+        ]
+        csv_data = "\n".join(csv_lines)
+        
+        st.download_button(
+            label="📥 Export Campus Business Case (CSV)",
+            data=csv_data,
+            file_name=f"campus_business_case_{target_sn.replace(' ', '_')}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
 
 
 # ════════════════════════════════════════════════════════════════════════════
