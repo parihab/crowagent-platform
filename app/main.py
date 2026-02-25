@@ -645,7 +645,6 @@ if not st.session_state.user_segment:
             if st.button(f"Select {label}", key=f"btn_gate_{seg_id}", use_container_width=True):
                 st.session_state.user_segment = seg_id
                 st.session_state.selected_scenario_names = _segment_default_scenarios(seg_id)
-                st.session_state.pop("scenario_multiselect", None)
                 st.query_params["segment"] = seg_id
                 st.rerun()
                 
@@ -707,7 +706,6 @@ with st.sidebar:
     if st.button("Change Segment / Reset", key="btn_reset_segment"):
         st.session_state.user_segment = None
         st.session_state.pop("selected_scenario_names", None)
-        st.session_state.pop("scenario_multiselect", None)
         st.query_params.clear()
         st.rerun()
 
@@ -721,12 +719,10 @@ with st.sidebar:
         "Scenario selection",
         options=_scenario_options,
         default=_scenario_defaults,
-        key="scenario_multiselect",
+        key="selected_scenario_names",
         help="Choose one or more intervention scenarios for calculations.",
     )
-    if _chosen:
-        st.session_state.selected_scenario_names = _chosen
-    else:
+    if not _chosen:
         st.session_state.selected_scenario_names = _segment_default_scenarios(st.session_state.user_segment)
     _update_location_query_params()
 
@@ -1252,21 +1248,13 @@ with _tab_dash:
         seg = st.session_state.user_segment
         best_saving = max(results.values(), key=lambda r: r.get("energy_saving_pct", 0))
         best_carbon = max(results.values(), key=lambda r: r.get("carbon_saving_t", 0))
-        baseline_energy = baseline_result.get("baseline_energy_mwh", selected_building["baseline_energy_mwh"])
-        baseline_co2 = round(baseline_energy * 1000 * 0.20482 / 1000, 1)
-        baseline_cost = round(baseline_energy * 1000 * 0.28 / 1000, 1)
-
-        def _card(label: str, value: str, sub: str = "", accent: str = "") -> None:
-            _cls = f"kpi-card {accent}".strip()
-            st.markdown(
-                f"""
-                <div class='{_cls}'>
-                  <div class='kpi-label'>{label}</div>
-                  <div class='kpi-value'>{value}</div>
-                  <div class='kpi-sub'>{sub}</div>
-                </div>""",
-                unsafe_allow_html=True,
-            )
+        best_saving_name = next(n for n, r in results.items()
+                                if r is best_saving)
+        best_carbon_name = next(n for n, r in results.items()
+                                if r is best_carbon)
+        baseline_energy = baseline_result.get("baseline_energy_mwh",
+                                              selected_building["baseline_energy_mwh"])
+        baseline_co2    = round(baseline_energy * 1000 * 0.20482 / 1000, 1)
 
         k1, k2, k3, k4 = st.columns(4)
 
