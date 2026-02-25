@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import os
 import sys
+import json
 
 # ensure proper UTF-8 output in environments with non-UTF8 locale
 if hasattr(sys.stdout, "reconfigure"):
@@ -723,8 +724,6 @@ def _get_secret(key: str, default: str = "") -> str:
     except (KeyError, AttributeError, FileNotFoundError):
         return os.getenv(key, default)
 
-# (encryption helpers removed – keys are handled in plaintext in session state)
-
 # Initialize session state with defaults or environment values
 if "user_segment" not in st.session_state:
     st.session_state.user_segment = "university_he"
@@ -757,16 +756,8 @@ if "wx_enable_fallback" not in st.session_state:
     st.session_state.wx_enable_fallback = True
 if "owm_key" not in st.session_state:
     st.session_state.owm_key = _get_secret("OWM_KEY", "")
-# sidebar collapse disallowed (see CSS below)
 
 # ── Handle query params on page load (geo, city or custom coordinates) ──
-# The location picker should remember the user’s last choice even after a
-# full browser refresh.  We support three different params:
-#  • geo_lat / geo_lon  – injected by the JS component (auto‑detect flow)
-#  • city                – explicit selection from the dropdown
-#  • lat & lon           – arbitrary manual coordinates
-# GDPR: raw coordinates are resolved to a named city when possible and then
-# discarded immediately.
 _qp = st.query_params
 if "geo_lat" in _qp and "geo_lon" in _qp:
     try:
@@ -782,13 +773,11 @@ if "geo_lat" in _qp and "geo_lon" in _qp:
             "LOCATION_AUTO_DETECTED",
             f"Resolved browser location to '{_resolved}' (raw coords discarded per GDPR)",
         )
-        # remember the resolved city so a refresh doesn’t revert to Reading
         st.query_params.clear()
         st.query_params["city"] = _resolved
     except Exception:
         pass
 elif "city" in _qp:
-    # explicit city persisted by earlier interaction
     _city = _qp.get("city")
     if isinstance(_city, list):
         _city = _city[0]
@@ -806,7 +795,7 @@ elif "lat" in _qp and "lon" in _qp:
         _lon = float(_qp.get("lon"))
         st.session_state.wx_lat = _lat
         st.session_state.wx_lon = _lon
-        st.session_state.wx_city = ""  # not one of the known cities
+        st.session_state.wx_city = "" 
         st.session_state.wx_location_name = f"Custom site ({_lat:.4f}, {_lon:.4f})"
         st.session_state.force_weather_refresh = True
     except Exception:
@@ -819,18 +808,9 @@ elif "lat" in _qp and "lon" in _qp:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _update_location_query_params() -> None:
-    """Reflect the currently selected location in the page's query string.
-
-    We encode the city key where available; if the user has supplied custom
-    coordinates we use ``lat``/``lon`` so that a subsequent refresh still
-    reinstates exactly what they chose.  Calling this function after any
-    change (dropdown, manual coords or auto‑detect) keeps the experience
-    consistent.
-    """
     params: dict[str, str] = {}
     if st.session_state.wx_city:
         params["city"] = st.session_state.wx_city
-    # always include numeric coords too; they’ll be ignored if a city is set
     params["lat"] = str(st.session_state.wx_lat)
     params["lon"] = str(st.session_state.wx_lon)
     st.query_params.clear()
@@ -861,7 +841,6 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-    # note: collapse is disabled by design; sidebar is always open
     st.markdown("---")
 
     # ── User Segment selector ─────────────────────────────────────────────────
@@ -889,9 +868,9 @@ with st.sidebar:
 
     # ── Merge segment-specific buildings into BUILDINGS ───────────────────────
     _seg_buildings = compliance.SEGMENT_BUILDINGS.get(st.session_state.user_segment, {})
-    _active_buildings = dict(BUILDINGS)           # always preserve university buildings
+    _active_buildings = dict(BUILDINGS)           
     if _seg_buildings:
-        _active_buildings = {**_seg_buildings, **BUILDINGS}  # segment first for UX
+        _active_buildings = {**_seg_buildings, **BUILDINGS}  
 
     # ── Building selector ─────────────────────────────────────────────────────
     st.markdown("<div class='sb-section'>🏢 Building</div>", unsafe_allow_html=True)
@@ -1006,7 +985,7 @@ with st.sidebar:
             "Or use browser geolocation (HTTPS only):</div>",
             unsafe_allow_html=True,
         )
-        # geolocation component returns a dict when coordinates are obtained
+        
     _geo = loc.render_geo_detect()
     if _geo and isinstance(_geo, dict):
         try:
@@ -1219,10 +1198,9 @@ with st.sidebar:
                 "Met Office DataPoint key " + ("updated" if _had_mo else "added"),
             )
 
-        # Validation for Met Office DataPoint key
         if st.session_state.met_office_key:
           if st.button("Test Met Office key", key="test_mo_key", use_container_width=True):
-            ok, msg = wx.test_met_office_key(_decrypt(st.session_state.met_office_key))
+            ok, msg = wx.test_met_office_key(st.session_state.met_office_key)
             if ok:
               st.markdown("<div class='val-ok'>✓ " + msg + "</div>", unsafe_allow_html=True)
             else:
@@ -1239,16 +1217,13 @@ with st.sidebar:
         if _gm_key != _gm_value:
             st.session_state.gemini_key = _gm_key
 
-        # Validation feedback with actual API test
         if st.session_state.gemini_key:
-            # show raw-format warning
             if not st.session_state.gemini_key.startswith("AIza"):
                 st.markdown(
                     "<div class='val-warn'>⚠ Gemini key should start with 'AIza'</div>",
                     unsafe_allow_html=True,
                 )
             else:
-                # delegate to utility helper
                 valid, message, warn = validate_gemini_key(st.session_state.gemini_key)
                 st.markdown(message, unsafe_allow_html=True)
                 st.session_state.gemini_key_valid = valid or warn
@@ -1285,9 +1260,6 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # insert a branded footer. the logo is rendered inline because _logo_html
-    # has not yet been computed (it comes later when building the top bar), so
-    # we duplicate the same logic here to keep the header and footer in sync.
     if LOGO_URI:
         _footer_logo = (
             f"<img src='{LOGO_URI}' height='28' "
@@ -1339,10 +1311,8 @@ _weather_pill = (
 )
 
 if LOGO_URI:
-    # ensure logo is vertically centered and not cropped
     _logo_html = f"<img src='{LOGO_URI}' height='38' style='vertical-align:middle; display:inline-block; height:38px; width:auto;' alt='CrowAgent™ Logo'/>"
 else:
-    # fallback text should match branding but no emoji
     _logo_html = "<span style='font-family:Rajdhani,sans-serif;font-size:1.2rem;font-weight:700;color:#00C2A8;'>CrowAgent™</span>"
 st.markdown(f"""
 <div class='platform-topbar'>
@@ -1364,7 +1334,6 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# Show compute errors if any
 if _compute_errors:
     for _err in _compute_errors:
         st.error(f"Computation error — {_err}")
@@ -1396,9 +1365,8 @@ _tab_dash, _tab_fin, _tab_ai, _tab_compliance, _tab_about = st.tabs([
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# TAB 1 — DASHBOARD
+# TAB 1 — DASHBOARD (REDESIGNED)
 # ════════════════════════════════════════════════════════════════════════════
-
 with _tab_dash:
     # ── CAMPUS AGGREGATION FOR SCORECARD ──────────────────────────────────────
     campus_area = sum(b.get("floor_area_m2", 0) for b in _active_buildings.values())
@@ -1586,9 +1554,13 @@ with _tab_dash:
 
     st.markdown("<hr style='border-color:#E0EBF4; margin:24px 0;'>", unsafe_allow_html=True)
 
-    # (Ensure the `render_campus_3d_map` call is directly below this code, exactly as it was)
     # ── 3D/4D Campus Visualisation ────────────────────────────────────────────
-    # render_campus_3d_map(...)
+    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+    render_campus_3d_map(
+        selected_scenario_names=selected_scenario_names,
+        weather=weather,
+    )
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 2 — FINANCIAL ANALYSIS
