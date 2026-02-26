@@ -667,7 +667,7 @@ if "scenarios" in _qp:
         st.session_state.selected_scenario_names = _qp_scenarios
 
 if "user_segment" not in st.session_state:
-    st.session_state.user_segment = "smb_landlord"
+    st.session_state.user_segment = None # Start unselected to trigger gate
 
 if "portfolio" not in st.session_state:
     st.session_state.portfolio = []
@@ -698,37 +698,61 @@ if "wx_provider" not in st.session_state:
 if "wx_enable_fallback" not in st.session_state:
     st.session_state.wx_enable_fallback = True
 if "owm_key" not in st.session_state:
-    st.session_state.owm_key = ""
+    st.session_state.owm_key = _get_secret("OWM_KEY", "")
 if "epc_api_key" not in st.session_state:
     st.session_state.epc_api_key = _get_secret("EPC_API_KEY", "")
 if "epc_api_url" not in st.session_state:
     st.session_state.epc_api_url = _get_secret("EPC_API_URL", "https://epc.opendatacommunities.org/api/v1")
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ALWAYS-ON SEGMENT SELECTOR (no onboarding lock)
+# ONBOARDING GATE (App Locked Until Segment Selected)
 # ─────────────────────────────────────────────────────────────────────────────
-_segment_order = [
-    "smb_landlord",
-    "smb_industrial",
-    "individual_selfbuild",
-    "university_he",
-]
-_seg_labels = {k: compliance.SEGMENT_META.get(k, {}).get("label", k) for k in _segment_order}
-_current_seg = st.session_state.get("user_segment", "smb_landlord")
-if _current_seg not in _segment_order:
-    _current_seg = "smb_landlord"
-
-_seg_choice = st.radio(
-    "Select segment",
-    options=_segment_order,
-    horizontal=True,
-    format_func=lambda s: _seg_labels.get(s, s),
-    index=_segment_order.index(_current_seg),
-    key="segment_selector_top",
-)
-if _seg_choice != st.session_state.user_segment:
-    st.session_state.user_segment = _seg_choice
-    st.session_state.selected_scenario_names = _segment_default_scenarios(_seg_choice)
+if not st.session_state.user_segment:
+    _welcome_logo = (
+        f"<img src='{LOGO_URI}' width='220' style='max-width:100%; height:auto; display:inline-block; margin-bottom:10px;' alt='CrowAgent™ Logo'/>"
+        if LOGO_URI
+        else "<div style='font-family:Rajdhani,sans-serif;font-size:2rem;font-weight:700;color:#00C2A8;margin-bottom:10px;'>CrowAgent™</div>"
+    )
+    st.markdown(f"""
+    <div style="text-align: center; margin-top: 40px;">
+        {_welcome_logo}
+        <h1 style="color: #071A2F; margin-bottom: 8px;">Welcome to CrowAgent™ Platform</h1>
+        <p style="color: #5A7A90; font-size: 1.05rem; margin: 0 auto 8px auto; max-width: 820px;">
+            CrowAgent™ is a sustainability decision-intelligence workspace for UK built-environment stakeholders.
+            It brings together retrofit scenario modelling, financial insights, AI-assisted recommendations, and UK compliance guidance.
+        </p>
+        <p style="color:#7A93A7;font-size:0.8rem; margin: 0 auto 28px auto; max-width: 920px; line-height:1.45;">
+            Prototype notice: outputs are indicative and for decision support only. Always validate with certified assessors and qualified professionals
+            before procurement, design sign-off, or regulatory submission. CrowAgent™ name, logo, and product marks are trademarks of their respective owners.
+            © 2026 CrowAgent™. Rights reserved.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col1, col2, col3, col4 = st.columns(4)
+    segments_ui = [
+        (col1, "university_he", "University / HE", "🎓", "Campus estate managers"),
+        (col2, "smb_landlord", "Commercial Landlord", "🏢", "MEES compliance focused"),
+        (col3, "smb_industrial", "SMB Industrial", "🏭", "SECR / Carbon baselining"),
+        (col4, "individual_selfbuild", "Individual Self-Build", "🏠", "Part L / FHS compliance")
+    ]
+    
+    for col, seg_id, label, icon, desc in segments_ui:
+        with col:
+            st.markdown(f"""
+            <div style="background: #ffffff; border-radius: 8px; border: 1px solid #E0EBF4; padding: 20px; text-align: center; height: 180px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                <div style="font-size: 2.5rem; margin-bottom: 10px;">{icon}</div>
+                <div style="font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 1.1rem; color: #071A2F;">{label}</div>
+                <div style="font-size: 0.8rem; color: #5A7A90; margin-top: 5px;">{desc}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            if st.button(f"Select {label}", key=f"btn_gate_{seg_id}", use_container_width=True):
+                st.session_state.user_segment = seg_id
+                st.session_state.selected_scenario_names = _segment_default_scenarios(seg_id)
+                st.query_params["segment"] = seg_id
+                st.rerun()
+                
+    st.stop() # Halt execution until gate is passed
 
 # ─────────────────────────────────────────────────────────────────────────────
 # UTILS
@@ -1307,305 +1331,6 @@ st.markdown(f"""
 if _compute_errors:
     for _err in _compute_errors:
         st.error(f"Computation error — {_err}")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# REFACTORED BUILDING-FIRST UX (v2.1)
-# ─────────────────────────────────────────────────────────────────────────────
-@st.cache_data(ttl=3600, show_spinner=False)
-def _lookup_epc_cached(postcode: str, api_url: str, api_key: str) -> dict:
-    import requests
-    normalized = " ".join(postcode.strip().upper().split())
-    if len(normalized) < 5:
-        raise ValueError("Invalid postcode format.")
-    headers = {"Accept": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-    if not api_url:
-        return fetch_epc_data(normalized)
-    url = api_url.rstrip("/") + "/domestic/search"
-    r = requests.get(url, params={"postcode": normalized}, headers=headers, timeout=12)
-    r.raise_for_status()
-    payload = r.json() if r.content else {}
-    rows = payload.get("rows") or payload.get("results") or []
-    if isinstance(rows, dict):
-        rows = [rows]
-    row = rows[0] if rows else {}
-    fa = row.get("total-floor-area") or row.get("floor_area") or row.get("floorArea") or 150
-    epc = row.get("current-energy-rating") or row.get("current_energy_rating") or "Unknown"
-    age = row.get("construction-age-band") or row.get("construction_age_band") or "Unknown"
-    built_year = row.get("built-form") or row.get("built_form") or "Unknown"
-    return {
-        "floor_area_m2": float(fa),
-        "built_year": str(built_year),
-        "epc_band": str(epc),
-        "construction_age_band": str(age),
-    }
-
-
-def _normalize_building_model(raw: dict) -> dict:
-    floor_area = _safe_number(raw.get("floor_area_m2"), default=150.0)
-    baseline = _safe_number(raw.get("baseline_energy_mwh"), default=(floor_area * 150.0) / 1000.0)
-    return {
-        "floor_area_m2": floor_area,
-        "height_m": _safe_number(raw.get("height_m"), default=3.0),
-        "glazing_ratio": min(0.9, max(0.05, _safe_number(raw.get("glazing_ratio"), default=0.25))),
-        "u_value_wall": _safe_number(raw.get("u_value_wall"), default=1.8),
-        "u_value_roof": _safe_number(raw.get("u_value_roof"), default=2.0),
-        "u_value_glazing": _safe_number(raw.get("u_value_glazing"), default=2.8),
-        "baseline_energy_mwh": max(0.1, baseline),
-        "occupancy_hours": int(_safe_number(raw.get("occupancy_hours"), default=3000)),
-        "description": str(raw.get("description", "User Building")),
-        "built_year": str(raw.get("built_year", "Unknown")),
-        "building_type": str(raw.get("building_type", "User Defined")),
-    }
-
-
-if "active_building" not in st.session_state:
-    st.session_state.active_building = _normalize_building_model(BUILDINGS.get("Greenfield Library", {}))
-if "active_postcode" not in st.session_state:
-    st.session_state.active_postcode = ""
-if "selected_interventions" not in st.session_state:
-    st.session_state.selected_interventions = []
-if "portfolio" not in st.session_state:
-    st.session_state.portfolio = []
-
-st.markdown("<h3 style='margin-top:0;'>Select Your Building</h3>", unsafe_allow_html=True)
-mode_col1, mode_col2 = st.columns([1, 2])
-with mode_col1:
-    build_mode = st.radio("Building input mode", ["EPC Lookup", "Manual Entry"], horizontal=False, key="build_mode")
-with mode_col2:
-    if build_mode == "EPC Lookup":
-        pc = st.text_input("UK Postcode", value=st.session_state.active_postcode, placeholder="e.g. SW1A 1AA", key="pc_lookup")
-        if st.button("Lookup EPC", key="lookup_epc_btn") and pc.strip():
-            try:
-                epc_data = _lookup_epc_cached(pc, st.session_state.epc_api_url, st.session_state.epc_api_key)
-                floor_area = _safe_number(epc_data.get("floor_area_m2"), 150.0)
-                st.session_state.active_postcode = pc.strip().upper()
-                st.session_state.active_building = _normalize_building_model({
-                    "floor_area_m2": floor_area,
-                    "built_year": epc_data.get("built_year", "Unknown"),
-                    "baseline_energy_mwh": (floor_area * 150.0) / 1000.0,
-                    "description": f"EPC-derived building ({st.session_state.active_postcode})",
-                    "building_type": "EPC Lookup",
-                })
-                if st.session_state.active_postcode in loc.CITIES:
-                    cm = loc.city_meta(st.session_state.active_postcode)
-                    st.session_state.wx_lat, st.session_state.wx_lon = cm["lat"], cm["lon"]
-                st.success("EPC data loaded into active building model.")
-            except Exception as exc:
-                st.warning(f"EPC lookup failed ({type(exc).__name__}). Switched to Manual Entry.")
-                st.session_state.build_mode = "Manual Entry"
-    else:
-        mb1, mb2, mb3 = st.columns(3)
-        with mb1:
-            fa = st.number_input("Floor area (m²)", min_value=20.0, max_value=100000.0, value=float(st.session_state.active_building.get("floor_area_m2", 150.0)), step=1.0)
-            by = st.text_input("Built year", value=str(st.session_state.active_building.get("built_year", "1990")))
-        with mb2:
-            uw = st.number_input("Wall U-value", min_value=0.1, max_value=6.0, value=float(st.session_state.active_building.get("u_value_wall", 1.8)), step=0.05)
-            ur = st.number_input("Roof U-value", min_value=0.1, max_value=6.0, value=float(st.session_state.active_building.get("u_value_roof", 2.0)), step=0.05)
-        with mb3:
-            ug = st.number_input("Glazing U-value", min_value=0.1, max_value=6.0, value=float(st.session_state.active_building.get("u_value_glazing", 2.8)), step=0.05)
-            annual_override = st.number_input("Annual energy override (MWh)", min_value=0.0, value=float(st.session_state.active_building.get("baseline_energy_mwh", 0.0)), step=0.1)
-
-        if st.button("Apply Manual Building", key="apply_manual_building"):
-            baseline = annual_override if annual_override > 0 else (fa * 150.0) / 1000.0
-            st.session_state.active_building = _normalize_building_model({
-                "floor_area_m2": fa,
-                "u_value_wall": uw,
-                "u_value_roof": ur,
-                "u_value_glazing": ug,
-                "baseline_energy_mwh": baseline,
-                "built_year": by,
-                "description": "Manual building model",
-                "building_type": "Manual Entry",
-            })
-            st.success("Manual building model updated.")
-
-with st.expander("Advanced: Portfolio", expanded=False):
-    p1, p2 = st.columns([3,1])
-    with p1:
-        p_pc = st.text_input("Add postcode to portfolio", placeholder="e.g. RG1 2LG", key="portfolio_pc")
-    with p2:
-        if st.button("Add", key="portfolio_add_btn"):
-            if len(st.session_state.portfolio) >= MAX_PORTFOLIO_SIZE:
-                st.error(f"Portfolio capacity reached ({MAX_PORTFOLIO_SIZE}).")
-            elif not p_pc.strip():
-                st.warning("Enter a postcode first.")
-            else:
-                add_to_portfolio(p_pc.strip())
-    for _p in list(st.session_state.portfolio):
-        c_a, c_b = st.columns([5,1])
-        with c_a:
-            st.caption(f"{_p.get('postcode', 'Unknown')} · EPC {_p.get('epc_band', 'Unknown')}")
-        with c_b:
-            if st.button("Remove", key=f"rm_adv_{_p.get('id','x')}"):
-                remove_from_portfolio(_p.get("id", ""))
-
-with st.spinner("Fetching Open-Meteo weather…"):
-    weather = wx.get_weather(
-        lat=st.session_state.wx_lat,
-        lon=st.session_state.wx_lon,
-        location_name=st.session_state.wx_location_name,
-        provider="open_meteo",
-        met_office_key=None,
-        openweathermap_key=None,
-        enable_fallback=True,
-        manual_temp_c=st.session_state.manual_temp,
-        force_refresh=st.session_state.force_weather_refresh,
-    )
-st.session_state.force_weather_refresh = False
-st.session_state.manual_temp = st.slider("Temperature override (°C)", -10.0, 35.0, float(st.session_state.manual_temp), 0.5)
-weather["temperature_c"] = float(st.session_state.manual_temp)
-
-scenario_cards = [
-    ("Enhanced Insulation Upgrade", "Envelope-first approach for deep demand reduction."),
-    ("Solar Glass Installation", "On-site generation + glazing improvements."),
-    ("Green Roof Installation", "Fabric performance and thermal buffering."),
-]
-sc1, sc2, sc3 = st.columns(3)
-sel = []
-for col, (name, desc) in zip([sc1, sc2, sc3], scenario_cards):
-    with col:
-        st.markdown(f"**{name}**\n\n{desc}\n\nEst. Cost: £{SCENARIOS[name]['install_cost_gbp']:,.0f}")
-        if st.checkbox("Select", key=f"sel_{name}"):
-            sel.append(name)
-
-if not sel:
-    sel = ["Baseline (No Intervention)"]
-elif len(sel) > 1:
-    sel = ["Combined Package (All Interventions)"]
-st.session_state.selected_interventions = sel
-
-active_building = _normalize_building_model(st.session_state.active_building)
-scenario_key = sel[0]
-scenario_result = calculate_thermal_load(active_building, SCENARIOS[scenario_key], {"temperature_c": weather["temperature_c"]})
-baseline_result = calculate_thermal_load(active_building, SCENARIOS["Baseline (No Intervention)"], {"temperature_c": weather["temperature_c"]})
-
-_tab_overview, _tab_upgrades, _tab_financial, _tab_compliance_new, _tab_about_new = st.tabs([
-    "🏢 Building Overview",
-    "🛠 Upgrade Scenarios",
-    "💷 Financial Impact",
-    "🏛️ Compliance",
-    "ℹ️ About",
-])
-
-with _tab_overview:
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Baseline Energy", f"{baseline_result.get('scenario_energy_mwh', 0):,.1f} MWh")
-    c2.metric("Carbon", f"{baseline_result.get('scenario_carbon_t', 0):,.1f} tCO₂e")
-    c3.metric("EPC Band", st.session_state.get("active_postcode") or "Unknown")
-    _seg = st.session_state.user_segment
-    comp_status = "PASS" if _seg != "individual_selfbuild" else ("PASS" if compliance.part_l_compliance_check(1.8,2.0,2.8,active_building['floor_area_m2'], baseline_result.get('scenario_energy_mwh',0)*1000)["part_l_2021_pass"] else "FAIL")
-    c4.metric("Compliance Status", comp_status)
-
-with _tab_upgrades:
-    u1, u2, u3, u4 = st.columns(4)
-    u1.metric("Energy Reduction %", f"{scenario_result.get('energy_saving_pct', 0):,.1f}%")
-    u2.metric("Carbon Saved", f"{scenario_result.get('carbon_saving_t', 0):,.1f} t")
-    u3.metric("Upgrade Cost", f"£{scenario_result.get('install_cost_gbp', 0):,.0f}")
-    _py = scenario_result.get("payback_years")
-    u4.metric("Payback", "—" if _py is None else f"{_py:.1f} yrs")
-
-    if len(st.session_state.portfolio) <= 1:
-        df_map = pd.DataFrame([{"name": st.session_state.active_postcode or "Active Building", "lat": st.session_state.wx_lat, "lon": st.session_state.wx_lon}])
-        try:
-            import pydeck as pdk
-            deck = pdk.Deck(
-                map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-                initial_view_state=pdk.ViewState(latitude=st.session_state.wx_lat, longitude=st.session_state.wx_lon, zoom=12),
-                layers=[pdk.Layer("ScatterplotLayer", data=df_map, get_position='[lon, lat]', get_radius=50, get_fill_color='[0,194,168,220]', pickable=True)],
-                tooltip={"text": "{name}"},
-            )
-            st.pydeck_chart(deck, use_container_width=True)
-        except Exception as exc:
-            st.warning(f"Map unavailable: {exc}")
-    else:
-        _map_data = []
-        for i, p in enumerate(st.session_state.portfolio):
-            lat = st.session_state.wx_lat + (np.sin(i) * 0.01)
-            lon = st.session_state.wx_lon + (np.cos(i) * 0.01)
-            _map_data.append({
-                "name": p.get("postcode", f"Asset {i+1}"),
-                "lat": lat,
-                "lon": lon,
-                "elevation": max(10.0, _safe_nested_number(p, "baseline_results", "scenario_energy_mwh") / 10.0),
-                "polygon": loc._synthetic_polygon(lat, lon, size_m=60.0),
-            })
-        try:
-            import pydeck as pdk
-            deck = pdk.Deck(
-                map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
-                initial_view_state=pdk.ViewState(latitude=st.session_state.wx_lat, longitude=st.session_state.wx_lon, zoom=11, pitch=45),
-                layers=[pdk.Layer("PolygonLayer", data=pd.DataFrame(_map_data), get_polygon="polygon", get_elevation="elevation", get_fill_color="[0,194,168,180]", extruded=True, pickable=True)],
-                tooltip={"text": "{name}"},
-            )
-            st.pydeck_chart(deck, use_container_width=True)
-        except Exception as exc:
-            st.warning(f"3D map unavailable: {exc}")
-
-with _tab_financial:
-    total_install = scenario_result.get("install_cost_gbp", 0.0)
-    total_saving = scenario_result.get("annual_saving_gbp", 0.0)
-    st.metric("Annual Saving", f"£{total_saving:,.0f}")
-    st.metric("Simple Payback", "—" if scenario_result.get("payback_years") is None else f"{scenario_result['payback_years']:.1f} yrs")
-
-with _tab_compliance_new:
-    seg = st.session_state.user_segment
-    if seg == "smb_landlord":
-        epc = compliance.estimate_epc_rating(active_building["floor_area_m2"], baseline_result.get("scenario_energy_mwh", 0)*1000, active_building["u_value_wall"], active_building["u_value_roof"], active_building["u_value_glazing"], active_building["glazing_ratio"])
-        gap = compliance.mees_gap_analysis(epc["sap_score"], "C")
-        st.write({"epc": epc["epc_band"], "sap": epc["sap_score"], "mees_gap": gap["sap_gap"]})
-    elif seg == "smb_industrial":
-        secr = compliance.calculate_carbon_baseline(elec_kwh=baseline_result.get("scenario_energy_mwh", 0)*1000, gas_kwh=0, floor_area_m2=active_building["floor_area_m2"])
-        st.write(secr)
-    elif seg == "individual_selfbuild":
-        part_l = compliance.part_l_compliance_check(active_building["u_value_wall"], active_building["u_value_roof"], active_building["u_value_glazing"], active_building["floor_area_m2"], baseline_result.get("scenario_energy_mwh", 0)*1000)
-        st.write(part_l)
-    else:
-        st.info("University segment: use indicative compliance view.")
-
-with _tab_about_new:
-    st.markdown("CrowAgent™ v2.1 refactor mode active.")
-
-if hasattr(st, "dialog"):
-    @st.dialog("Ask CrowAgent AI")
-    def _ask_ai_dialog() -> None:
-        _akey = st.session_state.get("gemini_key", "")
-        if not _akey:
-            st.warning("Gemini key required in sidebar.")
-            return
-        _q = st.text_area("Question", value="Which upgrade has fastest payback?")
-        if st.button("Run AI", key="run_ai_dialog_btn"):
-            buildings = {"Active Building": active_building}
-            scenarios = {k: SCENARIOS[k] for k in ["Baseline (No Intervention)", "Enhanced Insulation Upgrade", "Solar Glass Installation", "Green Roof Installation", "Combined Package (All Interventions)"]}
-            res = crow_agent.run_agent(
-                api_key=_akey,
-                user_message=_q,
-                conversation_history=[],
-                buildings=buildings,
-                scenarios=scenarios,
-                calculate_fn=calculate_thermal_load,
-                current_context={
-                    "segment": st.session_state.user_segment,
-                    "floor_area": active_building.get("floor_area_m2"),
-                    "baseline_energy": baseline_result.get("scenario_energy_mwh"),
-                    "selected_interventions": sel,
-                    "annual_savings": scenario_result.get("annual_saving_gbp"),
-                    "payback": scenario_result.get("payback_years"),
-                },
-            )
-            if res.get("error"):
-                st.error(res["error"])
-            else:
-                st.success("AI recommendation generated.")
-                st.write(res.get("answer", ""))
-                st.json(res.get("tool_calls", []))
-
-    if st.button("Ask CrowAgent AI", key="open_ai_dialog_btn"):
-        _ask_ai_dialog()
-
-st.stop()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PROTOTYPE DISCLAIMER — shown on every page load (compact)
@@ -2902,17 +2627,12 @@ with _tab_dash:
         elif st.session_state.user_segment == "smb_landlord":
             total_mees_gap = 0
             for item in st.session_state.portfolio:
-                _fa = _safe_number(item.get("floor_area_m2"), default=0.0)
-                _baseline_mwh = _safe_nested_number(item, "baseline_results", "scenario_energy_mwh")
-                if _fa <= 0 or _baseline_mwh <= 0:
-                    continue
-                epc_rating = compliance.estimate_epc_rating(_fa, _baseline_mwh * 1000, 1.8, 2.0, 2.8, 0.3)
+                epc_rating = compliance.estimate_epc_rating(item["floor_area_m2"], item["baseline_results"]["scenario_energy_mwh"]*1000, 1.8, 2.0, 2.8, 0.3)
                 gap = compliance.mees_gap_analysis(epc_rating["sap_score"], "C")
-                total_mees_gap += _safe_number(gap.get("sap_gap"), default=0.0)
+                total_mees_gap += gap["sap_gap"]
             roi = (total_cost_saving / total_install_cost * 100) if total_install_cost > 0 else 0
             with k1:
-                _portfolio_size = max(1, len(st.session_state.portfolio))
-                st.markdown(f"<div class='kpi-card'><div class='kpi-label'>Avg MEES Gap</div><div class='kpi-value'>{total_mees_gap/_portfolio_size:,.1f}<span class='kpi-unit'> SAP Pts</span></div></div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='kpi-card'><div class='kpi-label'>Avg MEES Gap</div><div class='kpi-value'>{total_mees_gap/len(st.session_state.portfolio):,.1f}<span class='kpi-unit'> SAP Pts</span></div></div>", unsafe_allow_html=True)
             with k2:
                 st.markdown(f"<div class='kpi-card accent-gold'><div class='kpi-label'>Upgrade Cost (Est)</div><div class='kpi-value'>£{total_install_cost/1000:,.0f}<span class='kpi-unit'>k</span></div></div>", unsafe_allow_html=True)
             with k3:
@@ -2933,8 +2653,7 @@ with _tab_dash:
                 st.markdown(f"<div class='kpi-card accent-green'><div class='kpi-label'>Abatement Potential</div><div class='kpi-value'>{abatement:,.1f}<span class='kpi-unit'>%</span></div></div>", unsafe_allow_html=True)
 
         elif st.session_state.user_segment == "individual_selfbuild":
-            _portfolio_size = max(1, len(st.session_state.portfolio))
-            part_l_result = compliance.part_l_compliance_check(1.8, 2.0, 2.8, avg_floor_area, (total_baseline_mwh/_portfolio_size)*1000)
+            part_l_result = compliance.part_l_compliance_check(1.8, 2.0, 2.8, avg_floor_area, (total_baseline_mwh/len(st.session_state.portfolio))*1000)
             with k1:
                 st.markdown(f"<div class='kpi-card'><div class='kpi-label'>Part L Primary Energy</div><div class='kpi-value'>{part_l_result['primary_energy_est']:,.1f}<span class='kpi-unit'> kWh/m²/yr</span></div></div>", unsafe_allow_html=True)
             with k2:
@@ -2944,7 +2663,7 @@ with _tab_dash:
                 status_text = "Pass" if part_l_result['part_l_2021_pass'] else "Fail"
                 st.markdown(f"<div class='kpi-card' style='border-top-color:{status_color}'><div class='kpi-label'>Compliance Status</div><div class='kpi-value' style='color:{status_color}'>{status_text}<span class='kpi-unit'></span></div></div>", unsafe_allow_html=True)
             with k4:
-                st.markdown(f"<div class='kpi-card accent-gold'><div class='kpi-label'>Upgrade Cost</div><div class='kpi-value'>£{total_install_cost/_portfolio_size/1000:,.0f}<span class='kpi-unit'>k / home</span></div></div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='kpi-card accent-gold'><div class='kpi-label'>Upgrade Cost</div><div class='kpi-value'>£{total_install_cost/len(st.session_state.portfolio)/1000:,.0f}<span class='kpi-unit'>k / home</span></div></div>", unsafe_allow_html=True)
 
         st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
@@ -2953,9 +2672,9 @@ with _tab_dash:
         with c1:
             st.markdown("<div class='chart-card'><div class='chart-title'>⚡ Portfolio Energy (MWh/yr)</div>", unsafe_allow_html=True)
             fig_e = go.Figure()
-            x_labels = [f"{str(p.get('postcode', 'Asset'))[:4]}..." for p in st.session_state.portfolio]
-            y_base = [_safe_nested_number(p, "baseline_results", "scenario_energy_mwh") for p in st.session_state.portfolio]
-            y_comb = [_safe_nested_number(p, "combined_results", "scenario_energy_mwh") for p in st.session_state.portfolio]
+            x_labels = [f"{p['postcode'][:4]}..." for p in st.session_state.portfolio]
+            y_base = [p["baseline_results"]["scenario_energy_mwh"] for p in st.session_state.portfolio]
+            y_comb = [p["combined_results"]["scenario_energy_mwh"] for p in st.session_state.portfolio]
             fig_e.add_trace(go.Bar(name="Baseline", x=x_labels, y=y_base, marker_color="#4A6FA5"))
             fig_e.add_trace(go.Bar(name="Post-Intervention", x=x_labels, y=y_comb, marker_color="#00C2A8"))
             fig_e.update_layout(**CHART_LAYOUT, barmode='group', yaxis_title="MWh / year")
@@ -2965,8 +2684,8 @@ with _tab_dash:
         with c2:
             st.markdown("<div class='chart-card'><div class='chart-title'>🌍 Portfolio Carbon (t CO₂e/yr)</div>", unsafe_allow_html=True)
             fig_c = go.Figure()
-            y_base_c = [_safe_nested_number(p, "baseline_results", "scenario_carbon_t") for p in st.session_state.portfolio]
-            y_comb_c = [_safe_nested_number(p, "combined_results", "scenario_carbon_t") for p in st.session_state.portfolio]
+            y_base_c = [p["baseline_results"]["scenario_carbon_t"] for p in st.session_state.portfolio]
+            y_comb_c = [p["combined_results"]["scenario_carbon_t"] for p in st.session_state.portfolio]
             fig_c.add_trace(go.Bar(name="Baseline", x=x_labels, y=y_base_c, marker_color="#FFA500"))
             fig_c.add_trace(go.Bar(name="Post-Intervention", x=x_labels, y=y_comb_c, marker_color="#1DB87A"))
             fig_c.update_layout(**CHART_LAYOUT, barmode='group', yaxis_title="Tonnes CO₂e / year")
@@ -2997,16 +2716,16 @@ with _tab_dash:
 
             for i, p in enumerate(st.session_state.portfolio):
                 asset_lat, asset_lon = center_lat + (np.sin(i) * 0.01), center_lon + (np.cos(i) * 0.01)
-                reduction = _safe_nested_number(p, "combined_results", "energy_saving_pct")
+                reduction = p["combined_results"]["energy_saving_pct"]
                 ratio = max(0.0, min(1.0, reduction / 100.0))
                 r = int(220 - ratio * 220)
                 g = int(50 + ratio * (194 - 50))
                 b = int(50 + ratio * (168 - 50))
                 
                 _map_data.append({
-                    "name": str(p.get("postcode", "Unknown Asset")), "lat": asset_lat, "lon": asset_lon,
-                    "energy_saving_pct": reduction, "carbon_saving_t": _safe_nested_number(p, "combined_results", "carbon_saving_t"),
-                    "fill_color": [r, g, b, 210], "elevation": max(10.0, _safe_nested_number(p, "baseline_results", "scenario_energy_mwh") / 10.0),
+                    "name": p["postcode"], "lat": asset_lat, "lon": asset_lon,
+                    "energy_saving_pct": reduction, "carbon_saving_t": p["combined_results"]["carbon_saving_t"],
+                    "fill_color": [r, g, b, 210], "elevation": max(10.0, p["baseline_results"]["scenario_energy_mwh"] / 10.0),
                     "polygon": loc._synthetic_polygon(asset_lat, asset_lon, size_m=60.0)
                 })
 
