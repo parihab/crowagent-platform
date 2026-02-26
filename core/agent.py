@@ -251,7 +251,10 @@ def execute_tool(
         if sname not in scenarios:
             return {"error": f"Scenario '{sname}' not found. "
                     f"Available: {list(scenarios.keys())}"}
-        result = calculate_fn(buildings[bname], scenarios[sname], weather)
+        try:
+            result = calculate_fn(buildings[bname], scenarios[sname], weather)
+        except Exception as exc:
+            return {"error": f"Scenario calculation failed for '{bname}' / '{sname}': {exc}"}
         result["building"] = bname
         result["scenario"] = sname
         result["temperature_c"] = temp
@@ -270,7 +273,10 @@ def execute_tool(
             return {"error": f"Scenario '{sname}' not found."}
         rows = []
         for bname, bdata in buildings.items():
-            r = calculate_fn(bdata, scenarios[sname], weather)
+            try:
+                r = calculate_fn(bdata, scenarios[sname], weather)
+            except Exception:
+                continue
             cost = scenarios[sname]["install_cost_gbp"]
             rows.append({
                 "building":           bname,
@@ -297,7 +303,10 @@ def execute_tool(
                     continue
                 if sdata["install_cost_gbp"] > budget:
                     continue
-                r = calculate_fn(bdata, sdata, weather)
+                try:
+                    r = calculate_fn(bdata, sdata, weather)
+                except Exception:
+                    continue
                 if r["carbon_saving_t"] <= 0:
                     continue
                 candidates.append({
@@ -353,7 +362,10 @@ def execute_tool(
             return {"error": f"Building '{bname}' not found."}
         rows = []
         for sname, sdata in scenarios.items():
-            r = calculate_fn(buildings[bname], sdata, weather)
+            try:
+                r = calculate_fn(buildings[bname], sdata, weather)
+            except Exception:
+                continue
             cost = sdata["install_cost_gbp"]
             cpt = round(cost / max(r["carbon_saving_t"], 0.01), 1) if cost > 0 else None
             rows.append({

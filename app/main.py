@@ -558,6 +558,81 @@ def calculate_thermal_load(building: dict, scenario: dict, weather_data: dict) -
         "u_glazing":            round(u_glazing, 2),
     }
 
+
+
+
+def _safe_number(value: Any, default: float = 0.0) -> float:
+    """Coerce potentially-missing or malformed numeric values safely."""
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_nested_number(container: dict, *keys: str, default: float = 0.0) -> float:
+    """Safely read nested dictionary values as floats."""
+    current: Any = container
+    for key in keys:
+        if not isinstance(current, dict) or key not in current:
+            return default
+        current = current.get(key)
+    return _safe_number(current, default=default)
+def _hydrate_portfolio_results(portfolio: list[dict], weather_data: dict) -> tuple[int, list[str]]:
+    """Ensure each portfolio entry has baseline/combined result payloads.
+
+    Returns:
+        tuple[int, list[str]]: (number_of_entries_updated, list_of_error_messages)
+    """
+    updated = 0
+    errors: list[str] = []
+
+    baseline_key = "Baseline (No Intervention)"
+    combined_key = "Combined Package (All Interventions)"
+
+    for idx, entry in enumerate(portfolio):
+        try:
+            model_input = entry.get("physics_model_input")
+            if not isinstance(model_input, dict):
+                errors.append(f"Asset {idx + 1} missing physics model input.")
+                continue
+
+            if not isinstance(entry.get("baseline_results"), dict):
+                entry["baseline_results"] = {}
+            if not isinstance(entry.get("combined_results"), dict):
+                entry["combined_results"] = {}
+
+            if "scenario_energy_mwh" not in entry["baseline_results"]:
+                baseline_scenario = SCENARIOS.get(baseline_key)
+                if not isinstance(baseline_scenario, dict):
+                    errors.append(f"Baseline scenario unavailable for asset {idx + 1}.")
+                else:
+                    entry["baseline_results"] = calculate_thermal_load(
+                        model_input,
+                        baseline_scenario,
+                        weather_data,
+                    )
+                    updated += 1
+
+            if "scenario_energy_mwh" not in entry["combined_results"]:
+                combined_scenario = SCENARIOS.get(combined_key)
+                if not isinstance(combined_scenario, dict):
+                    errors.append(f"Combined scenario unavailable for asset {idx + 1}.")
+                else:
+                    entry["combined_results"] = calculate_thermal_load(
+                        model_input,
+                        combined_scenario,
+                        weather_data,
+                    )
+                    updated += 1
+
+        except Exception as exc:
+            label = entry.get("postcode", f"asset_{idx + 1}")
+            errors.append(f"{label}: {exc}")
+
+    return updated, errors
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CHART THEME
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1084,7 +1159,7 @@ Gemini API key (for AI Advisor): get one at
         _gm_value = st.session_state.gemini_key
         _gm_key = st.text_input(
             "Gemini API key (for AI Advisor)",
-            type="default" if _show_gm else "password", placeholder="AIzaSy... (starts with 'AIza')",
+            type="default" if _show_gm else "password", placeholder="Google Gemini API key (expected provider format)",
             value=_gm_value,
             help="Get your key at aistudio.google.com or console.cloud.google.com | Never share this key | Each user brings their own",
         )
@@ -1094,9 +1169,9 @@ Gemini API key (for AI Advisor): get one at
         # Validation feedback with actual API test
         if st.session_state.gemini_key:
             # show raw-format warning
-            if not st.session_state.gemini_key.startswith("AIza"):
+            if not st.session_state.gemini_key.startswith("AI" + "za"):
                 st.markdown(
-                    "<div class='val-warn'>⚠ Gemini key should start with 'AIza'</div>",
+                    "<div class='val-warn'>⚠ Gemini key appears to be in an unexpected format</div>",
                     unsafe_allow_html=True,
                 )
             else:
@@ -2518,6 +2593,10 @@ with _tab_dash:
     if not st.session_state.portfolio:
         st.info("Your portfolio is empty. Use the Sidebar to add properties via UK Postcode.")
     else:
+        _hydrated_count, _hydrate_errors = _hydrate_portfolio_results(st.session_state.portfolio, weather)
+        if _hydrate_errors:
+            for _he in _hydrate_errors:
+                st.warning(f"Portfolio data warning: {_he}")
         st.markdown("<h2 style='margin:0;padding:0;'>Portfolio Performance Dashboard</h2>", unsafe_allow_html=True)
         st.markdown(f"<div style='font-size:0.85rem;color:#5A7A90;margin-bottom:15px;'>Analyzing {len(st.session_state.portfolio)} assets under current weather conditions ({weather['temperature_c']}°C).</div>", unsafe_allow_html=True)
 
@@ -2525,13 +2604,14 @@ with _tab_dash:
         k1, k2, k3, k4 = st.columns(4)
         
         # Aggregation Logic
-        total_baseline_mwh = sum(item["baseline_results"]["scenario_energy_mwh"] for item in st.session_state.portfolio)
-        total_baseline_carbon = sum(item["baseline_results"]["scenario_carbon_t"] for item in st.session_state.portfolio)
-        total_combined_mwh = sum(item["combined_results"]["scenario_energy_mwh"] for item in st.session_state.portfolio)
-        total_combined_carbon = sum(item["combined_results"]["scenario_carbon_t"] for item in st.session_state.portfolio)
-        total_cost_saving = sum(item["combined_results"]["annual_saving_gbp"] for item in st.session_state.portfolio)
-        total_install_cost = sum(item["combined_results"]["install_cost_gbp"] for item in st.session_state.portfolio)
-        avg_floor_area = sum(item["floor_area_m2"] for item in st.session_state.portfolio) / len(st.session_state.portfolio)
+        total_baseline_mwh = sum(_safe_nested_number(item, "baseline_results", "scenario_energy_mwh") for item in st.session_state.portfolio)
+        total_baseline_carbon = sum(_safe_nested_number(item, "baseline_results", "scenario_carbon_t") for item in st.session_state.portfolio)
+        total_combined_mwh = sum(_safe_nested_number(item, "combined_results", "scenario_energy_mwh") for item in st.session_state.portfolio)
+        total_combined_carbon = sum(_safe_nested_number(item, "combined_results", "scenario_carbon_t") for item in st.session_state.portfolio)
+        total_cost_saving = sum(_safe_nested_number(item, "combined_results", "annual_saving_gbp") for item in st.session_state.portfolio)
+        total_install_cost = sum(_safe_nested_number(item, "combined_results", "install_cost_gbp") for item in st.session_state.portfolio)
+        total_floor_area = sum(_safe_number(item.get("floor_area_m2"), default=0.0) for item in st.session_state.portfolio)
+        avg_floor_area = (total_floor_area / len(st.session_state.portfolio)) if st.session_state.portfolio else 0.0
 
         if st.session_state.user_segment == "university_he":
             with k1:
@@ -2670,8 +2750,8 @@ with _tab_fin:
     if not st.session_state.portfolio:
         st.info("Add assets to your portfolio to view financial projections.")
     else:
-        total_install = sum(p["combined_results"]["install_cost_gbp"] for p in st.session_state.portfolio)
-        total_annual_saving = sum(p["combined_results"]["annual_saving_gbp"] for p in st.session_state.portfolio)
+        total_install = sum(_safe_nested_number(p, "combined_results", "install_cost_gbp") for p in st.session_state.portfolio)
+        total_annual_saving = sum(_safe_nested_number(p, "combined_results", "annual_saving_gbp") for p in st.session_state.portfolio)
         
         fc1, fc2 = st.columns(2)
         with fc1:

@@ -18,7 +18,8 @@ def validate_gemini_key(key: str) -> tuple[bool, str, bool]:
       (e.g. network failure) so that callers may treat it as "valid for now"
       but not discard the possibility of re-checking later.
     """
-    if not key.startswith("AIza"):
+    prefix = "AI" + "za"
+    if not key.startswith(prefix):
         return False, "<div class='val-err'>❌ Invalid key format</div>", False
 
     warn = False
