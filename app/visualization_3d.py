@@ -490,10 +490,23 @@ def _render_3d_map(
         st.info("No building data available for the selected scenario.")
         return
 
-    # Assign / recall OSM polygon footprints (cached per location)
+    # Assign / recall OSM polygon footprints (cached per location).
+    # LRU eviction: keep only the most recent _MAX_POLYGON_CACHE locations to
+    # prevent unbounded session_state memory growth (DEF-007).
+    _MAX_POLYGON_CACHE = 5
+    _POLY_CACHE_INDEX_KEY = "_viz3d_polygon_cache_keys"
     cache_key = _get_polygon_cache_key(center_lat, center_lon)
     if cache_key not in st.session_state:
+        # Register in ordered index
+        if _POLY_CACHE_INDEX_KEY not in st.session_state:
+            st.session_state[_POLY_CACHE_INDEX_KEY] = []
+        cache_index: list = st.session_state[_POLY_CACHE_INDEX_KEY]
+        # Evict oldest entry if at capacity
+        while len(cache_index) >= _MAX_POLYGON_CACHE:
+            oldest = cache_index.pop(0)
+            st.session_state.pop(oldest, None)
         st.session_state[cache_key] = _assign_osm_polygons(rows, osm_rows or [])
+        cache_index.append(cache_key)
 
     cached   = st.session_state[cache_key]
     poly_map = {r["name"]: (r["polygon"], r.get("height_m", 12.0)) for r in cached}

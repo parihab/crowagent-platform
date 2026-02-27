@@ -56,13 +56,16 @@ def fetch_epc_data(postcode: str, timeout_s: int = 10) -> dict[str, Any]:
                 "floor_area_m2": float(payload.get("floor_area_m2", 450.0)),
                 "built_year": int(payload.get("built_year", 1995)),
                 "epc_band": str(payload.get("epc_band", "D")),
+                "_is_stub": False,
             }
         except Exception:
             # Fall through to deterministic stub for resilience.
+            # _is_stub=True lets callers display a transparency warning (DEF-008).
             pass
 
     return {
         "floor_area_m2": 450.0,
         "built_year": 1995,
         "epc_band": "D",
+        "_is_stub": True,
     }

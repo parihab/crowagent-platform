@@ -597,7 +597,8 @@ def run_agent(
         "parts": [{"text": "Please summarise your findings so far in 3 sentences."}]
     })
     final_resp = _call_gemini(api_key, messages, use_tools=False)
-    if "error" not in final_resp:
+    summarisation_error = final_resp.get("error")
+    if not summarisation_error:
         parts = final_resp.get("candidates", [{}])[0].get("content", {}).get("parts", [])
         text = " ".join(p.get("text", "") for p in parts)
         return {
@@ -608,10 +609,11 @@ def run_agent(
             "updated_history": messages,
         }
 
+    # Summarisation itself failed — surface the error so the UI can display it
     return {
         "answer": "Reached maximum reasoning steps. See tool results above.",
         "tool_calls": tool_calls_log,
-        "error": None,
+        "error": f"Max loops reached; summarisation also failed: {summarisation_error}",
         "loops": loops,
         "updated_history": messages,
     }

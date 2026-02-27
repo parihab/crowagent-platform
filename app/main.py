@@ -449,7 +449,13 @@ def add_to_portfolio(postcode: str) -> None:
         epc_data = fetch_epc_data(postcode)
         entry = init_portfolio_entry(postcode, st.session_state.user_segment, epc_data)
         st.session_state.portfolio.append(entry)
-        st.success(f"Added {postcode} to portfolio.")
+        if epc_data.get("_is_stub", True):
+            st.warning(
+                f"Added {postcode} to portfolio using estimated data "
+                "(EPC API unavailable — configure an EPC API key in Settings for real data)."
+            )
+        else:
+            st.success(f"Added {postcode} to portfolio.")
     except (ValueError, TypeError) as e:
         st.error(str(e))
 
@@ -521,9 +527,27 @@ def calculate_thermal_load(building: dict, scenario: dict, weather_data: dict) -
         if baseline_raw > 0 else 1.0
     )
 
-    adjusted_mwh  = b["baseline_energy_mwh"] * max(0.35, reduction_ratio)
-    renewable_mwh = s["renewable_kwh"] / 1_000.0
-    final_mwh     = max(0.0, adjusted_mwh - renewable_mwh)
+    # Detect baseline scenario (no changes) and preserve declared baseline energy.
+    # This ensures the "Baseline (No Intervention)" scenario always returns exactly
+    # the declared baseline energy and zero savings — matching core/physics.py.
+    is_baseline = (
+        float(s.get("u_wall_factor", 1.0)) == 1.0
+        and float(s.get("u_roof_factor", 1.0)) == 1.0
+        and float(s.get("u_glazing_factor", 1.0)) == 1.0
+        and float(s.get("solar_gain_reduction", 0.0)) == 0.0
+        and float(s.get("infiltration_reduction", 0.0)) == 0.0
+        and int(s.get("renewable_kwh", 0)) == 0
+        and int(s.get("install_cost_gbp", 0)) == 0
+    )
+
+    if is_baseline:
+        adjusted_mwh  = b["baseline_energy_mwh"]
+        renewable_mwh = 0.0
+        final_mwh     = adjusted_mwh
+    else:
+        adjusted_mwh  = b["baseline_energy_mwh"] * max(0.35, reduction_ratio)
+        renewable_mwh = s["renewable_kwh"] / 1_000.0
+        final_mwh     = max(0.0, adjusted_mwh - renewable_mwh)
 
     # ── Carbon (BEIS 2023: 0.20482 kgCO₂e/kWh) ───────────────────────────────
     ci               = 0.20482
@@ -539,12 +563,14 @@ def calculate_thermal_load(building: dict, scenario: dict, weather_data: dict) -
     cpt = round(install_cost / max(baseline_carbon - scenario_carbon, 0.01), 1) \
           if install_cost > 0 else None
 
+    baseline_mwh = b.get("baseline_energy_mwh", 0.0)
+
     return {
         "baseline_energy_mwh":  round(b["baseline_energy_mwh"], 1),
         "scenario_energy_mwh":  round(final_mwh, 1),
-        "energy_saving_mwh":    round(b["baseline_energy_mwh"] - final_mwh, 1),
-        "energy_saving_pct":    round((b["baseline_energy_mwh"] - final_mwh)
-                                      / b["baseline_energy_mwh"] * 100.0, 1),
+        "energy_saving_mwh":    round(baseline_mwh - final_mwh, 1),
+        "energy_saving_pct":    round((baseline_mwh - final_mwh)
+                                      / (baseline_mwh if baseline_mwh > 0 else 1.0) * 100.0, 1),
         "baseline_carbon_t":    round(baseline_carbon, 1),
         "scenario_carbon_t":    round(scenario_carbon, 1),
         "carbon_saving_t":      round(baseline_carbon - scenario_carbon, 1),
@@ -1440,7 +1466,7 @@ with _tab_dash:
                 u_wall=selected_building["u_value_wall"],
                 u_roof=selected_building["u_value_roof"],
                 u_glazing=selected_building["u_value_glazing"],
-                glazing_ratio=selected_building["glazing_ratio"],
+                building_type="individual_selfbuild",
             )
             target_wall = compliance.PART_L_2021_U_WALL
             wall_gap = selected_building["u_value_wall"] - target_wall
@@ -1820,9 +1846,16 @@ with _tab_ai:
                         st.rerun()
 
         # ── Process pending question ──────────────────────────────────────────
+        # MAX_AGENT_HISTORY caps the Gemini conversation history to prevent
+        # unbounded memory growth and API latency in long sessions (DEF-005).
+        _MAX_AGENT_HISTORY = 40
+
         if "_pending" in st.session_state:
             _pq = st.session_state.pop("_pending")
-            st.session_state.chat_history.append({"role": "user", "content": _pq})
+            st.session_state.chat_history.append({
+                "role": "user", "content": _pq,
+                "ts": datetime.now(timezone.utc).strftime("%H:%M"),
+            })
             with st.spinner("🤖 Running physics simulations and reasoning…"):
                 _res = crow_agent.run_agent(
                     api_key=_akey, user_message=_pq,
@@ -1836,13 +1869,18 @@ with _tab_ai:
                     },
                 )
             if _res.get("updated_history"):
-                st.session_state.agent_history = _res["updated_history"]
+                _new_hist = _res["updated_history"]
+                # Trim oldest messages when history exceeds cap (keep tail)
+                if len(_new_hist) > _MAX_AGENT_HISTORY:
+                    _new_hist = _new_hist[-_MAX_AGENT_HISTORY:]
+                st.session_state.agent_history = _new_hist
             st.session_state.chat_history.append({
                 "role": "assistant",
                 "content":     _res.get("answer", ""),
                 "tool_calls":  _res.get("tool_calls", []),
                 "error":       _res.get("error"),
                 "loops":       _res.get("loops", 1),
+                "ts":          datetime.now(timezone.utc).strftime("%H:%M"),
             })
 
         # ── Render messages ───────────────────────────────────────────────────
@@ -1850,7 +1888,7 @@ with _tab_ai:
             if _msg["role"] == "user":
                 st.markdown(
                     f"<div class='ca-user'><strong style='color:#00C2A8;'>You</strong> "
-                    f"<span class='ca-meta'>{datetime.now().strftime('%H:%M')}</span><br/>"
+                    f"<span class='ca-meta'>{_msg.get('ts', '')}</span><br/>"
                     f"{_msg['content']}</div>",
                     unsafe_allow_html=True,
                 )
@@ -1902,7 +1940,10 @@ with _tab_ai:
             if len(_clean) < 5:
                 st.warning("Please enter a more detailed question (at least 5 characters).")
             else:
-                st.session_state.chat_history.append({"role": "user", "content": _clean})
+                st.session_state.chat_history.append({
+                    "role": "user", "content": _clean,
+                    "ts": datetime.now(timezone.utc).strftime("%H:%M"),
+                })
                 with st.spinner("🤖 Running simulations and reasoning…"):
                     _res = crow_agent.run_agent(
                         api_key=_akey, user_message=_clean,
@@ -1916,12 +1957,16 @@ with _tab_ai:
                         },
                     )
                 if _res.get("updated_history"):
-                    st.session_state.agent_history = _res["updated_history"]
+                    _new_hist = _res["updated_history"]
+                    if len(_new_hist) > _MAX_AGENT_HISTORY:
+                        _new_hist = _new_hist[-_MAX_AGENT_HISTORY:]
+                    st.session_state.agent_history = _new_hist
                 st.session_state.chat_history.append({
                     "role": "assistant",
                     "content":     _res.get("answer", ""),
                     "tool_calls":  _res.get("tool_calls", []),
                     "error":       _res.get("error"),
+                    "ts":          datetime.now(timezone.utc).strftime("%H:%M"),
                     "loops":       _res.get("loops", 1),
                 })
                 st.rerun()

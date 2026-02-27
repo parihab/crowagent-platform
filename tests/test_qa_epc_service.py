@@ -1,0 +1,105 @@
+"""
+QA Test Suite — services/epc.py
+================================
+Tests for DEF-008 regression (silent stub fallback) and EPC service correctness.
+"""
+from __future__ import annotations
+
+import os
+import sys
+import pytest
+
+_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _root not in sys.path:
+    sys.path.insert(0, _root)
+
+from services.epc import fetch_epc_data
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DEF-008 REGRESSION: _is_stub flag
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestEpcStubFlag:
+    """Verify that _is_stub is always present and True when no API configured."""
+
+    def test_stub_flag_present_when_no_api_configured(self, monkeypatch):
+        monkeypatch.delenv("EPC_API_URL", raising=False)
+        monkeypatch.delenv("EPC_API_KEY", raising=False)
+        result = fetch_epc_data("RG1 1AA")
+        assert "_is_stub" in result, "Response missing _is_stub flag"
+        assert result["_is_stub"] is True
+
+    def test_stub_flag_false_on_successful_api_call(self, monkeypatch):
+        """When API returns 200 JSON, _is_stub should be False."""
+        import requests
+
+        class MockGoodResp:
+            status_code = 200
+            content = b'{"floor_area_m2": 300, "built_year": 2005, "epc_band": "B"}'
+            def raise_for_status(self): pass
+            def json(self):
+                return {"floor_area_m2": 300, "built_year": 2005, "epc_band": "B"}
+
+        monkeypatch.setenv("EPC_API_URL", "https://fake-epc.test/api")
+        monkeypatch.setenv("EPC_API_KEY", "testkey")
+        monkeypatch.setattr(requests, "get", lambda *a, **kw: MockGoodResp())
+
+        result = fetch_epc_data("SW1A 2AA")
+        assert result["_is_stub"] is False
+        assert result["floor_area_m2"] == 300.0
+        assert result["epc_band"] == "B"
+
+    def test_stub_flag_true_on_api_failure(self, monkeypatch):
+        """When API raises an exception, fallback stub sets _is_stub=True."""
+        import requests
+
+        monkeypatch.setenv("EPC_API_URL", "https://fake-epc.test/api")
+        monkeypatch.setattr(
+            requests, "get",
+            lambda *a, **kw: (_ for _ in ()).throw(requests.exceptions.ConnectionError())
+        )
+
+        result = fetch_epc_data("SW1A 2AA")
+        assert result["_is_stub"] is True
+
+
+class TestEpcStubData:
+    def test_stub_has_required_keys(self, monkeypatch):
+        monkeypatch.delenv("EPC_API_URL", raising=False)
+        result = fetch_epc_data("SW1A 1AA")
+        for key in ("floor_area_m2", "built_year", "epc_band", "_is_stub"):
+            assert key in result, f"Missing key: {key}"
+
+    def test_stub_floor_area_is_positive(self, monkeypatch):
+        monkeypatch.delenv("EPC_API_URL", raising=False)
+        result = fetch_epc_data("M1 1AA")
+        assert result["floor_area_m2"] > 0
+
+    def test_stub_epc_band_is_string(self, monkeypatch):
+        monkeypatch.delenv("EPC_API_URL", raising=False)
+        result = fetch_epc_data("E1 6RF")
+        assert isinstance(result["epc_band"], str)
+        assert result["epc_band"] in ("A", "B", "C", "D", "E", "F", "G")
+
+    def test_invalid_postcode_raises(self, monkeypatch):
+        monkeypatch.delenv("EPC_API_URL", raising=False)
+        with pytest.raises(ValueError):
+            fetch_epc_data("X")
+
+    def test_short_postcode_raises(self, monkeypatch):
+        monkeypatch.delenv("EPC_API_URL", raising=False)
+        with pytest.raises(ValueError):
+            fetch_epc_data("AB1")
+
+    def test_valid_postcode_formats_accepted(self, monkeypatch):
+        monkeypatch.delenv("EPC_API_URL", raising=False)
+        # Various UK postcode formats
+        for pc in ("SW1A 2AA", "EC1A 1BB", "W1A 0AX", "M1 1AE", "B1 1BB"):
+            result = fetch_epc_data(pc)
+            assert "_is_stub" in result
+
+    def test_returns_dict(self, monkeypatch):
+        monkeypatch.delenv("EPC_API_URL", raising=False)
+        result = fetch_epc_data("LS1 1BA")
+        assert isinstance(result, dict)
