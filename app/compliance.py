@@ -320,7 +320,7 @@ def estimate_epc_rating(
     if mees_2028_compliant:
         recommendation = (
             f"EPC {band} — already meets the planned 2028 MEES minimum (C). "
-            "No mandatory compliance action required for letting after 2028."
+            "No additional upgrade is typically required for MEES C alignment, subject to formal EPC confirmation."
         )
     elif mees_compliant_now:
         recommendation = (
@@ -331,8 +331,8 @@ def estimate_epc_rating(
     else:
         recommendation = (
             f"EPC {band} — below the current MEES minimum (E). This property cannot legally be "
-            "let in England & Wales without an applicable exemption. Immediate fabric improvement "
-            "and re-assessment are required."
+            "let in England & Wales without an applicable exemption. Immediate improvement planning "
+            "and accredited EPC reassessment are advised before letting decisions."
         )
 
     return {
@@ -652,30 +652,30 @@ def part_l_compliance_check(
         if not item["pass"]:
             improvement_actions.append(
                 f"Improve {item['element']} from {item['proposed_u']} to ≤ {item['target_u']} W/m²K "
-                f"(gap: {item['gap']} W/m²K) — required for {regs_label}."
+                f"(gap: {item['gap']} W/m²K) — indicative target aligned with {regs_label}; confirm via formal design-stage assessment."
             )
     if primary_energy_est > FHS_MAX_PRIMARY_ENERGY:
         improvement_actions.append(
             f"Reduce primary energy from ~{primary_energy_est:.0f} to ≤ {FHS_MAX_PRIMARY_ENERGY} "
-            "kWh/m²/yr — required for Future Homes Standard readiness. "
+            "kWh/m²/yr — indicative Future Homes Standard readiness threshold. "
             "Consider ASHP, solar PV, and enhanced fabric."
         )
 
     if all_pass and fhs_ready:
         verdict = (
             f"PASS — All fabric elements meet {regs_label} targets and the building "
-            "is on track for Future Homes Standard compliance."
+            "is indicative of strong design-stage alignment; formal compliance still requires approved SAP/SBEM evidence."
         )
     elif all_pass:
         verdict = (
             f"CONDITIONAL PASS — Fabric meets {regs_label} U-value targets but primary "
-            "energy intensity requires reduction to meet the Future Homes Standard (FHS)."
+            "energy intensity is above the indicative Future Homes Standard (FHS) proxy threshold."
         )
     else:
         n_fail = sum(1 for i in items if not i["pass"])
         verdict = (
             f"FAIL — {n_fail} fabric element(s) do not meet {regs_label} targets. "
-            "Building Control will require design modifications before sign-off."
+            "Design revisions are likely before Building Control sign-off, subject to formal submission calculations."
         )
 
     return {

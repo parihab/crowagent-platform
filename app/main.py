@@ -534,7 +534,14 @@ def calculate_thermal_load(building: dict, scenario: dict, weather_data: dict) -
     if not valid:
         raise ValueError(f"Physics model validation: {msg}")
 
-    return physics.calculate_thermal_load(building, scenario, weather_data)
+    tariff = float(st.session_state.get("energy_tariff_gbp_per_kwh", physics.DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH))
+    return physics.calculate_thermal_load(
+        building,
+        scenario,
+        weather_data,
+        tariff_gbp_per_kwh=tariff,
+        carbon_intensity_kg_per_kwh=physics.GRID_CARBON_INTENSITY_KG_PER_KWH,
+    )
 
 
 
@@ -682,6 +689,8 @@ if "epc_api_key" not in st.session_state:
     st.session_state.epc_api_key = _get_secret("EPC_API_KEY", "")
 if "epc_api_url" not in st.session_state:
     st.session_state.epc_api_url = _get_secret("EPC_API_URL", "https://epc.opendatacommunities.org/api/v1")
+if "energy_tariff_gbp_per_kwh" not in st.session_state:
+    st.session_state.energy_tariff_gbp_per_kwh = physics.DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ONBOARDING GATE (App Locked Until Segment Selected)
@@ -773,6 +782,19 @@ with st.sidebar:
         "Sustainability AI Decision Intelligence Platform</div>",
         unsafe_allow_html=True,
     )
+
+    st.markdown("---")
+
+    with st.expander("⚙️ Advanced Settings", expanded=False):
+        st.caption("Financial assumptions are indicative; edit tariff to reflect your contract rates.")
+        st.session_state.energy_tariff_gbp_per_kwh = st.number_input(
+            "Electricity tariff (£/kWh)",
+            min_value=0.05,
+            max_value=1.50,
+            step=0.01,
+            value=float(st.session_state.energy_tariff_gbp_per_kwh),
+            help="Used for annual savings and payback across Dashboard and Financial Analysis.",
+        )
 
     st.markdown("---")
 
@@ -1384,7 +1406,8 @@ with _tab_dash:
         baseline_energy = baseline_result.get("baseline_energy_mwh",
                                               selected_building["baseline_energy_mwh"])
         baseline_co2    = round(baseline_energy * 1000 * 0.20482 / 1000, 1)
-        baseline_cost   = baseline_energy * 1000 * 0.28 / 1000
+        tariff = float(st.session_state.energy_tariff_gbp_per_kwh)
+        baseline_cost   = baseline_energy * 1000 * tariff / 1000
 
         k1, k2, k3, k4 = st.columns(4)
 
@@ -1453,7 +1476,7 @@ with _tab_dash:
             with k3:
                 _card("Best Reduction (t)", f"{best_carbon.get('carbon_saving_t',0):,.0f}<span class='kpi-unit'>t CO₂e</span>", best_carbon_name.split('(')[0].strip(), "accent-teal")
             with k4:
-                _card("Baseline Cost", f"£{baseline_cost:,.0f}<span class='kpi-unit'>k</span>", "At £0.28/kWh", "accent-gold")
+                _card("Baseline Cost", f"£{baseline_cost:,.0f}<span class='kpi-unit'>k</span>", f"At £{tariff:.2f}/kWh", "accent-gold")
     st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
 
     # ── Charts Row 1: Energy + Carbon ─────────────────────────────────────────
@@ -1612,7 +1635,7 @@ with _tab_fin:
             fig_s.update_layout(**CHART_LAYOUT, yaxis_title="£ per year")
             st.plotly_chart(fig_s, use_container_width=True, config={"displayModeBar": False})
             st.markdown(
-                "<div class='chart-caption'>Electricity at £0.28/kWh · HESA 2022-23 · "
+                f"<div class='chart-caption'>Electricity at £{tariff:.2f}/kWh · User-configurable tariff · "
                 "Assumes constant energy price</div>",
                 unsafe_allow_html=True,
             )
@@ -2634,7 +2657,8 @@ with _tab_dash:
                 intensity = (total_baseline_carbon * 1000) / avg_floor_area if avg_floor_area > 0 else 0
                 st.markdown(f"<div class='kpi-card accent-green'><div class='kpi-label'>Carbon Intensity</div><div class='kpi-value'>{intensity:,.1f}<span class='kpi-unit'> kgCO₂e/m²</span></div></div>", unsafe_allow_html=True)
             with k3:
-                st.markdown(f"<div class='kpi-card accent-gold'><div class='kpi-label'>Cost Exposure</div><div class='kpi-value'>£{total_baseline_mwh * 1000 * 0.28 / 1000:,.1f}<span class='kpi-unit'>k</span></div></div>", unsafe_allow_html=True)
+                _portfolio_tariff = float(st.session_state.energy_tariff_gbp_per_kwh)
+                st.markdown(f"<div class='kpi-card accent-gold'><div class='kpi-label'>Cost Exposure</div><div class='kpi-value'>£{total_baseline_mwh * 1000 * _portfolio_tariff / 1000:,.1f}<span class='kpi-unit'>k</span></div></div>", unsafe_allow_html=True)
             with k4:
                 st.markdown(f"<div class='kpi-card accent-navy'><div class='kpi-label'>Net Zero Gap</div><div class='kpi-value'>{total_baseline_carbon:,.1f}<span class='kpi-unit'> tCO₂e</span></div></div>", unsafe_allow_html=True)
 

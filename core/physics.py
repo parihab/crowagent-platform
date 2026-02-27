@@ -9,6 +9,16 @@
 
 from __future__ import annotations
 
+GRID_CARBON_INTENSITY_KG_PER_KWH = 0.20482
+DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH = 0.28
+HEATING_SETPOINT_C = 21.0
+HEATING_HOURS_PER_YEAR = 5800.0
+INFILTRATION_HEAT_CAPACITY_FACTOR = 0.33
+BASE_ACH = 0.7
+SOLAR_IRRADIANCE_KWH_M2_YEAR = 950.0
+SOLAR_APERTURE_FACTOR = 0.6
+SOLAR_UTILISATION_FACTOR = 0.3
+
 # ── BUILDING DATA ─────────────────────────────────────────────────────────────
 BUILDINGS: dict[str, dict] = {
     "Greenfield Library": {
@@ -116,7 +126,72 @@ SCENARIOS: dict[str, dict] = {
 }
 
 
-def calculate_thermal_load(building: dict, scenario: dict, weather_data: dict) -> dict:
+def _validate_model_inputs(building: dict, scenario: dict, weather_data: dict) -> None:
+    """Hard validation to avoid non-physical or misleading outputs."""
+    if float(building.get("floor_area_m2", 0)) <= 0:
+        raise ValueError("floor_area_m2 must be > 0.")
+    if float(building.get("height_m", 0)) <= 0:
+        raise ValueError("height_m must be > 0.")
+    glazing = float(building.get("glazing_ratio", -1))
+    if not 0 <= glazing <= 0.95:
+        raise ValueError("glazing_ratio must be between 0 and 0.95.")
+    for key in ("u_value_wall", "u_value_roof", "u_value_glazing"):
+        u_val = float(building.get(key, 0))
+        if u_val <= 0 or u_val > 6:
+            raise ValueError(f"{key} must be > 0 and <= 6 W/m²K.")
+    if float(building.get("baseline_energy_mwh", 0)) < 0:
+        raise ValueError("baseline_energy_mwh must be >= 0.")
+    if float(scenario.get("infiltration_reduction", 0)) < 0 or float(scenario.get("infiltration_reduction", 0)) > 0.95:
+        raise ValueError("infiltration_reduction must be between 0 and 0.95.")
+    if float(scenario.get("solar_gain_reduction", 0)) < 0 or float(scenario.get("solar_gain_reduction", 0)) > 1:
+        raise ValueError("solar_gain_reduction must be between 0 and 1.")
+    if "temperature_c" not in weather_data:
+        raise ValueError("weather_data must include temperature_c.")
+
+
+def _model_heating_demand_mwh(
+    *,
+    floor_area_m2: float,
+    height_m: float,
+    glazing_ratio: float,
+    u_wall: float,
+    u_roof: float,
+    u_glazing: float,
+    infiltration_reduction: float,
+    solar_gain_reduction: float,
+    outside_temp_c: float,
+) -> float:
+    perimeter_m = 4.0 * (floor_area_m2 ** 0.5)
+    wall_area_m2 = perimeter_m * height_m * (1.0 - glazing_ratio)
+    glazing_area_m2 = perimeter_m * height_m * glazing_ratio
+    roof_area_m2 = floor_area_m2
+    volume_m3 = floor_area_m2 * height_m
+
+    delta_t = max(0.0, HEATING_SETPOINT_C - outside_temp_c)
+    q_trans_wh = (
+        u_wall * wall_area_m2 * delta_t * HEATING_HOURS_PER_YEAR
+        + u_roof * roof_area_m2 * delta_t * HEATING_HOURS_PER_YEAR
+        + u_glazing * glazing_area_m2 * delta_t * HEATING_HOURS_PER_YEAR
+    )
+    ach = max(0.1, BASE_ACH * (1.0 - infiltration_reduction))
+    q_inf_wh = (
+        INFILTRATION_HEAT_CAPACITY_FACTOR * ach * volume_m3 * delta_t * HEATING_HOURS_PER_YEAR
+    )
+    solar_gain_mwh = (
+        SOLAR_IRRADIANCE_KWH_M2_YEAR * glazing_area_m2 * SOLAR_APERTURE_FACTOR * (1.0 - solar_gain_reduction)
+    ) / 1000.0
+
+    return max(0.0, (q_trans_wh + q_inf_wh) / 1_000_000.0 - solar_gain_mwh * SOLAR_UTILISATION_FACTOR)
+
+
+def calculate_thermal_load(
+    building: dict,
+    scenario: dict,
+    weather_data: dict,
+    *,
+    tariff_gbp_per_kwh: float = DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH,
+    carbon_intensity_kg_per_kwh: float = GRID_CARBON_INTENSITY_KG_PER_KWH,
+) -> dict:
     """
     Physics-informed thermal load calculation.
     Q_transmission = U × A × ΔT × hours  [Wh]
@@ -126,51 +201,45 @@ def calculate_thermal_load(building: dict, scenario: dict, weather_data: dict) -
     DISCLAIMER: Simplified steady-state model. Results are indicative only.
     Not for use as sole basis for investment decisions.
     """
-    b    = building
-    s    = scenario
-    temp = weather_data["temperature_c"]
+    _validate_model_inputs(building, scenario, weather_data)
+    if tariff_gbp_per_kwh <= 0:
+        raise ValueError("tariff_gbp_per_kwh must be > 0.")
+    if carbon_intensity_kg_per_kwh <= 0:
+        raise ValueError("carbon_intensity_kg_per_kwh must be > 0.")
 
-    # ── Geometry ──────────────────────────────────────────────────────────────
-    perimeter_m     = 4.0 * (b["floor_area_m2"] ** 0.5)
-    wall_area_m2    = perimeter_m * b["height_m"] * (1.0 - b["glazing_ratio"])
-    glazing_area_m2 = perimeter_m * b["height_m"] * b["glazing_ratio"]
-    roof_area_m2    = b["floor_area_m2"]
-    volume_m3       = b["floor_area_m2"] * b["height_m"]
+    b = building
+    s = scenario
+    temp = float(weather_data["temperature_c"])
 
-    # ── Effective U-values post-intervention ──────────────────────────────────
-    u_wall    = b["u_value_wall"]    * s["u_wall_factor"]
-    u_roof    = b["u_value_roof"]    * s["u_roof_factor"]
+    u_wall = b["u_value_wall"] * s["u_wall_factor"]
+    u_roof = b["u_value_roof"] * s["u_roof_factor"]
     u_glazing = b["u_value_glazing"] * s["u_glazing_factor"]
 
-    # ── Heat loss (CIBSE Guide A) ─────────────────────────────────────────────
-    delta_t     = max(0.0, 21.0 - temp)   # 21°C set-point (Part L)
-    heating_hrs = 5800.0                   # UK heating season hours
-
-    q_wall    = u_wall    * wall_area_m2    * delta_t * heating_hrs
-    q_roof    = u_roof    * roof_area_m2    * delta_t * heating_hrs
-    q_glazing = u_glazing * glazing_area_m2 * delta_t * heating_hrs
-    q_trans_mwh = (q_wall + q_roof + q_glazing) / 1_000_000.0
-
-    # ── Infiltration (CIBSE Guide A) ──────────────────────────────────────────
-    ach       = 0.7 * (1.0 - s["infiltration_reduction"])
-    q_inf_mwh = (0.33 * ach * volume_m3 * delta_t * heating_hrs) / 1_000_000.0
-
-    # ── Solar gain offset (PVGIS: 950 kWh/m²/yr Reading) ─────────────────────
-    solar_mwh    = (950.0 * glazing_area_m2 * 0.6 * (1.0 - s["solar_gain_reduction"])) / 1_000.0
-    modelled_mwh = max(0.0, q_trans_mwh + q_inf_mwh - solar_mwh * 0.3)
-
-    # ── Baseline (no scenario) ────────────────────────────────────────────────
-    baseline_raw = (
-        b["u_value_wall"]    * wall_area_m2    * delta_t * heating_hrs
-      + b["u_value_roof"]    * roof_area_m2    * delta_t * heating_hrs
-      + b["u_value_glazing"] * glazing_area_m2 * delta_t * heating_hrs
-      + 0.33 * 0.7           * volume_m3       * delta_t * heating_hrs
-    ) / 1_000_000.0
-
-    reduction_ratio = (
-        max(0.0, 1.0 - (baseline_raw - modelled_mwh) / baseline_raw)
-        if baseline_raw > 0 else 1.0
+    baseline_modelled_mwh = _model_heating_demand_mwh(
+        floor_area_m2=b["floor_area_m2"],
+        height_m=b["height_m"],
+        glazing_ratio=b["glazing_ratio"],
+        u_wall=b["u_value_wall"],
+        u_roof=b["u_value_roof"],
+        u_glazing=b["u_value_glazing"],
+        infiltration_reduction=0.0,
+        solar_gain_reduction=0.0,
+        outside_temp_c=temp,
     )
+    scenario_modelled_mwh = _model_heating_demand_mwh(
+        floor_area_m2=b["floor_area_m2"],
+        height_m=b["height_m"],
+        glazing_ratio=b["glazing_ratio"],
+        u_wall=u_wall,
+        u_roof=u_roof,
+        u_glazing=u_glazing,
+        infiltration_reduction=s["infiltration_reduction"],
+        solar_gain_reduction=s["solar_gain_reduction"],
+        outside_temp_c=temp,
+    )
+
+    scale = b["baseline_energy_mwh"] / baseline_modelled_mwh if baseline_modelled_mwh > 0 else 1.0
+    adjusted_mwh = max(0.0, scenario_modelled_mwh * scale)
 
     # Detect baseline scenario (no changes) and preserve declared baseline energy
     is_baseline = (
@@ -188,20 +257,15 @@ def calculate_thermal_load(building: dict, scenario: dict, weather_data: dict) -
         renewable_mwh = 0.0
         final_mwh = adjusted_mwh
     else:
-        adjusted_mwh  = b["baseline_energy_mwh"] * max(0.35, reduction_ratio)
         renewable_mwh = s.get("renewable_kwh", 0) / 1_000.0
-        final_mwh     = max(0.0, adjusted_mwh - renewable_mwh)
+        final_mwh = max(0.0, adjusted_mwh - renewable_mwh)
 
-    # ── Carbon (BEIS 2023: 0.20482 kgCO₂e/kWh) ───────────────────────────────
-    ci              = 0.20482
-    baseline_carbon = (b["baseline_energy_mwh"] * 1000.0 * ci) / 1000.0
-    scenario_carbon = (final_mwh * 1000.0 * ci) / 1000.0
+    baseline_carbon = (b["baseline_energy_mwh"] * 1000.0 * carbon_intensity_kg_per_kwh) / 1000.0
+    scenario_carbon = (final_mwh * 1000.0 * carbon_intensity_kg_per_kwh) / 1000.0
 
-    # ── Financial (HESA 2022-23: £0.28/kWh) ──────────────────────────────────
-    unit_cost     = 0.28
-    annual_saving = (b["baseline_energy_mwh"] - final_mwh) * 1000.0 * unit_cost
-    install_cost  = float(s["install_cost_gbp"])
-    payback       = (install_cost / annual_saving) if annual_saving > 0.0 else None
+    annual_saving = (b["baseline_energy_mwh"] - final_mwh) * 1000.0 * tariff_gbp_per_kwh
+    install_cost = float(s["install_cost_gbp"])
+    payback = (install_cost / annual_saving) if annual_saving > 0.0 else None
 
     cpt = round(install_cost / max(baseline_carbon - scenario_carbon, 0.01), 1) \
           if install_cost > 0 else None

@@ -145,6 +145,20 @@ def test_baseline_has_no_install_cost():
     assert result["payback_years"] is None
 
 
+def test_user_tariff_changes_financial_outputs_only():
+    """Changing tariff should affect annual saving/payback but not physics energy output."""
+    building = BUILDINGS["Greenfield Library"]
+    scenario = SCENARIOS["Solar Glass Installation"]
+    weather = {"temperature_c": UK_AVG_TEMP}
+
+    low = calculate_thermal_load(building, scenario, weather, tariff_gbp_per_kwh=0.20)
+    high = calculate_thermal_load(building, scenario, weather, tariff_gbp_per_kwh=0.40)
+
+    assert low["scenario_energy_mwh"] == high["scenario_energy_mwh"]
+    assert high["annual_saving_gbp"] > low["annual_saving_gbp"]
+    assert high["payback_years"] < low["payback_years"]
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 5. Edge cases
 # ─────────────────────────────────────────────────────────────────────────────
@@ -185,6 +199,22 @@ def test_all_buildings_have_required_fields():
         assert bdata["floor_area_m2"] > 0
         assert 0 < bdata["glazing_ratio"] < 1
         assert bdata["baseline_energy_mwh"] > 0
+
+
+def test_zero_floor_area_raises_value_error():
+    """Zero floor area must be rejected as non-physical."""
+    b = dict(BUILDINGS["Greenfield Library"])
+    b["floor_area_m2"] = 0
+    with pytest.raises(ValueError, match="floor_area_m2"):
+        calculate_thermal_load(b, SCENARIOS["Baseline (No Intervention)"], {"temperature_c": UK_AVG_TEMP})
+
+
+def test_invalid_u_value_raises_value_error():
+    """Extreme U-values outside plausible range must be rejected."""
+    b = dict(BUILDINGS["Greenfield Library"])
+    b["u_value_wall"] = 9.0
+    with pytest.raises(ValueError, match="u_value_wall"):
+        calculate_thermal_load(b, SCENARIOS["Baseline (No Intervention)"], {"temperature_c": UK_AVG_TEMP})
 
 
 def test_all_scenarios_have_required_fields():
