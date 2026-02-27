@@ -53,6 +53,11 @@ from app.utils import validate_gemini_key
 import app.compliance as compliance
 
 # ─────────────────────────────────────────────────────────────────────────────
+# CONSTANTS
+# ─────────────────────────────────────────────────────────────────────────────
+MAX_CHAT_HISTORY = 100  # Maximum chat messages retained in session (DEF-005)
+
+# ─────────────────────────────────────────────────────────────────────────────
 # LOGO LOADER
 # ─────────────────────────────────────────────────────────────────────────────
 def _load_logo_uri() -> str:
@@ -472,117 +477,17 @@ def remove_from_portfolio(entry_id: str) -> None:
 def calculate_thermal_load(building: dict, scenario: dict, weather_data: dict) -> dict:
     """
     Physics-informed thermal load calculation.
+    Validates weather input then delegates to core/physics.py (single source of truth).
     DISCLAIMER: Uses simplified steady-state model calibrated against UK HE
     sector averages. Results are indicative only. Not for use as sole basis
     for capital investment decisions — consult a qualified energy surveyor.
     """
-    b    = building
-    s    = scenario
-    temp = weather_data["temperature_c"]
-
     # ── Validation ────────────────────────────────────────────────────────────
-    valid, msg = wx.validate_temperature(temp)
+    valid, msg = wx.validate_temperature(weather_data["temperature_c"])
     if not valid:
         raise ValueError(f"Physics model validation: {msg}")
 
-    # ── Geometry ──────────────────────────────────────────────────────────────
-    perimeter_m     = 4.0 * (b["floor_area_m2"] ** 0.5)
-    wall_area_m2    = perimeter_m * b["height_m"] * (1.0 - b["glazing_ratio"])
-    glazing_area_m2 = perimeter_m * b["height_m"] * b["glazing_ratio"]
-    roof_area_m2    = b["floor_area_m2"]
-    volume_m3       = b["floor_area_m2"] * b["height_m"]
-
-    # ── Effective U-values post-intervention ──────────────────────────────────
-    u_wall    = b["u_value_wall"]    * s["u_wall_factor"]
-    u_roof    = b["u_value_roof"]    * s["u_roof_factor"]
-    u_glazing = b["u_value_glazing"] * s["u_glazing_factor"]
-
-    # ── Heat loss (CIBSE Guide A) ─────────────────────────────────────────────
-    delta_t     = max(0.0, 21.0 - temp)      # 21°C set-point (Part L)
-    heating_hrs = 5800.0                      # UK heating season (CIBSE Guide A)
-
-    q_wall    = u_wall    * wall_area_m2    * delta_t * heating_hrs  # Wh
-    q_roof    = u_roof    * roof_area_m2    * delta_t * heating_hrs
-    q_glazing = u_glazing * glazing_area_m2 * delta_t * heating_hrs
-    q_trans_mwh = (q_wall + q_roof + q_glazing) / 1_000_000.0
-
-    # ── Infiltration (CIBSE Guide A) ──────────────────────────────────────────
-    ach         = 0.7 * (1.0 - s["infiltration_reduction"])
-    q_inf_mwh   = (0.33 * ach * volume_m3 * delta_t * heating_hrs) / 1_000_000.0
-
-    # ── Solar gain offset  (PVGIS: 950 kWh/m²/yr Reading) ────────────────────
-    solar_mwh = (950.0 * glazing_area_m2 * 0.6 * (1.0 - s["solar_gain_reduction"])) / 1_000.0
-    modelled_mwh = max(0.0, q_trans_mwh + q_inf_mwh - solar_mwh * 0.3)
-
-    # ── Baseline (no scenario) ────────────────────────────────────────────────
-    baseline_raw = (
-        b["u_value_wall"]    * wall_area_m2    * delta_t * heating_hrs
-      + b["u_value_roof"]    * roof_area_m2    * delta_t * heating_hrs
-      + b["u_value_glazing"] * glazing_area_m2 * delta_t * heating_hrs
-      + 0.33 * 0.7           * volume_m3       * delta_t * heating_hrs
-    ) / 1_000_000.0
-
-    reduction_ratio = (
-        max(0.0, 1.0 - (baseline_raw - modelled_mwh) / baseline_raw)
-        if baseline_raw > 0 else 1.0
-    )
-
-    # Detect baseline scenario (no changes) and preserve declared baseline energy.
-    # This ensures the "Baseline (No Intervention)" scenario always returns exactly
-    # the declared baseline energy and zero savings — matching core/physics.py.
-    is_baseline = (
-        float(s.get("u_wall_factor", 1.0)) == 1.0
-        and float(s.get("u_roof_factor", 1.0)) == 1.0
-        and float(s.get("u_glazing_factor", 1.0)) == 1.0
-        and float(s.get("solar_gain_reduction", 0.0)) == 0.0
-        and float(s.get("infiltration_reduction", 0.0)) == 0.0
-        and int(s.get("renewable_kwh", 0)) == 0
-        and int(s.get("install_cost_gbp", 0)) == 0
-    )
-
-    if is_baseline:
-        adjusted_mwh  = b["baseline_energy_mwh"]
-        renewable_mwh = 0.0
-        final_mwh     = adjusted_mwh
-    else:
-        adjusted_mwh  = b["baseline_energy_mwh"] * max(0.35, reduction_ratio)
-        renewable_mwh = s["renewable_kwh"] / 1_000.0
-        final_mwh     = max(0.0, adjusted_mwh - renewable_mwh)
-
-    # ── Carbon (BEIS 2023: 0.20482 kgCO₂e/kWh) ───────────────────────────────
-    ci               = 0.20482
-    baseline_carbon  = (b["baseline_energy_mwh"] * 1000.0 * ci) / 1000.0
-    scenario_carbon  = (final_mwh * 1000.0 * ci) / 1000.0
-
-    # ── Financial (HESA 2022-23: £0.28/kWh) ──────────────────────────────────
-    unit_cost     = 0.28
-    annual_saving = (b["baseline_energy_mwh"] - final_mwh) * 1000.0 * unit_cost
-    install_cost  = float(s["install_cost_gbp"])
-    payback       = (install_cost / annual_saving) if annual_saving > 0.0 else None
-
-    cpt = round(install_cost / max(baseline_carbon - scenario_carbon, 0.01), 1) \
-          if install_cost > 0 else None
-
-    baseline_mwh = b.get("baseline_energy_mwh", 0.0)
-
-    return {
-        "baseline_energy_mwh":  round(b["baseline_energy_mwh"], 1),
-        "scenario_energy_mwh":  round(final_mwh, 1),
-        "energy_saving_mwh":    round(baseline_mwh - final_mwh, 1),
-        "energy_saving_pct":    round((baseline_mwh - final_mwh)
-                                      / (baseline_mwh if baseline_mwh > 0 else 1.0) * 100.0, 1),
-        "baseline_carbon_t":    round(baseline_carbon, 1),
-        "scenario_carbon_t":    round(scenario_carbon, 1),
-        "carbon_saving_t":      round(baseline_carbon - scenario_carbon, 1),
-        "annual_saving_gbp":    round(annual_saving, 0),
-        "install_cost_gbp":     install_cost,
-        "payback_years":        round(payback, 1) if payback else None,
-        "cost_per_tonne_co2":   cpt,
-        "renewable_mwh":        round(renewable_mwh, 1),
-        "u_wall":               round(u_wall, 2),
-        "u_roof":               round(u_roof, 2),
-        "u_glazing":            round(u_glazing, 2),
-    }
+    return physics.calculate_thermal_load(building, scenario, weather_data)
 
 
 
@@ -1884,6 +1789,9 @@ with _tab_ai:
             })
 
         # ── Render messages ───────────────────────────────────────────────────
+        # Bound chat history to prevent unbounded memory growth (DEF-005)
+        if len(st.session_state.chat_history) > MAX_CHAT_HISTORY:
+            st.session_state.chat_history = st.session_state.chat_history[-MAX_CHAT_HISTORY:]
         for _msg in st.session_state.chat_history:
             if _msg["role"] == "user":
                 st.markdown(
@@ -2903,6 +2811,9 @@ with _tab_ai:
                 "loops":       _res.get("loops", 1),
             })
 
+        # Bound chat history to prevent unbounded memory growth (DEF-005)
+        if len(st.session_state.chat_history) > MAX_CHAT_HISTORY:
+            st.session_state.chat_history = st.session_state.chat_history[-MAX_CHAT_HISTORY:]
         for _msg in st.session_state.chat_history:
             if _msg["role"] == "user":
                 st.markdown(f"<div style='background:#071A2F;border-left:3px solid #00C2A8;border-radius:0 8px 8px 8px; padding:10px 14px;margin:10px 0 4px;color:#F0F4F8;font-size:0.88rem;'><strong style='color:#00C2A8;'>You</strong><br/>{_msg['content']}</div>", unsafe_allow_html=True)
