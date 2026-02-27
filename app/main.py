@@ -45,7 +45,7 @@ if ROOT_DIR not in sys.path:
 import services.weather as wx
 import services.location as loc
 import services.audit as audit
-from services.epc import fetch_epc_data, search_addresses
+from services.epc import EPC_API_KEY_ENV, EPC_API_URL_ENV, fetch_epc_data, search_addresses
 import core.agent as crow_agent
 import core.physics as physics
 from app.visualization_3d import render_campus_3d_map
@@ -148,6 +148,9 @@ h1,h2,h3,h4 {
 [data-testid="stSidebar"] .stMarkdown h1,
 [data-testid="stSidebar"] .stMarkdown h2,
 [data-testid="stSidebar"] .stMarkdown h3 { color: #00C2A8 !important; }
+[data-testid="stSidebar"] label, [data-testid="stSidebar"] .stCaption, [data-testid="stSidebar"] p {
+  color: #DCEBF8 !important;
+}
 [data-testid="stSidebar"] .stTextInput input, [data-testid="stSidebar"] .stSelectbox > div > div {
   background: #0D2640 !important; border: 1px solid #1A3A5C !important; color: #CBD8E6 !important;
 }
@@ -496,8 +499,10 @@ def add_to_portfolio(postcode: str, lat: float | None = None, lon: float | None 
             st.warning(epc_data.get("_stub_reason", "EPC API unavailable — using estimated data."))
         else:
             st.success(f"Added {postcode} to portfolio.")
-    except (ValueError, TypeError) as e:
+    except (ValueError, TypeError, KeyError) as e:
         st.error(str(e))
+    except Exception:
+        st.error("Unexpected EPC integration error while adding this asset. Please try again.")
 
 def remove_from_portfolio(entry_id: str) -> None:
     """Remove a building from the portfolio by ID."""
@@ -707,6 +712,14 @@ if "epc_api_url" not in st.session_state:
 if "energy_tariff_gbp_per_kwh" not in st.session_state:
     st.session_state.energy_tariff_gbp_per_kwh = physics.DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH
 
+# Keep EPC integration env vars aligned with session values so services/epc.py
+# can consume both .env defaults and sidebar updates in real-time.
+os.environ[EPC_API_KEY_ENV] = str(st.session_state.get("epc_api_key", "") or "")
+os.environ[EPC_API_URL_ENV] = str(
+    st.session_state.get("epc_api_url", "https://epc.opendatacommunities.org/api/v1")
+    or "https://epc.opendatacommunities.org/api/v1"
+)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # ONBOARDING GATE (App Locked Until Segment Selected)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -749,7 +762,7 @@ if not st.session_state.user_segment:
                 <div style="font-size: 0.8rem; color: #5A7A90; margin-top: 5px;">{desc}</div>
             </div>
             """, unsafe_allow_html=True)
-            if st.button(f"Select {label}", key=f"btn_gate_{seg_id}", use_container_width=True):
+            if st.button(f"Select {label}", key=f"btn_gate_{seg_id}", width="stretch"):
                 st.session_state.user_segment = seg_id
                 st.session_state.selected_scenario_names = _segment_default_scenarios(seg_id)
                 st.query_params["segment"] = seg_id
@@ -830,6 +843,7 @@ with st.sidebar:
         st.rerun()
 
     st.markdown("<div class='sb-section'>🧪 Scenarios</div>", unsafe_allow_html=True)
+    st.caption("Select one or more intervention scenarios to compare outcomes.")
     _scenario_options = _segment_scenario_options(st.session_state.user_segment)
     _scenario_defaults = [
         s for s in st.session_state.get("selected_scenario_names", _segment_default_scenarios(st.session_state.user_segment))
@@ -852,12 +866,13 @@ with st.sidebar:
     st.markdown("<div class='sb-section'>🏢 Asset Portfolio</div>", unsafe_allow_html=True)
     _seg_portfolio = _segment_portfolio()
     st.markdown(
-        f"<div style='font-size:0.75rem; color:#8FBCCE;'>{len(_seg_portfolio)} / {MAX_PORTFOLIO_SIZE} Saved · Select 1 to {MAX_ACTIVE_ANALYSIS_BUILDINGS} for analysis</div>",
+        f"<div style='font-size:0.78rem; color:#CFE6F6; font-weight:600;'>{len(_seg_portfolio)} / {MAX_PORTFOLIO_SIZE} Saved · Select 1 to {MAX_ACTIVE_ANALYSIS_BUILDINGS} for analysis</div>",
         unsafe_allow_html=True,
     )
 
     _addr_query = st.text_input(
         "Find UK address or postcode",
+        help="Search by postcode or a full UK address, then choose one result.",
         key="asset_lookup_query",
         placeholder="e.g. RG1 6SP or 10 Downing Street",
     )
@@ -876,7 +891,7 @@ with st.sidebar:
         label_visibility="collapsed",
     )
 
-    if st.button("➕ Add Selected Asset", use_container_width=True):
+    if st.button("➕ Add Selected Asset", width="stretch"):
         chosen = next((o for o in _addr_options if o["label"] == _addr_pick), None)
         if not chosen:
             st.warning("Choose an address from the picker first.")
@@ -918,7 +933,7 @@ with st.sidebar:
                     remove_from_portfolio(p_item['id'])
                     st.rerun()
     else:
-        st.markdown("<div style='font-size:0.8rem; color:#5A7A90; font-style: italic;'>No assets for this segment yet. Add at least one UK address to begin analysis.</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:0.83rem; color:#CFE6F6; background:#0D2640; border:1px dashed #2E5573; border-radius:8px; padding:10px; line-height:1.45;'>No assets for this segment yet. Add at least one UK address to begin analysis.</div>", unsafe_allow_html=True)
 
     st.markdown("---")
 # ── Location picker ────────────────────────────────────────────────────────
@@ -954,7 +969,7 @@ with st.sidebar:
                 "Longitude", value=float(st.session_state.wx_lon),
                 min_value=-180.0, max_value=180.0, format="%.4f", step=0.0001,
             )
-        if st.button("Apply coordinates", key="apply_coords", use_container_width=True):
+        if st.button("Apply coordinates", key="apply_coords", width="stretch"):
             st.session_state.wx_lat           = _custom_lat
             st.session_state.wx_lon           = _custom_lon
             st.session_state.wx_location_name = f"Custom site ({_custom_lat:.4f}, {_custom_lon:.4f})"
@@ -995,7 +1010,7 @@ with st.sidebar:
     # ── Weather panel ──────────────────────────────────────────────────────────
     st.markdown("<div class='sb-section'>🌤 Live Weather</div>", unsafe_allow_html=True)
 
-    _force = st.button("↻ Refresh Weather", key="wx_refresh", use_container_width=True)
+    _force = st.button("↻ Refresh Weather", key="wx_refresh", width="stretch")
     if _force:
         st.session_state.force_weather_refresh = True
 
@@ -1084,7 +1099,7 @@ with st.sidebar:
         
         st.markdown("")  # spacing
         st.markdown("""
-<div style='font-size:0.9rem;color:#8FBCCE;margin-bottom:8px;'>
+<div style='font-size:0.88rem;color:#DCEBF8;margin-bottom:8px;line-height:1.5;'>
 Provide your own API keys — do not use shared or public keys. 
 Met Office DataPoint (free): register at 
 <a href="https://www.metoffice.gov.uk/services/data/datapoint" target="_blank">metoffice.gov.uk/services/data/datapoint</a>. 
@@ -1098,7 +1113,7 @@ Gemini API key (for AI Advisor): get one at
 
         # ── Weather Provider selector ─────────────────────────────────────────
         st.markdown(
-            "<div style='font-size:0.78rem;color:#8FBCCE;font-weight:700;"
+            "<div style='font-size:0.80rem;color:#DCEBF8;font-weight:700;"
             "letter-spacing:0.5px;margin:8px 0 4px;'>WEATHER PROVIDER</div>",
             unsafe_allow_html=True,
         )
@@ -1144,7 +1159,7 @@ Gemini API key (for AI Advisor): get one at
             type="default" if _show_owm else "password",
             placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
             value=_owm_value,
-            help="Free at openweathermap.org/api — 1,000 calls/day on free tier",
+            help="Used only when OpenWeatherMap is selected. Free at openweathermap.org/api (1,000 calls/day).",
         )
         if _owm_key != _owm_value:
             _had_key = bool(_owm_value)
@@ -1154,7 +1169,7 @@ Gemini API key (for AI Advisor): get one at
                 "OpenWeatherMap key " + ("updated" if _had_key else "added"),
             )
         if st.session_state.owm_key:
-            if st.button("Test OWM key", key="test_owm_key", use_container_width=True):
+            if st.button("Test OWM key", key="test_owm_key", width="stretch"):
                 _ok, _msg = wx.test_openweathermap_key(
                     st.session_state.owm_key,
                     st.session_state.wx_lat,
@@ -1173,7 +1188,7 @@ Gemini API key (for AI Advisor): get one at
           "Met Office DataPoint key",
           type="default" if _show_mo else "password", placeholder="",
           value=_mo_value,
-          help="Free at metoffice.gov.uk/services/data/datapoint",
+          help="Used only when Met Office provider is selected. Free at metoffice.gov.uk/services/data/datapoint.",
         )
         if _mo_key != _mo_value:
             _had_mo = bool(_mo_value)
@@ -1185,7 +1200,7 @@ Gemini API key (for AI Advisor): get one at
 
         # Validation for Met Office DataPoint key
         if st.session_state.met_office_key:
-          if st.button("Test Met Office key", key="test_mo_key", use_container_width=True):
+          if st.button("Test Met Office key", key="test_mo_key", width="stretch"):
             ok, msg = wx.test_met_office_key(st.session_state.met_office_key)
             if ok:
               st.markdown("<div class='val-ok'>✓ " + msg + "</div>", unsafe_allow_html=True)
@@ -1201,7 +1216,7 @@ Gemini API key (for AI Advisor): get one at
             type="default" if _show_epc else "password",
             placeholder="Paste your EPC API key",
             value=_epc_value,
-            help="Used for postcode EPC lookups via epc.opendatacommunities.org",
+            help="Used for postcode EPC lookups via epc.opendatacommunities.org.",
         )
         if _epc_key != _epc_value:
             _had_epc = bool(_epc_value)
@@ -1228,7 +1243,7 @@ Gemini API key (for AI Advisor): get one at
             "Gemini API key (for AI Advisor)",
             type="default" if _show_gm else "password", placeholder="Google Gemini API key (expected provider format)",
             value=_gm_value,
-            help="Get your key at aistudio.google.com or console.cloud.google.com | Never share this key | Each user brings their own",
+            help="Used only for AI Advisor features. Bring your own key and keep it private.",
         )
         if _gm_key != _gm_value:
             st.session_state.gemini_key = _gm_key
@@ -1544,7 +1559,7 @@ with _tab_dash:
                 textposition="outside", name=sn,
             ))
         fig_e.update_layout(**CHART_LAYOUT, yaxis_title="MWh / year")
-        st.plotly_chart(fig_e, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig_e, width="stretch", config={"displayModeBar": False})
         st.markdown(
             "<div class='chart-caption'>CrowAgent™ PINN thermal model · "
             "CIBSE Guide A · Cross-validated against US DoE EnergyPlus</div>",
@@ -1566,7 +1581,7 @@ with _tab_dash:
                 textposition="outside", name=sn,
             ))
         fig_c.update_layout(**CHART_LAYOUT, yaxis_title="Tonnes CO₂e / year")
-        st.plotly_chart(fig_c, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig_c, width="stretch", config={"displayModeBar": False})
         st.markdown(
             "<div class='chart-caption'>Carbon intensity: 0.20482 kgCO₂e/kWh · "
             "Source: BEIS Greenhouse Gas Conversion Factors 2023</div>",
@@ -1588,9 +1603,9 @@ with _tab_dash:
             "Saving (%)": f"{res['energy_saving_pct']}%",
             "CO₂ Saving (t)": res["carbon_saving_t"],
             "Install Cost": f"£{res['install_cost_gbp']:,.0f}" if res["install_cost_gbp"] > 0 else "—",
-            "Payback (yrs)": res["payback_years"] if res["payback_years"] else "—",
+            "Payback (yrs)": f"{res['payback_years']:.1f}" if res["payback_years"] else "—",
         })
-    st.dataframe(pd.DataFrame(rows_tbl), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(rows_tbl), width="stretch", hide_index=True)
     st.caption("U-values: CIBSE Guide A · Scenario factors: BSRIA / Green Roof Organisation UK · "
                "⚠️ Indicative only — see prototype disclaimer above")
     _dash_report = {
@@ -1682,7 +1697,7 @@ with _tab_fin:
                     textposition="outside", name=sn,
                 ))
             fig_s.update_layout(**CHART_LAYOUT, yaxis_title="£ per year")
-            st.plotly_chart(fig_s, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig_s, width="stretch", config={"displayModeBar": False})
             st.markdown(
                 f"<div class='chart-caption'>Electricity at £{tariff:.2f}/kWh · User-configurable tariff · "
                 "Assumes constant energy price</div>",
@@ -1705,7 +1720,7 @@ with _tab_fin:
                         textposition="outside", name=sn,
                     ))
             fig_p.update_layout(**CHART_LAYOUT, yaxis_title="Years")
-            st.plotly_chart(fig_p, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig_p, width="stretch", config={"displayModeBar": False})
             st.markdown(
                 "<div class='chart-caption'>Install cost ÷ annual saving · Simple (undiscounted) · "
                 "⚠️ Excludes finance costs</div>",
@@ -1740,7 +1755,7 @@ with _tab_fin:
             xaxis_title="Year",
             legend=dict(font=dict(size=10), orientation="h", y=-0.25),
         )
-        st.plotly_chart(fig_ncf, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig_ncf, width="stretch", config={"displayModeBar": False})
         st.markdown(
             "<div class='chart-caption'>⚠️ Indicative projection only · Assumes constant energy price · "
             "No inflation, discount rate, or maintenance costs applied</div>",
@@ -1761,7 +1776,7 @@ with _tab_fin:
                 "£ per tonne CO₂": f"£{res['cost_per_tonne_co2']:,.0f}" if res["cost_per_tonne_co2"] else "—",
                 "5-yr Net Saving": f"£{res['annual_saving_gbp']*5 - res['install_cost_gbp']:,.0f}",
             })
-        st.dataframe(pd.DataFrame(inv_rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(inv_rows), width="stretch", hide_index=True)
         st.caption("⚠️ 5-yr net saving = (annual saving × 5) − install cost · Undiscounted · Indicative only")
         _fin_report = {
             "segment": st.session_state.user_segment,
@@ -1877,7 +1892,7 @@ with _tab_ai:
             _sq_cols = st.columns(2)
             for _qi, _sq in enumerate(crow_agent.STARTER_QUESTIONS[:6]):
                 with _sq_cols[_qi % 2]:
-                    if st.button(_sq, key=f"sq_{_qi}", use_container_width=True):
+                    if st.button(_sq, key=f"sq_{_qi}", width="stretch"):
                         st.session_state["_pending"] = _sq
                         st.rerun()
 
@@ -1968,9 +1983,9 @@ with _tab_ai:
             )
             _c1, _c2 = st.columns([5, 1])
             with _c1:
-                _go = st.form_submit_button("Send →", use_container_width=True, type="primary")
+                _go = st.form_submit_button("Send →", width="stretch", type="primary")
             with _c2:
-                _clr = st.form_submit_button("Clear", use_container_width=True)
+                _clr = st.form_submit_button("Clear", width="stretch")
 
         # ── Input validation ──────────────────────────────────────────────────
         if _go and _inp.strip():
@@ -2117,7 +2132,7 @@ with _tab_compliance:
                         "Gap (W/m²K)":      item["gap"] if not item["pass"] else "—",
                         "Status":           "✅ PASS" if item["pass"] else "❌ FAIL",
                     })
-                st.dataframe(pd.DataFrame(_pl_rows), use_container_width=True, hide_index=True)
+                st.dataframe(pd.DataFrame(_pl_rows), width="stretch", hide_index=True)
 
                 # Primary energy metric
                 _fhs_colour = "#1DB87A" if _pl_result["fhs_ready"] else "#F0B429"
@@ -2261,7 +2276,7 @@ with _tab_compliance:
                             "Cost Estimate":    f"£{_m['cost_low']:,} – £{_m['cost_high']:,}",
                             "Regulation Ref":   _m["regulation"],
                         })
-                    st.dataframe(pd.DataFrame(_m_rows), use_container_width=True, hide_index=True)
+                    st.dataframe(pd.DataFrame(_m_rows), width="stretch", hide_index=True)
                     if not _gap["achievable"]:
                         st.warning(
                             "The measures listed above may not be sufficient to reach EPC C from "
@@ -2400,7 +2415,7 @@ with _tab_compliance:
                         **{**CHART_LAYOUT, "height": 280, "showlegend": False},
                         margin=dict(t=10, b=10, l=0, r=0),
                     )
-                    st.plotly_chart(_bk_fig, use_container_width=True, config={"displayModeBar": False})
+                    st.plotly_chart(_bk_fig, width="stretch", config={"displayModeBar": False})
 
                 # SECR reporting context
                 _secr_info = _cb["secr_threshold_check"]
@@ -2765,7 +2780,7 @@ with _tab_dash:
             fig_e.add_trace(go.Bar(name="Baseline", x=x_labels, y=y_base, marker_color="#4A6FA5"))
             fig_e.add_trace(go.Bar(name="Post-Intervention", x=x_labels, y=y_comb, marker_color="#00C2A8"))
             fig_e.update_layout(**CHART_LAYOUT, barmode='group', yaxis_title="MWh / year")
-            st.plotly_chart(fig_e, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig_e, width="stretch", config={"displayModeBar": False})
             st.markdown("</div>", unsafe_allow_html=True)
 
         with c2:
@@ -2776,7 +2791,7 @@ with _tab_dash:
             fig_c.add_trace(go.Bar(name="Baseline", x=x_labels, y=y_base_c, marker_color="#FFA500"))
             fig_c.add_trace(go.Bar(name="Post-Intervention", x=x_labels, y=y_comb_c, marker_color="#1DB87A"))
             fig_c.update_layout(**CHART_LAYOUT, barmode='group', yaxis_title="Tonnes CO₂e / year")
-            st.plotly_chart(fig_c, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig_c, width="stretch", config={"displayModeBar": False})
             st.markdown("</div>", unsafe_allow_html=True)
 
         # ── Simplified Property Map (Google-style) ────────────────────────────
@@ -2801,10 +2816,10 @@ with _tab_dash:
 
         if _map_points:
             _map_df = pd.DataFrame(_map_points)
-            st.map(_map_df[["lat", "lon"]], use_container_width=True)
+            st.map(_map_df[["lat", "lon"]], width="stretch")
             st.dataframe(
                 _map_df[["Asset", "Energy saving %", "Carbon saving (t)"]],
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
 
@@ -2825,7 +2840,7 @@ with _tab_fin:
             st.markdown("<div class='chart-card'><div class='chart-title'>💰 Annual Cost Savings</div>", unsafe_allow_html=True)
             fig_s = go.Figure(go.Indicator(mode="number+delta", value=total_annual_saving, number={"prefix": "£", "valueformat": ",.0f"}))
             fig_s.update_layout(**CHART_LAYOUT, height=200)
-            st.plotly_chart(fig_s, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig_s, width="stretch", config={"displayModeBar": False})
             st.markdown("</div>", unsafe_allow_html=True)
 
         with fc2:
@@ -2833,7 +2848,7 @@ with _tab_fin:
             payback = (total_install / total_annual_saving) if total_annual_saving > 0 else 0
             fig_p = go.Figure(go.Indicator(mode="number", value=payback, number={"valueformat": ".1f"}))
             fig_p.update_layout(**CHART_LAYOUT, height=200)
-            st.plotly_chart(fig_p, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig_p, width="stretch", config={"displayModeBar": False})
             st.markdown("</div>", unsafe_allow_html=True)
 
         st.markdown("<div class='sec-hdr'>10-Year Cumulative Net Cash Flow</div>", unsafe_allow_html=True)
@@ -2844,7 +2859,7 @@ with _tab_fin:
         fig_ncf.add_trace(go.Scatter(x=years, y=cashflow, name="Portfolio Upgrades", line=dict(color="#00C2A8", width=3), mode="lines+markers"))
         fig_ncf.add_hline(y=0, line=dict(dash="dot", color="#C0C8D0", width=1))
         fig_ncf.update_layout(**{**CHART_LAYOUT, "height": 320, "showlegend": True}, yaxis_title="Cumulative Net Cash Flow (£)", xaxis_title="Year")
-        st.plotly_chart(fig_ncf, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig_ncf, width="stretch", config={"displayModeBar": False})
         st.markdown("</div>", unsafe_allow_html=True)
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 3 — AI ADVISOR (REMEDIATED & UNABRIDGED)
@@ -2889,7 +2904,7 @@ with _tab_ai:
             ]
             for _qi, _sq in enumerate(starter_qs):
                 with _sq_cols[_qi % 2]:
-                    if st.button(_sq, key=f"sq_{_qi}", use_container_width=True):
+                    if st.button(_sq, key=f"sq_{_qi}", width="stretch"):
                         st.session_state["_pending"] = _sq
                         st.rerun()
 
@@ -2949,9 +2964,9 @@ with _tab_ai:
             _inp = st.text_input("Ask the AI Advisor:", placeholder="Type your query...", label_visibility="collapsed")
             _c1, _c2 = st.columns([5, 1])
             with _c1:
-                _go = st.form_submit_button("Send →", use_container_width=True, type="primary")
+                _go = st.form_submit_button("Send →", width="stretch", type="primary")
             with _c2:
-                _clr = st.form_submit_button("Clear", use_container_width=True)
+                _clr = st.form_submit_button("Clear", width="stretch")
 
         if _go and _inp.strip():
             st.session_state["_pending"] = _inp.strip()

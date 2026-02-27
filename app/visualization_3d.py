@@ -456,7 +456,7 @@ def _render_2d_fallback(rows: list[dict]) -> None:
         yaxis=dict(gridcolor="#1A3A5C", title="MWh/yr"),
         showlegend=False,
     )
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
     st.caption("2D fallback — 3D map requires a WebGL-capable browser (Chrome / Firefox)")
 
 
@@ -526,7 +526,7 @@ def _render_3d_map(
             selected_building=selected_building,
             map_style=_MAP_STYLE_LIGHT,
         )
-        st.pydeck_chart(deck, use_container_width=True)
+        st.pydeck_chart(deck, width="stretch")
     except Exception as exc:
         st.warning(f"3D map could not render ({exc}). Showing 2D fallback.")
         _render_2d_fallback(rows)
@@ -590,7 +590,7 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
         )
     with btn_col:
         search_clicked = st.button("🔍 Search", key="viz3d_search_btn",
-                                   use_container_width=True)
+                                   width="stretch")
 
     if search_clicked and search_query.strip():
         with st.spinner(f"Searching for '{search_query}'…"):
@@ -715,7 +715,7 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
                 unsafe_allow_html=True,
             )
             if st.button(label, key=f"viz3d_card_{bname}",
-                         use_container_width=True,
+                         width="stretch",
                          type="primary" if is_sel else "secondary"):
                 st.session_state.viz3d_selected_building = None if is_sel else bname
                 st.rerun()
@@ -895,7 +895,7 @@ def _info_tab_overview(bdata: dict, scenario_names: list[str], weather: dict) ->
             yaxis=dict(gridcolor="#1A3A5C"),
             legend=dict(orientation="h", y=-0.28, font=dict(size=9)),
         )
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
 
 def _info_tab_seasonal(bdata: dict) -> None:
@@ -932,7 +932,7 @@ def _info_tab_seasonal(bdata: dict) -> None:
                     gridcolor="rgba(0,0,0,0)"),
         legend=dict(orientation="h", y=-0.28, font=dict(size=9)),
     )
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
     # Monthly cost grid — two rows of 6
     for row_months in [months[:6], months[6:]]:
@@ -983,7 +983,7 @@ def _info_tab_scenarios(
         st.dataframe(
             pd.DataFrame(rows),
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
         st.caption(
             "Costs at £0.28/kWh (HESA 2022-23). "
@@ -1114,7 +1114,7 @@ def render_3d_energy_map(buildings_data: List[Dict]) -> None:
     try:
         st.pydeck_chart(
             _build_deck(rows, center_lat, center_lon),
-            use_container_width=True,
+            width="stretch",
         )
     except Exception as exc:
         st.warning(f"3D map failed: {exc}")
