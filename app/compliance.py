@@ -23,131 +23,53 @@ from typing import Optional
 from config.constants import (
     CI_ELECTRICITY,
     CI_GAS,
-    CI_LPG,
     CI_OIL,
+    CI_LPG,
+    ELEC_COST_PER_KWH,
+    GAS_COST_PER_KWH,
     EPC_BANDS,
-    FHS_MAX_PRIMARY_ENERGY,
-    MEES_2028_TARGET_BAND,
     MEES_CURRENT_MIN_BAND,
-    PART_L_2021_ND_U_GLAZING,
-    PART_L_2021_ND_U_ROOF,
-    PART_L_2021_ND_U_WALL,
-    PART_L_2021_U_GLAZING,
-    PART_L_2021_U_ROOF,
+    MEES_2028_TARGET_BAND,
+    MEES_2030_TARGET_BAND,
     PART_L_2021_U_WALL,
+    PART_L_2021_U_ROOF,
+    PART_L_2021_U_GLAZING,
+    PART_L_2021_ND_U_WALL,
+    PART_L_2021_ND_U_ROOF,
+    PART_L_2021_ND_U_GLAZING,
+    FHS_MAX_PRIMARY_ENERGY,
 )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CONSTANTS — BEIS GHG Conversion Factors 2023
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SAP/EPC BAND LOOKUP  (SAP 10.2 — proxy, indicative only)
+# Band thresholds: A ≥ 92 · B 81–91 · C 69–80 · D 55–68 · E 39–54 · F 21–38 · G 1–20
+# ─────────────────────────────────────────────────────────────────────────────
+# EPC_BANDS imported from config.constants
+# Note: config.constants defines EPC_BANDS as a dict {Band: (min, max)}.
+# The original list format [(92, "A", "#00873D"), ...] is used here for logic.
+# We reconstruct the list format locally for compatibility with existing functions
+# while using the thresholds from config.
+
+_EPC_BANDS_LIST: list[tuple[int, str, str]] = [
+    (EPC_BANDS["A"][0], "A", "#00873D"),
+    (EPC_BANDS["B"][0], "B", "#2ECC40"),
+    (EPC_BANDS["C"][0], "C", "#85C226"),
+    (EPC_BANDS["D"][0], "D", "#F0B429"),
+    (EPC_BANDS["E"][0], "E", "#F06623"),
+    (EPC_BANDS["F"][0], "F", "#E84C4C"),
+    (EPC_BANDS["G"][0], "G", "#C0392B"),
+]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SEGMENT BUILDING TEMPLATES
 # These supplement the existing university buildings and become available
 # when a non-university user segment is selected.
 # ─────────────────────────────────────────────────────────────────────────────
-SEGMENT_BUILDINGS: dict[str, dict[str, dict]] = {
-    "individual_selfbuild": {
-        "Example Self-Build — 3-Bed Detached (120 m²)": {
-            "floor_area_m2":       120,
-            "height_m":            2.7,
-            "glazing_ratio":       0.20,
-            "u_value_wall":        1.6,
-            "u_value_roof":        2.0,
-            "u_value_glazing":     2.8,
-            "baseline_energy_mwh": 18.0,
-            "occupancy_hours":     5500,
-            "description":         "Typical self-build 3-bed detached — 120 m² · Pre-Part L 2021",
-            "built_year":          "Pre-2021",
-            "building_type":       "Residential / Self-Build",
-            "segment":             "individual_selfbuild",
-        },
-        "Example Self-Build — 2-Bed Semi-Detached (85 m²)": {
-            "floor_area_m2":       85,
-            "height_m":            2.6,
-            "glazing_ratio":       0.18,
-            "u_value_wall":        1.8,
-            "u_value_roof":        2.2,
-            "u_value_glazing":     3.0,
-            "baseline_energy_mwh": 12.5,
-            "occupancy_hours":     5500,
-            "description":         "Typical self-build 2-bed semi — 85 m² · Pre-Part L 2021",
-            "built_year":          "Pre-2021",
-            "building_type":       "Residential / Self-Build",
-            "segment":             "individual_selfbuild",
-        },
-    },
-    "smb_landlord": {
-        "Example Office Unit (500 m²)": {
-            "floor_area_m2":       500,
-            "height_m":            3.2,
-            "glazing_ratio":       0.35,
-            "u_value_wall":        1.7,
-            "u_value_roof":        1.8,
-            "u_value_glazing":     2.8,
-            "baseline_energy_mwh": 72.0,
-            "occupancy_hours":     2500,
-            "description":         "SMB office — 500 m² · Typical pre-2010 commercial fit-out",
-            "built_year":          "Pre-2010",
-            "building_type":       "Office / Commercial",
-            "segment":             "smb_landlord",
-        },
-        "Example Retail Unit (200 m²)": {
-            "floor_area_m2":       200,
-            "height_m":            3.5,
-            "glazing_ratio":       0.50,
-            "u_value_wall":        2.0,
-            "u_value_roof":        2.1,
-            "u_value_glazing":     3.1,
-            "baseline_energy_mwh": 38.0,
-            "occupancy_hours":     3000,
-            "description":         "SMB retail unit — 200 m² · High glazing frontage",
-            "built_year":          "Pre-2005",
-            "building_type":       "Retail / Shopfront",
-            "segment":             "smb_landlord",
-        },
-        "Example Light Industrial Unit (1,200 m²)": {
-            "floor_area_m2":       1200,
-            "height_m":            6.0,
-            "glazing_ratio":       0.12,
-            "u_value_wall":        1.9,
-            "u_value_roof":        2.3,
-            "u_value_glazing":     2.6,
-            "baseline_energy_mwh": 145.0,
-            "occupancy_hours":     3000,
-            "description":         "SMB light industrial — 1,200 m² · Single-skin metal cladding",
-            "built_year":          "Pre-2000",
-            "building_type":       "Industrial / Warehouse",
-            "segment":             "smb_landlord",
-        },
-    },
-    "smb_industrial": {
-        "Example Small Manufacturer (2,000 m²)": {
-            "floor_area_m2":       2000,
-            "height_m":            7.0,
-            "glazing_ratio":       0.10,
-            "u_value_wall":        2.1,
-            "u_value_roof":        2.5,
-            "u_value_glazing":     2.8,
-            "baseline_energy_mwh": 380.0,
-            "occupancy_hours":     4000,
-            "description":         "SMB manufacturing — 2,000 m² · Process heat + lighting dominated",
-            "built_year":          "Pre-1995",
-            "building_type":       "Manufacturing / Industrial",
-            "segment":             "smb_industrial",
-        },
-        "Example Logistics Depot (3,500 m²)": {
-            "floor_area_m2":       3500,
-            "height_m":            9.0,
-            "glazing_ratio":       0.08,
-            "u_value_wall":        2.0,
-            "u_value_roof":        2.2,
-            "u_value_glazing":     2.6,
-            "baseline_energy_mwh": 520.0,
-            "occupancy_hours":     5000,
-            "description":         "SMB logistics — 3,500 m² · High door infiltration, 24hr operation",
-            "built_year":          "Pre-2000",
-            "building_type":       "Logistics / Depot",
-            "segment":             "smb_industrial",
-        },
-    },
-}
+# SEGMENT_BUILDINGS removed. Building templates now live in app/segments/*.py
 
 # ─────────────────────────────────────────────────────────────────────────────
 # VALIDATION HELPERS
@@ -192,7 +114,7 @@ def validate_u_value(u: float, label: str = "U-value") -> tuple[bool, str]:
 
 def _band_from_sap(sap: float) -> tuple[str, str]:
     """Return (band_letter, hex_colour) for a given SAP score."""
-    for threshold, band, colour in EPC_BANDS:
+    for threshold, band, colour in _EPC_BANDS_LIST:
         if sap >= threshold:
             return band, colour
     return "G", "#C0392B"
@@ -387,10 +309,10 @@ def mees_gap_analysis(current_sap: float, target_band: str = "C") -> dict:
       total_cost_high  : int — indicative upper cost estimate (£)
       achievable       : bool — can target be reached with listed measures
     """
-    if target_band not in [b for _, b, _ in EPC_BANDS]:
+    if target_band not in [b for _, b, _ in _EPC_BANDS_LIST]:
         raise ValueError(f"Invalid target band '{target_band}'. Must be A–G.")
 
-    target_sap = next(thresh for thresh, band, _ in EPC_BANDS if band == target_band)
+    target_sap = next(thresh for thresh, band, _ in _EPC_BANDS_LIST if band == target_band)
     sap_gap = max(0.0, target_sap - current_sap)
 
     if sap_gap <= 0:
