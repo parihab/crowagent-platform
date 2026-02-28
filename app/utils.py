@@ -1,144 +1,55 @@
-"""Utility helpers used across the CrowAgent application.
-
-Keeping non-Streamlit logic in a separate module makes it easier to test
-without spinning up a full Streamlit runtime.
 """
+Utility functions for the Streamlit application.
+"""
+import re
+import streamlit as st
+import time
 
-from __future__ import annotations
+# Gemini API Key Validation
+# Matches the format "AIza" followed by 35 alphanumeric/hyphen/underscore characters.
+# Legacy keys might be 39 chars, but this is the modern standard.
+GEMINI_API_KEY_RE = re.compile(r"^AIza[A-Za-z0-9\-_]{35}$")
 
-from typing import Any
+def show_congratulations():
+    """Displays a congratulations message and balloons."""
+    st.success("Congratulations! You've successfully run the script.")
+    time.sleep(1)
+    st.balloons()
 
-import requests
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# API KEY VALIDATION
-# ─────────────────────────────────────────────────────────────────────────────
-
-def validate_gemini_key(key: str) -> tuple[bool, str, bool]:
-    """Check formatting and optionally call the validation API.
-
-    Returns a tuple ``(is_valid, html_message, warn_flag)`` where:
-
-    * ``is_valid`` indicates whether the key should be considered usable.
-    * ``html_message`` is an HTML snippet suitable for display in the UI.
-    * ``warn_flag`` is True if the key was accepted but a warning was raised
-      (e.g. network failure) so that callers may treat it as "valid for now"
-      but not discard the possibility of re-checking later.
-
-    Security guards applied before any network call:
-    • Leading/trailing whitespace is stripped.
-    • Keys containing newline or carriage-return characters are rejected
-      (log-injection prevention).
-    • Keys containing null bytes are rejected.
+def validate_gemini_key(key: str) -> tuple[bool, str]:
     """
-    # ── Security guards ───────────────────────────────────────────────────────
+    Performs security and format validation for a Gemini API key.
+
+    Hardening measures:
+    1. Strips leading/trailing whitespace to prevent injection attacks.
+    2. Explicitly forbids newline and null characters.
+    3. Matches the key against a strict regex for the expected format.
+
+    Returns
+    -------
+    tuple[bool, str]
+        (is_valid, message)
+    """
+    if not isinstance(key, str):
+        return False, "Invalid input: Key must be a string."
+
     key = key.strip()
+
+    if not key:
+        return False, "API key is missing."
+
     if "\n" in key or "\r" in key:
-        return False, "<div class='val-err'>❌ Key contains invalid line-break characters</div>", False
+        return False, "Key contains invalid line break characters."
+
     if "\x00" in key:
-        return False, "<div class='val-err'>❌ Key contains invalid null bytes</div>", False
+        return False, "Key contains invalid null bytes."
 
-    # ── Format check ──────────────────────────────────────────────────────────
-    prefix = "AI" + "za"
-    if not key.startswith(prefix):
-        return False, "<div class='val-err'>❌ Invalid key format</div>", False
+    if not GEMINI_API_KEY_RE.match(key):
+        return False, "Invalid format. A Gemini API key starts with 'AIza' and has 39 characters."
 
-    # ── Live validation ───────────────────────────────────────────────────────
-    warn = False
-    try:
-        test_url = (
-            "https://generativelanguage.googleapis.com/v1/models/"
-            "gemini-1.5-pro:generateContent"
-        )
-        payload = {
-            "contents": [{"parts": [{"text": "test"}]}],
-            "generationConfig": {"maxOutputTokens": 10},
-        }
-        resp = requests.post(test_url, params={"key": key}, json=payload, timeout=10)
-        if resp.status_code == 200:
-            return True, "<div class='val-ok'>✓ Gemini AI Advisor ready</div>", False
-        elif resp.status_code == 401:
-            return False, "<div class='val-err'>❌ Invalid API key</div>", False
-        elif resp.status_code == 403:
-            return False, "<div class='val-err'>❌ API key blocked (check permissions in Google Cloud)</div>", False
-        else:
-            return True, "<div class='val-ok'>✓ Key format valid (will test on first use)</div>", False
-    except requests.exceptions.Timeout:
-        return True, "<div class='val-warn'>⚠ Validation timed out — key saved, will test on first use</div>", True
-    except requests.exceptions.ConnectionError:
-        return True, "<div class='val-warn'>⚠ No internet connection — key saved, will test on first use</div>", True
-    except Exception:
-        return True, "<div class='val-warn'>⚠ Validation error — key saved, will test on first use</div>", True
+    # Placeholder for a live, lightweight check if one becomes available.
+    # For now, format validation is the primary client-side check.
+    # A real check would involve a simple, low-cost API call.
+    # e.g., google.generativeai.get_model("gemini-pro") with the key.
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# NUMERIC SAFETY HELPERS
-# Sourced from: app/main.py — copied here to enable reuse across tab modules.
-# Original copies remain in main.py until Batch 5 removes them.
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _safe_number(value: Any, default: float = 0.0) -> float:
-    """Coerce a potentially-missing or malformed value to float.
-
-    Returns ``default`` for ``None``, non-numeric strings, and any value that
-    cannot be converted by ``float()``.  Never raises.
-    """
-    try:
-        if value is None:
-            return default
-        return float(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _safe_nested_number(container: dict, *keys: str, default: float = 0.0) -> float:
-    """Safely traverse a nested dict and return the leaf value as a float.
-
-    Returns ``default`` if any key is absent or if the leaf cannot be
-    coerced to float.  Never raises.
-
-    Example::
-
-        _safe_nested_number(result, "thermal", "annual_energy_mwh", default=0.0)
-    """
-    current: Any = container
-    for key in keys:
-        if not isinstance(current, dict) or key not in current:
-            return default
-        current = current.get(key)
-    return _safe_number(current, default=default)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# POSTCODE EXTRACTION
-# Sourced from: app/main.py — copied here to centralise address sanitisation.
-# Original copy remains in main.py until Batch 5 removes it.
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _extract_uk_postcode(text: str) -> str:
-    """Extract the most likely UK postcode token from free-form address text.
-
-    Applies a lightweight heuristic suitable for extracting a postcode from
-    EPC address strings or user-typed inputs.
-
-    Returns the postcode string (uppercased, space-separated) or ``""`` if no
-    candidate is found.
-
-    Note: Always sanitise the result through the UK postcode regex in
-    services/epc.py before passing to external APIs.
-    """
-    raw = " ".join((text or "").upper().split())
-    if not raw:
-        return ""
-    parts = [p.strip(",") for p in raw.split()]
-    # Try two-token candidates first (e.g. "RG1 2AB")
-    for i in range(len(parts) - 1):
-        cand = f"{parts[i]} {parts[i + 1]}"
-        if 5 <= len(cand) <= 8 and any(ch.isdigit() for ch in cand):
-            return cand
-    # Fall back to single-token candidates (e.g. compact form without space)
-    for token in parts:
-        if 5 <= len(token) <= 8 and any(ch.isdigit() for ch in token):
-            return token
-    return ""
+    return True, "API key format is valid."

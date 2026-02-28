@@ -367,7 +367,7 @@ def get_weather(
         if prov == "met_office":
             try:
                 return _fetch_met_office(met_office_key, met_office_location, location_name)
-            except (requests.RequestException, KeyError, ValueError) as exc:
+            except (requests.RequestException, KeyError, ValueError, TypeError) as exc:
                 if enable_fallback:
                     st.warning(
                         f"Met Office unavailable ({type(exc).__name__}). Falling back."
@@ -378,7 +378,7 @@ def get_weather(
         elif prov == "openweathermap":
             try:
                 return _fetch_openweathermap(openweathermap_key, lat, lon, location_name)
-            except (requests.RequestException, KeyError, ValueError) as exc:
+            except (requests.RequestException, KeyError, ValueError, TypeError) as exc:
                 if enable_fallback:
                     st.warning(
                         f"OpenWeatherMap unavailable ({type(exc).__name__}). Falling back."
@@ -389,7 +389,7 @@ def get_weather(
         else:  # open_meteo
             try:
                 return _fetch_open_meteo(lat, lon, location_name)
-            except (requests.RequestException, KeyError, ValueError) as exc:
+            except (requests.RequestException, KeyError, ValueError, TypeError) as exc:
                 st.warning(
                     f"Open-Meteo unavailable ({type(exc).__name__}). Using manual override."
                 )

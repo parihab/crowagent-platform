@@ -32,7 +32,7 @@ def _ensure_log() -> None:
 
 def _redact_postcode(text: str) -> str:
     """Replace full postcodes with their outward code + '***'."""
-    return UK_POSTCODE_RE.sub(r"\1 ***", text)
+    return UK_POSTCODE_RE.sub(r"\1 ***", str(text))
 
 
 def _assert_no_key(value: str) -> None:
