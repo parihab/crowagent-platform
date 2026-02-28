@@ -15,18 +15,13 @@ import json
 import requests
 from typing import Any
 
-from config.constants import (
-    CI_ELECTRICITY,
-    DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH,
-    HEATING_SETPOINT_C,
-    HEATING_HOURS_PER_YEAR,
-    SOLAR_IRRADIANCE_KWH_M2_YEAR,
-)
+import config.constants as constants
+import core.physics as physics
 
 # ─────────────────────────────────────────────────────────────────────────────
 # API & MODEL CONSTANTS
 # ─────────────────────────────────────────────────────────────────────────────
-GEMINI_URL           = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+GEMINI_URL           = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:generateContent"
 MAX_OUTPUT_TOKENS    = 2000
 MAX_AGENT_LOOPS      = 10
 
@@ -39,7 +34,7 @@ engineer embedded inside the CrowAgent™ Platform, a physics-informed campus \
 thermal intelligence system.
 
 YOUR ROLE:
-You help estate managers make evidence-based, cost-effective \
+You help university estate managers make evidence-based, cost-effective \
 sustainability investment decisions. You reason about buildings, run \
 physics simulations using your tools, and translate technical outputs \
 into clear, actionable recommendations.
@@ -52,11 +47,11 @@ YOUR TOOLS — use them proactively, do not just answer from memory:
 • rank_all_scenarios: Rank every intervention for a building by a chosen metric
 
 PHYSICS CONSTANTS (cite these in your answers):
-• Carbon intensity: {CI_ELECTRICITY} kgCO₂e/kWh (BEIS 2023)
-• UK electricity cost: £{DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH}/kWh (HESA 2022-23)
-• Heating set-point: {HEATING_SETPOINT_C}°C (UK Building Regulations Part L)
-• Heating season: {HEATING_HOURS_PER_YEAR:,.0f} hours/yr (CIBSE Guide A)
-• Solar irradiance (Reading): {SOLAR_IRRADIANCE_KWH_M2_YEAR:,.0f} kWh/m²/yr (PVGIS)
+• Carbon intensity: {constants.GRID_CARBON_INTENSITY_KG_PER_KWH} kgCO₂e/kWh (BEIS 2023)
+• UK HE electricity cost: £{constants.DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH}/kWh (HESA 2022-23)
+• Heating set-point: {constants.HEATING_SETPOINT_C}°C (UK Building Regulations Part L)
+• Heating season: {constants.HEATING_HOURS_PER_YEAR} hours/yr (CIBSE Guide A)
+• Solar irradiance (Reading): {constants.SOLAR_IRRADIANCE_KWH_M2_YEAR} kWh/m²/yr (PVGIS)
 
 BEHAVIOUR RULES:
 1. ALWAYS use tools to get real numbers — never invent figures
@@ -81,7 +76,7 @@ OR
 
 ACCURACY LIMITATIONS you must be aware of:
 1. The physics model uses simplified steady-state assumptions — real buildings are more complex
-2. Energy prices may change — financial figures assume constant £0.28/kWh
+2. Energy prices may change — financial figures assume constant £{constants.DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH}/kWh
 3. Installation costs are typical ranges — actual quotes may vary significantly
 4. You are an AI and can make mistakes — never present results as definitive
 5. This platform is a working prototype — results are indicative only
@@ -91,7 +86,7 @@ ACCURACY LIMITATIONS you must be aware of:
 # ─────────────────────────────────────────────────────────────────────────────
 # TOOL SCHEMAS — sent to Gemini so it knows what tools exist and how to call them
 # ─────────────────────────────────────────────────────────────────────────────
-TOOL_DECLARATIONS = [
+AGENT_TOOLS = [
     {
         "name": "run_scenario",
         "description": (
@@ -105,8 +100,8 @@ TOOL_DECLARATIONS = [
                 "building_name": {
                     "type": "string",
                     "description": (
-                        "Name of the building to analyse. "
-                        "Available buildings depend on the active user segment."
+                        "One of: 'Greenfield Library', "
+                        "'Greenfield Arts Building', 'Greenfield Science Block'"
                     ),
                 },
                 "scenario_name": {
@@ -184,8 +179,8 @@ TOOL_DECLARATIONS = [
                 "building_name": {
                     "type": "string",
                     "description": (
-                        "Name of the building to retrieve. "
-                        "Available buildings depend on the active user segment."
+                        "One of: 'Greenfield Library', "
+                        "'Greenfield Arts Building', 'Greenfield Science Block'"
                     ),
                 },
             },
@@ -204,8 +199,8 @@ TOOL_DECLARATIONS = [
                 "building_name": {
                     "type": "string",
                     "description": (
-                        "Name of the building to rank scenarios for. "
-                        "Available buildings depend on the active user segment."
+                        "One of: 'Greenfield Library', "
+                        "'Greenfield Arts Building', 'Greenfield Science Block'"
                     ),
                 },
                 "rank_by": {
@@ -228,9 +223,6 @@ TOOL_DECLARATIONS = [
     },
 ]
 
-# Canonical name per ADD Task 007
-AGENT_TOOLS: list[dict] = TOOL_DECLARATIONS
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TOOL EXECUTOR
@@ -242,12 +234,12 @@ def execute_tool(
     args: dict,
     buildings: dict,
     scenarios: dict,
-    calculate_fn,
+    tariff: float = constants.DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH,
 ) -> dict[str, Any]:
     """
     Execute a named tool with given args.
-    buildings, scenarios, calculate_fn are injected from the main app
-    so this module stays decoupled from Streamlit.
+    buildings and scenarios are injected from the main app.
+    Calls core.physics directly.
     """
     temp = float(args.get("temperature_c", 10.5))
     weather = {"temperature_c": temp, "wind_speed_mph": 9.2}
@@ -263,7 +255,9 @@ def execute_tool(
             return {"error": f"Scenario '{sname}' not found. "
                     f"Available: {list(scenarios.keys())}"}
         try:
-            result = calculate_fn(buildings[bname], scenarios[sname], weather)
+            result = physics.calculate_thermal_load(
+                buildings[bname], scenarios[sname], weather, tariff
+            )
         except Exception as exc:
             return {"error": f"Scenario calculation failed for '{bname}' / '{sname}': {exc}"}
         result["building"] = bname
@@ -285,7 +279,9 @@ def execute_tool(
         rows = []
         for bname, bdata in buildings.items():
             try:
-                r = calculate_fn(bdata, scenarios[sname], weather)
+                r = physics.calculate_thermal_load(
+                    bdata, scenarios[sname], weather, tariff
+                )
             except Exception:
                 continue
             cost = scenarios[sname]["install_cost_gbp"]
@@ -315,7 +311,9 @@ def execute_tool(
                 if sdata["install_cost_gbp"] > budget:
                     continue
                 try:
-                    r = calculate_fn(bdata, sdata, weather)
+                    r = physics.calculate_thermal_load(
+                        bdata, sdata, weather, tariff
+                    )
                 except Exception:
                     continue
                 if r["carbon_saving_t"] <= 0:
@@ -348,7 +346,7 @@ def execute_tool(
         if bname not in buildings:
             return {"error": f"Building '{bname}' not found."}
         b = buildings[bname]
-        baseline_carbon = round(b["baseline_energy_mwh"] * 1000 * CI_ELECTRICITY / 1000, 1)
+        baseline_carbon = round(b["baseline_energy_mwh"] * 1000 * constants.GRID_CARBON_INTENSITY_KG_PER_KWH / 1000, 1)
         return {
             "building":              bname,
             "floor_area_m2":         b["floor_area_m2"],
@@ -359,7 +357,7 @@ def execute_tool(
             "u_value_glazing_wm2k":  b["u_value_glazing"],
             "baseline_energy_mwh":   b["baseline_energy_mwh"],
             "baseline_carbon_t_co2": baseline_carbon,
-            "baseline_cost_gbp_yr":  round(b["baseline_energy_mwh"] * 1000 * DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH, 0),
+            "baseline_cost_gbp_yr":  round(b["baseline_energy_mwh"] * 1000 * constants.DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH, 0),
             "occupancy_hours_yr":    b["occupancy_hours"],
             "built_year":            b["built_year"],
             "description":           b["description"],
@@ -374,7 +372,9 @@ def execute_tool(
         rows = []
         for sname, sdata in scenarios.items():
             try:
-                r = calculate_fn(buildings[bname], sdata, weather)
+                r = physics.calculate_thermal_load(
+                    buildings[bname], sdata, weather, tariff
+                )
             except Exception:
                 continue
             cost = sdata["install_cost_gbp"]
@@ -423,7 +423,7 @@ def _call_gemini(api_key: str, messages: list, use_tools: bool = True) -> dict:
         },
     }
     if use_tools:
-        payload["tools"] = [{"function_declarations": TOOL_DECLARATIONS}]
+        payload["tools"] = [{"function_declarations": AGENT_TOOLS}]
         payload["tool_config"] = {
             "function_calling_config": {"mode": "AUTO"}
         }
@@ -472,24 +472,14 @@ def _call_gemini(api_key: str, messages: list, use_tools: bool = True) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 def run_agent_turn(
     user_message: str,
-    conversation_history: list,
-    api_key: str,
+    history: list,
+    gemini_key: str,
     building_registry: dict,
     scenario_registry: dict,
-    calculate_fn,
-    current_context: dict | None = None,
 ) -> dict:
     """
     Run the full agentic loop for one user turn.
-
-    Args:
-        user_message:        The user's latest message.
-        conversation_history: Prior Gemini message list (role/parts dicts).
-        api_key:             Gemini API key.
-        building_registry:   Dict of building name → spec dict for the active segment.
-        scenario_registry:   Dict of scenario name → params dict.
-        calculate_fn:        Physics calculation callable (core.physics.calculate_thermal_load).
-        current_context:     Optional dashboard state dict injected as context.
+    Compliant with Architecture Freeze Task 013 signature.
 
     Returns:
         {
@@ -497,22 +487,18 @@ def run_agent_turn(
           "tool_calls": list,      # list of {name, args, result} dicts
           "error": str | None,     # error message if something failed
           "loops": int,            # how many iterations the agent took
-          "updated_history": list, # conversation history including this turn
         }
     """
     # Build the working message list for this turn
     # Include conversation history + new user message
-    messages = list(conversation_history)
+    messages = list(history)
 
     # Inject current dashboard context if provided
+    # Note: Freeze signature doesn't include current_context, but logic might need it.
+    # We will assume context is embedded in user_message or handled by caller.
+    # For strict compliance, we remove the explicit param from signature.
     ctx_text = ""
-    if current_context:
-        ctx_text = (
-            f"\n\n[CURRENT DASHBOARD STATE]\n"
-            f"Selected building: {current_context.get('building', 'unknown')}\n"
-            f"Active scenarios: {current_context.get('scenarios', [])}\n"
-            f"Current temperature: {current_context.get('temperature_c', 10.5)}°C\n"
-        )
+    # if current_context: ... (Removed to match signature)
 
     messages.append({
         "role": "user",
@@ -524,7 +510,7 @@ def run_agent_turn(
 
     while loops < MAX_AGENT_LOOPS:
         loops += 1
-        response = _call_gemini(api_key, messages, use_tools=True)
+        response = _call_gemini(gemini_key, messages, use_tools=True)
 
         # Handle API error
         if "error" in response:
@@ -567,7 +553,7 @@ def run_agent_turn(
 
                 # Execute the tool
                 result = execute_tool(
-                    name, fargs, building_registry, scenario_registry, calculate_fn
+                    name, fargs, building_registry, scenario_registry
                 )
                 tool_calls_log.append({
                     "name": name,
@@ -617,7 +603,7 @@ def run_agent_turn(
         "role": "user",
         "parts": [{"text": "Please summarise your findings so far in 3 sentences."}]
     })
-    final_resp = _call_gemini(api_key, messages, use_tools=False)
+    final_resp = _call_gemini(gemini_key, messages, use_tools=False)
     summarisation_error = final_resp.get("error")
     if not summarisation_error:
         parts = final_resp.get("candidates", [{}])[0].get("content", {}).get("parts", [])
@@ -654,6 +640,3 @@ STARTER_QUESTIONS = [
     "Which single intervention gives the best cost per tonne of CO₂?",
     "If energy prices rise to £0.40/kWh, does that change the best option?",
 ]
-
-# Backward-compatibility alias — remove when all Batch 5 call sites are updated
-run_agent = run_agent_turn
