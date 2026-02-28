@@ -19,10 +19,18 @@ from requests import Response
 
 EPC_API_URL_ENV = "EPC_API_URL"
 EPC_API_KEY_ENV = "EPC_API_KEY"
-EPC_USERNAME = "crowagent.platform@gmail.com"
+EPC_USERNAME_ENV = "EPC_USERNAME"
+EPC_USERNAME_DEFAULT = "crowagent.platform@gmail.com"
+# Keep EPC_USERNAME for backward compatibility; call sites now read from env dynamically.
+EPC_USERNAME = EPC_USERNAME_DEFAULT
 EPC_STRICT_NO_RECORDS_ENV = "EPC_STRICT_NO_RECORDS"
 VALID_EPC_BANDS = {"A", "B", "C", "D", "E", "F", "G"}
 UK_POSTCODE_RE = re.compile(r"\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b", re.IGNORECASE)
+
+
+def _get_epc_username() -> str:
+    """Return the EPC API username, preferring the EPC_USERNAME env var."""
+    return os.getenv(EPC_USERNAME_ENV, EPC_USERNAME_DEFAULT)
 
 
 def _request_epc(url: str, postcode: str, api_key: str, timeout_s: int) -> Response:
@@ -31,7 +39,7 @@ def _request_epc(url: str, postcode: str, api_key: str, timeout_s: int) -> Respo
         url,
         params={"postcode": postcode, "size": 1},
         headers={"Accept": "application/json"},
-        auth=(EPC_USERNAME, api_key),
+        auth=(_get_epc_username(), api_key),
         timeout=timeout_s,
     )
 
@@ -42,7 +50,7 @@ def _request_epc_search(url: str, postcode: str, api_key: str, limit: int, timeo
         url,
         params={"postcode": postcode, "size": max(1, min(limit, 50))},
         headers={"Accept": "application/json"},
-        auth=(EPC_USERNAME, api_key),
+        auth=(_get_epc_username(), api_key),
         timeout=timeout_s,
     )
 
