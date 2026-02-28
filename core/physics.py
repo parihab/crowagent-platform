@@ -9,16 +9,16 @@
 
 from __future__ import annotations
 
-from config.constants import (                                    # noqa: F401 (re-exported)
-    CI_ELECTRICITY as GRID_CARBON_INTENSITY_KG_PER_KWH,
-    DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH,
+from config.constants import (
+    CI_ELECTRICITY as GRID_CARBON_INTENSITY_KG_PER_KWH,  # noqa: F401
+    DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH,              # noqa: F401
     HEATING_SETPOINT_C,
     HEATING_HOURS_PER_YEAR,
-    INFILTRATION_HEAT_CAPACITY_FACTOR,
     BASE_ACH,
     SOLAR_IRRADIANCE_KWH_M2_YEAR,
     SOLAR_APERTURE_FACTOR,
     SOLAR_UTILISATION_FACTOR,
+    INFILTRATION_HEAT_CAPACITY_FACTOR,
 )
 
 

@@ -9,6 +9,10 @@ import streamlit as st
 from .session import init_session
 from .branding import PAGE_CONFIG, inject_branding
 from .segments import get_segment_handler, SEGMENT_IDS, SEGMENT_LABELS
+from app.segments.university_he import UniversityHEHandler as _UHE
+from config.scenarios import SCENARIOS, SEGMENT_SCENARIOS, SEGMENT_DEFAULT_SCENARIOS
+
+BUILDINGS = _UHE().building_registry
 
 
 def run():
