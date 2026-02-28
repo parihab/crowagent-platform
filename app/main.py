@@ -385,10 +385,10 @@ SEGMENT_SCENARIOS: dict[str, list[str]] = {
 }
 
 SEGMENT_DEFAULT_SCENARIOS: dict[str, list[str]] = {
-    "university_he": ["Baseline (No Intervention)", "Combined Package (All Interventions)"],
-    "smb_landlord": ["Baseline (No Intervention)", "Combined Package (All Interventions)"],
-    "smb_industrial": ["Baseline (No Intervention)", "Combined Package (All Interventions)"],
-    "individual_selfbuild": ["Baseline (No Intervention)", "Combined Package (All Interventions)"],
+    "university_he": ["Combined Package (All Interventions)"],
+    "smb_landlord": ["Combined Package (All Interventions)"],
+    "smb_industrial": ["Combined Package (All Interventions)"],
+    "individual_selfbuild": ["Combined Package (All Interventions)"],
 }
 
 
@@ -864,7 +864,7 @@ with st.sidebar:
         st.rerun()
 
     st.markdown("<div class='sb-section'>🧪 Scenarios</div>", unsafe_allow_html=True)
-    st.caption("Select one or more intervention scenarios to compare outcomes.")
+    st.caption("Select one intervention scenario to compare outcomes.")
     _scenario_options = _segment_scenario_options(st.session_state.user_segment)
 
     # Validate stored selection against current segment options (pre-widget assignment is OK in Streamlit)
@@ -883,7 +883,8 @@ with st.sidebar:
         "Scenario selection",
         options=_scenario_options,
         key="selected_scenario_names",
-        help="Choose one or more intervention scenarios for calculations.",
+        max_selections=1,
+        help="Choose one intervention scenario for calculations.",
         on_change=_on_scenario_change,
     )
     _update_location_query_params()
@@ -920,6 +921,9 @@ with st.sidebar:
 
     _addr_options = st.session_state.get("asset_lookup_results", [])
     _addr_labels = [o["label"] for o in _addr_options]
+    # Reset the picker widget by deleting its key before it renders (flag set after add action)
+    if st.session_state.pop("_reset_address_picker", False):
+        st.session_state.pop("address_picker_selection", None)
     _addr_pick = st.selectbox(
         "Address picker",
         options=[""] + _addr_labels,
@@ -940,7 +944,7 @@ with st.sidebar:
                 st.info(f"{postcode} is already in this segment portfolio.")
             else:
                 add_to_portfolio(postcode, lat=chosen.get("lat"), lon=chosen.get("lon"))
-                st.session_state.address_picker_selection = ""
+                st.session_state["_reset_address_picker"] = True
                 st.rerun()
 
     if _seg_portfolio:
