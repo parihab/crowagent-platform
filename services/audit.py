@@ -11,6 +11,7 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 
 from __future__ import annotations
+import re
 from datetime import datetime, timezone
 
 import streamlit as st
@@ -18,10 +19,26 @@ import streamlit as st
 _LOG_KEY  = "_crowagent_audit_log"
 _MAX_SIZE = 50   # cap entries to prevent unbounded memory growth
 
+# Regex to find UK postcodes for redaction
+UK_POSTCODE_RE = re.compile(r"\b([A-Z]{1,2}\d[A-Z\d]?)\s*(\d[A-Z]{2})\b", re.IGNORECASE)
+# Regex to detect accidental API key leakage
+API_KEY_PATTERN = re.compile(r'[A-Za-z0-9_\-]{30,}')
+
 
 def _ensure_log() -> None:
     if _LOG_KEY not in st.session_state:
         st.session_state[_LOG_KEY] = []
+
+
+def _redact_postcode(text: str) -> str:
+    """Replace full postcodes with their outward code + '***'."""
+    return UK_POSTCODE_RE.sub(r"\1 ***", text)
+
+
+def _assert_no_key(value: str) -> None:
+    """Raise ValueError if a string appears to contain an API key."""
+    if API_KEY_PATTERN.search(value):
+        raise ValueError("Audit log details must not contain API key material.")
 
 
 def log_event(action: str, details: str) -> None:
@@ -32,12 +49,16 @@ def log_event(action: str, details: str) -> None:
     ----------
     action  : Short action label, e.g. "KEY_UPDATED", "PROVIDER_CHANGED"
     details : Human-readable description; must NOT contain raw API key material.
+              Postcodes will be automatically redacted.
     """
     _ensure_log()
+    _assert_no_key(action)
+    _assert_no_key(details)
+
     entry: dict = {
         "ts":      datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         "action":  action,
-        "details": details,
+        "details": _redact_postcode(details),
     }
     st.session_state[_LOG_KEY].append(entry)
     if len(st.session_state[_LOG_KEY]) > _MAX_SIZE:

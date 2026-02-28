@@ -17,6 +17,10 @@ from urllib.parse import quote
 import requests
 from requests import Response
 
+class EPCFetchError(RuntimeError):
+    """Raised when EPC lookup fails and stub data cannot be generated."""
+
+
 EPC_API_URL_ENV = "EPC_API_URL"
 EPC_API_KEY_ENV = "EPC_API_KEY"
 EPC_USERNAME_ENV = "EPC_USERNAME"
@@ -163,7 +167,7 @@ def fetch_epc_data(postcode: str, timeout_s: int = 10) -> dict[str, Any]:
 
     strict_no_records = os.getenv(EPC_STRICT_NO_RECORDS_ENV, "").strip().lower() in {"1", "true", "yes"}
     if strict_no_records:
-        raise ValueError(f"No EPC records found for postcode: {postcode}")
+        raise EPCFetchError(f"No EPC records found for postcode: {postcode}")
     return _stub(f"No EPC records found for postcode: {postcode}; using deterministic estimate.")
 
 
