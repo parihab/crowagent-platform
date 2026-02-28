@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 import base64
+import hashlib
 import os
 import sys
 import uuid
@@ -403,6 +404,38 @@ def _segment_default_scenarios(segment: str | None) -> list[str]:
     return selected or ["Baseline (No Intervention)"]
 
 # ─────────────────────────────────────────────────────────────────────────────
+# BUILDING NAME GENERATION
+# Deterministic per postcode — same postcode always yields the same name.
+# ─────────────────────────────────────────────────────────────────────────────
+_BN_PREFIXES = [
+    "Meridian", "Quantum", "Riverside", "Crown", "Saxon", "Atlas",
+    "Nexus", "Aurora", "Civic", "Apex", "Sterling", "Beacon",
+    "Victoria", "Royal", "Windsor", "Charter", "Regent", "Capital",
+    "Harbour", "Compass", "Horizon", "Pinnacle", "Westgate", "Northgate",
+]
+_BN_SUFFIXES = [
+    "House", "Tower", "Plaza", "Centre", "Court", "Building",
+    "Point", "Place", "Gate", "Park", "Square", "Works",
+    "Exchange", "Bridge", "Wharf", "Yard", "Mews", "Pavilion",
+]
+
+
+def _generate_building_name(postcode: str) -> str:
+    """Return a realistic, deterministic building name derived from a postcode hash."""
+    h = int(hashlib.md5(postcode.strip().upper().encode()).hexdigest(), 16)
+    prefix = _BN_PREFIXES[h % len(_BN_PREFIXES)]
+    suffix = _BN_SUFFIXES[(h >> 8) % len(_BN_SUFFIXES)]
+    return f"{prefix} {suffix}"
+
+
+def _building_name(postcode: str) -> str:
+    """Return the persisted building name for a postcode, generating and caching on first call."""
+    names: dict = st.session_state.setdefault("building_names", {})
+    if postcode not in names:
+        names[postcode] = _generate_building_name(postcode)
+    return names[postcode]
+
+# ─────────────────────────────────────────────────────────────────────────────
 # PORTFOLIO ARRAY LOGIC
 # ─────────────────────────────────────────────────────────────────────────────
 MAX_PORTFOLIO_SIZE = 3
@@ -474,7 +507,7 @@ def init_portfolio_entry(postcode: str, segment: str, epc_data: dict, lat: float
             "u_value_glazing": 2.8,
             "baseline_energy_mwh": estimated_baseline_mwh,
             "occupancy_hours": 3000,
-            "description": f"Portfolio Asset at {postcode}",
+            "description": f"{_generate_building_name(postcode)} — {postcode}",
             "built_year": str(epc_data.get("built_year", 1990)),
             "building_type": "Portfolio Asset"
         },
@@ -544,7 +577,7 @@ def _portfolio_buildings_map() -> dict[str, dict]:
     return {
         p["postcode"]: {
             **p.get("physics_model_input", {}),
-            "description": f"Portfolio asset at {p['postcode']} (EPC {p.get('epc_band', 'Unknown')})",
+            "description": f"{_generate_building_name(p['postcode'])} — {p['postcode']} (EPC {p.get('epc_band', 'Unknown')})",
             "segment": p.get("segment"),
         }
         for p in _active_portfolio_entries()
@@ -867,13 +900,20 @@ with st.sidebar:
     st.caption("Select one or more intervention scenarios to compare outcomes.")
     _scenario_options = _segment_scenario_options(st.session_state.user_segment)
 
-    # Validate stored selection against current segment options (pre-widget assignment is OK in Streamlit)
+    # Compute a valid default without writing to the widget-owned key.
+    # Writing st.session_state[widget_key] = ... in the main script body after
+    # the widget has been rendered in a previous run raises StreamlitAPIException.
     _current_selection = st.session_state.get("selected_scenario_names") or []
     _valid_selection = [s for s in _current_selection if s in _scenario_options]
-    st.session_state["selected_scenario_names"] = _valid_selection or _segment_default_scenarios(st.session_state.user_segment)
+    _default_selection = _valid_selection or _segment_default_scenarios(st.session_state.user_segment)
+
+    # Only pop the key when the whole selection has become invalid (e.g. after a
+    # segment switch), so the widget re-initialises from the default parameter.
+    if _current_selection and not _valid_selection:
+        st.session_state.pop("selected_scenario_names", None)
 
     def _on_scenario_change():
-        """Restore defaults if user deselects everything (called before next rerun)."""
+        """Restore defaults if user deselects everything (callbacks may write widget keys)."""
         if not st.session_state.get("selected_scenario_names"):
             st.session_state["selected_scenario_names"] = _segment_default_scenarios(
                 st.session_state.get("user_segment")
@@ -882,6 +922,7 @@ with st.sidebar:
     st.multiselect(
         "Scenario selection",
         options=_scenario_options,
+        default=_default_selection,
         key="selected_scenario_names",
         help="Choose one or more intervention scenarios for calculations.",
         on_change=_on_scenario_change,
@@ -957,7 +998,7 @@ with st.sidebar:
             options=_seg_ids,
             default=_active_default,
             max_selections=MAX_ACTIVE_ANALYSIS_BUILDINGS,
-            format_func=lambda _id: next((f"{p['postcode']} (EPC {p['epc_band']})" for p in _seg_portfolio if p["id"] == _id), _id),
+            format_func=lambda _id: next((f"{_building_name(p['postcode'])} · {p['postcode']} (EPC {p['epc_band']})" for p in _seg_portfolio if p["id"] == _id), _id),
             key="active_analysis_ids",
         )
         if not _chosen_assets:
@@ -967,7 +1008,7 @@ with st.sidebar:
         for p_item in _seg_portfolio:
             col_id, col_btn = st.columns([4, 1])
             with col_id:
-                st.markdown(f"<div style='font-size:0.8rem; color:#CBD8E6; padding-top: 5px;'>{p_item['postcode']} (EPC: {p_item['epc_band']})</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='font-size:0.8rem; color:#CBD8E6; padding-top: 5px;'>{_building_name(p_item['postcode'])} · {p_item['postcode']} (EPC: {p_item['epc_band']})</div>", unsafe_allow_html=True)
             with col_btn:
                 if st.button("❌", key=f"del_{p_item['id']}", help="Remove asset"):
                     remove_from_portfolio(p_item['id'])
@@ -985,7 +1026,7 @@ with st.sidebar:
         if _asset_lat is not None and _asset_lon is not None:
             st.session_state.wx_lat = float(_asset_lat)
             st.session_state.wx_lon = float(_asset_lon)
-            st.session_state.wx_location_name = f"Portfolio asset: {_primary_asset.get('postcode', 'Unknown postcode')}"
+            st.session_state.wx_location_name = f"{_building_name(_primary_asset.get('postcode', ''))} ({_primary_asset.get('postcode', 'Unknown postcode')})"
 
     st.caption("Weather context is automatically tied to your first active portfolio asset when coordinates are available.")
 
@@ -1442,8 +1483,9 @@ with _tab_dash:
     # ── Building heading ──────────────────────────────────────────────────────
     col_hdr, col_badge = st.columns([3, 1])
     with col_hdr:
+        _display_building_name = _building_name(selected_building_name) if has_active_buildings else selected_building_name
         st.markdown(
-            f"<h2 style='margin:0;padding:0;'>{selected_building_name}</h2>"
+            f"<h2 style='margin:0;padding:0;'>{_display_building_name}</h2>"
             f"<div style='font-size:0.78rem;color:#5A7A90;margin-top:2px;'>"
             f"{selected_building['description']}</div>",
             unsafe_allow_html=True,
@@ -1624,7 +1666,7 @@ with _tab_dash:
     )
 
     # ── Building Specification Expander ───────────────────────────────────────
-    with st.expander(f"📐 Building Specification — {selected_building_name}"):
+    with st.expander(f"📐 Building Specification — {_display_building_name}"):
         sp1, sp2 = st.columns(2)
         with sp1:
             st.markdown(f"**Floor Area:** {selected_building['floor_area_m2']:,} m²")
@@ -1652,14 +1694,63 @@ with _tab_dash:
     st.markdown("<div class='sec-hdr'>🗺️ Portfolio Map</div>", unsafe_allow_html=True)
     _dash_assets = _active_portfolio_entries()
     _map_rows = [
-        {"postcode": p.get("postcode", "Unknown"), "lat": p.get("lat"), "lon": p.get("lon")}
+        {
+            "building_name": _building_name(p.get("postcode", "Unknown")),
+            "postcode": p.get("postcode", "Unknown"),
+            "lat": p.get("lat"),
+            "lon": p.get("lon"),
+        }
         for p in _dash_assets
         if p.get("lat") is not None and p.get("lon") is not None
     ]
     if _map_rows:
+        import pydeck as pdk
         _map_df = pd.DataFrame(_map_rows)
-        st.map(_map_df[["lat", "lon"]], width="stretch")
-        st.dataframe(_map_df[["postcode"]], width="stretch", hide_index=True)
+        _dash_center_lat = _map_df["lat"].mean()
+        _dash_center_lon = _map_df["lon"].mean()
+        _dash_scatter = pdk.Layer(
+            "ScatterplotLayer",
+            data=_map_df,
+            get_position=["lon", "lat"],
+            get_fill_color=[0, 194, 168, 220],
+            get_radius=60,
+            radius_min_pixels=8,
+            radius_max_pixels=24,
+            pickable=True,
+        )
+        _dash_text = pdk.Layer(
+            "TextLayer",
+            data=_map_df,
+            get_position=["lon", "lat"],
+            get_text="building_name",
+            get_size=13,
+            get_color=[255, 255, 255],
+            get_background_color=[7, 26, 47],
+            background=True,
+            get_pixel_offset=[0, -30],
+        )
+        _dash_view = pdk.ViewState(
+            latitude=_dash_center_lat,
+            longitude=_dash_center_lon,
+            zoom=14,
+            pitch=40,
+        )
+        st.pydeck_chart(
+            pdk.Deck(
+                map_style="https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
+                initial_view_state=_dash_view,
+                layers=[_dash_scatter, _dash_text],
+                tooltip={"text": "{building_name}\n{postcode}"},
+            ),
+            use_container_width=True,
+        )
+        st.dataframe(
+            _map_df[["building_name", "postcode"]].rename(
+                columns={"building_name": "Building", "postcode": "Postcode"}
+            ),
+            width="stretch",
+            hide_index=True,
+        )
     else:
         st.info("Add portfolio assets with geocoded addresses to display pins on the map.")
 
@@ -1671,7 +1762,7 @@ with _tab_fin:
     st.markdown(
         "<h3 style='margin-bottom:4px;'>Financial Analysis & Investment Appraisal</h3>"
         "<div style='font-size:0.78rem;color:#5A7A90;margin-bottom:16px;'>"
-        f"{selected_building_name} · {len(selected_scenario_names)} scenario(s) selected</div>",
+        f"{_building_name(selected_building_name) if has_active_buildings else selected_building_name} · {len(selected_scenario_names)} scenario(s) selected</div>",
         unsafe_allow_html=True,
     )
 
@@ -2784,7 +2875,7 @@ with _tab_dash:
         with c1:
             st.markdown("<div class='chart-card'><div class='chart-title'>⚡ Portfolio Energy (MWh/yr)</div>", unsafe_allow_html=True)
             fig_e = go.Figure()
-            x_labels = [f"{p['postcode'][:4]}..." for p in _segment_assets]
+            x_labels = [_building_name(p["postcode"]) for p in _segment_assets]
             y_base = [p["baseline_results"]["scenario_energy_mwh"] for p in _segment_assets]
             y_comb = [p["combined_results"]["scenario_energy_mwh"] for p in _segment_assets]
             fig_e.add_trace(go.Bar(name="Baseline", x=x_labels, y=y_base, marker_color="#4A6FA5"))
@@ -2817,7 +2908,8 @@ with _tab_dash:
             asset_lat = float(p.get("lat") or (center_lat + (np.sin(i) * 0.005)))
             asset_lon = float(p.get("lon") or (center_lon + (np.cos(i) * 0.005)))
             _map_points.append({
-                "Asset": p["postcode"],
+                "building_name": _building_name(p["postcode"]),
+                "postcode": p["postcode"],
                 "lat": asset_lat,
                 "lon": asset_lon,
                 "Energy saving %": p["combined_results"].get("energy_saving_pct", 0),
@@ -2826,9 +2918,49 @@ with _tab_dash:
 
         if _map_points:
             _map_df = pd.DataFrame(_map_points)
-            st.map(_map_df[["lat", "lon"]], width="stretch")
+            _fin_center_lat = _map_df["lat"].mean()
+            _fin_center_lon = _map_df["lon"].mean()
+            import pydeck as pdk
+            _fin_scatter = pdk.Layer(
+                "ScatterplotLayer",
+                data=_map_df,
+                get_position=["lon", "lat"],
+                get_fill_color=[0, 194, 168, 220],
+                get_radius=60,
+                radius_min_pixels=8,
+                radius_max_pixels=24,
+                pickable=True,
+            )
+            _fin_text = pdk.Layer(
+                "TextLayer",
+                data=_map_df,
+                get_position=["lon", "lat"],
+                get_text="building_name",
+                get_size=13,
+                get_color=[255, 255, 255],
+                get_background_color=[7, 26, 47],
+                background=True,
+                get_pixel_offset=[0, -30],
+            )
+            _fin_view = pdk.ViewState(
+                latitude=_fin_center_lat,
+                longitude=_fin_center_lon,
+                zoom=14,
+                pitch=40,
+            )
+            st.pydeck_chart(
+                pdk.Deck(
+                    map_style="https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
+                    initial_view_state=_fin_view,
+                    layers=[_fin_scatter, _fin_text],
+                    tooltip={"text": "{building_name}\n{postcode}"},
+                ),
+                use_container_width=True,
+            )
             st.dataframe(
-                _map_df[["Asset", "Energy saving %", "Carbon saving (t)"]],
+                _map_df[["building_name", "postcode", "Energy saving %", "Carbon saving (t)"]].rename(
+                    columns={"building_name": "Building", "postcode": "Postcode"}
+                ),
                 width="stretch",
                 hide_index=True,
             )
