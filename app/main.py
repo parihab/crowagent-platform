@@ -386,10 +386,10 @@ SEGMENT_SCENARIOS: dict[str, list[str]] = {
 }
 
 SEGMENT_DEFAULT_SCENARIOS: dict[str, list[str]] = {
-    "university_he": ["Combined Package (All Interventions)"],
-    "smb_landlord": ["Combined Package (All Interventions)"],
-    "smb_industrial": ["Combined Package (All Interventions)"],
-    "individual_selfbuild": ["Combined Package (All Interventions)"],
+    "university_he": ["Baseline (No Intervention)", "Combined Package (All Interventions)"],
+    "smb_landlord": ["Baseline (No Intervention)", "Combined Package (All Interventions)"],
+    "smb_industrial": ["Baseline (No Intervention)", "Combined Package (All Interventions)"],
+    "individual_selfbuild": ["Baseline (No Intervention)", "Combined Package (All Interventions)"],
 }
 
 
@@ -435,6 +435,64 @@ def _building_name(postcode: str) -> str:
         names[postcode] = _generate_building_name(postcode)
     return names[postcode]
 
+
+def _segment_profile_defaults(segment: str, postcode: str, epc_data: dict[str, Any]) -> dict[str, Any]:
+    """Return realistic physics defaults by segment with deterministic per-postcode variance."""
+    seed = int(hashlib.md5(f"{segment}|{postcode}".encode()).hexdigest()[:8], 16)
+
+    if segment == "university_he":
+        base = {
+            "height_m": 4.0,
+            "glazing_ratio": 0.32,
+            "u_value_wall": 1.45,
+            "u_value_roof": 1.20,
+            "u_value_glazing": 2.10,
+            "occupancy_hours": 4200,
+            "building_type": "University Facility",
+        }
+    elif segment == "smb_landlord":
+        base = {
+            "height_m": 3.1,
+            "glazing_ratio": 0.24,
+            "u_value_wall": 1.80,
+            "u_value_roof": 1.65,
+            "u_value_glazing": 2.75,
+            "occupancy_hours": 3000,
+            "building_type": "SMB Rental Asset",
+        }
+    elif segment == "smb_industrial":
+        base = {
+            "height_m": 5.5,
+            "glazing_ratio": 0.12,
+            "u_value_wall": 1.65,
+            "u_value_roof": 1.35,
+            "u_value_glazing": 2.45,
+            "occupancy_hours": 5200,
+            "building_type": "Industrial Unit",
+        }
+    else:  # individual_selfbuild
+        base = {
+            "height_m": 2.7,
+            "glazing_ratio": 0.20,
+            "u_value_wall": 0.75,
+            "u_value_roof": 0.55,
+            "u_value_glazing": 1.40,
+            "occupancy_hours": 2400,
+            "building_type": "Self-Build Home",
+        }
+
+    epc_band = str(epc_data.get("epc_band", "D") or "D").upper()
+    efficiency_adjust = {
+        "A": -0.35, "B": -0.25, "C": -0.15, "D": 0.0, "E": 0.15, "F": 0.30, "G": 0.45,
+    }.get(epc_band, 0.0)
+
+    jitter = ((seed % 11) - 5) / 100.0
+    base["u_value_wall"] = max(0.18, round(base["u_value_wall"] * (1.0 + efficiency_adjust + jitter), 2))
+    base["u_value_roof"] = max(0.12, round(base["u_value_roof"] * (1.0 + efficiency_adjust + jitter), 2))
+    base["u_value_glazing"] = max(0.8, round(base["u_value_glazing"] * (1.0 + efficiency_adjust + jitter), 2))
+
+    return base
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PORTFOLIO ARRAY LOGIC
 # ─────────────────────────────────────────────────────────────────────────────
@@ -472,26 +530,32 @@ def _extract_uk_postcode(text: str) -> str:
             return token
     return ""
 
-def init_portfolio_entry(postcode: str, segment: str, epc_data: dict, lat: float | None = None, lon: float | None = None) -> dict:
-    """
-    Initialize a new portfolio entry conforming to the strict JSON schema.
-
-    Args:
-        postcode (str): Valid UK postcode.
-        segment (str): Active user segment.
-        epc_data (dict): Data fetched from EPC API.
-
-    Returns:
-        dict: A structured portfolio building object.
-    """
+def init_portfolio_entry(
+    postcode: str,
+    segment: str,
+    epc_data: dict,
+    lat: float | None = None,
+    lon: float | None = None,
+    address_label: str | None = None,
+) -> dict:
+    """Initialize a segment-scoped portfolio entry using realistic archetype defaults."""
     entry_id = str(uuid.uuid4())
     floor_area = float(epc_data.get("floor_area_m2", 150.0))
-    # Approximation for baseline energy (150 kWh/m2 typical)
-    estimated_baseline_mwh = (floor_area * 150.0) / 1000.0
+    profile = _segment_profile_defaults(segment or "", postcode, epc_data)
+
+    baseline_intensity_kwh_m2 = {
+        "university_he": 190.0,
+        "smb_landlord": 165.0,
+        "smb_industrial": 220.0,
+        "individual_selfbuild": 110.0,
+    }.get(segment, 155.0)
+    estimated_baseline_mwh = round((floor_area * baseline_intensity_kwh_m2) / 1000.0, 2)
+    scenario_names = [s for s in _segment_scenario_options(segment) if s in SCENARIOS]
 
     return {
         "id": entry_id,
         "postcode": postcode,
+        "address_label": address_label or f"{postcode}, UK",
         "segment": segment,
         "floor_area_m2": floor_area,
         "built_year": int(epc_data.get("built_year", 1990)),
@@ -500,48 +564,59 @@ def init_portfolio_entry(postcode: str, segment: str, epc_data: dict, lat: float
         "lon": lon,
         "physics_model_input": {
             "floor_area_m2": floor_area,
-            "height_m": 3.0,
-            "glazing_ratio": 0.25,
-            "u_value_wall": 1.8,
-            "u_value_roof": 2.0,
-            "u_value_glazing": 2.8,
+            "height_m": profile["height_m"],
+            "glazing_ratio": profile["glazing_ratio"],
+            "u_value_wall": profile["u_value_wall"],
+            "u_value_roof": profile["u_value_roof"],
+            "u_value_glazing": profile["u_value_glazing"],
             "baseline_energy_mwh": estimated_baseline_mwh,
-            "occupancy_hours": 3000,
-            "description": f"{_generate_building_name(postcode)} — {postcode}",
+            "occupancy_hours": profile["occupancy_hours"],
+            "description": f"{_generate_building_name(postcode)} — {address_label or postcode}",
             "built_year": str(epc_data.get("built_year", 1990)),
-            "building_type": "Portfolio Asset"
+            "building_type": profile["building_type"],
         },
-        "scenarios": {
-            "Baseline (No Intervention)": SCENARIOS["Baseline (No Intervention)"],
-            "Combined Package (All Interventions)": SCENARIOS["Combined Package (All Interventions)"]
-        },
+        "scenarios": {name: SCENARIOS[name] for name in scenario_names},
         "baseline_results": {},
-        "combined_results": {}
+        "combined_results": {},
     }
 
-def add_to_portfolio(postcode: str, lat: float | None = None, lon: float | None = None) -> None:
-    """
-    Fetch EPC data and add to the persistent portfolio array.
-    Enforces maximum portfolio size limit.
-
-    Args:
-        postcode (str): UK postcode to add.
-
-    Raises:
-        ValueError: If the portfolio is at capacity or postcode invalid.
-    """
+def add_to_portfolio(
+    postcode: str,
+    lat: float | None = None,
+    lon: float | None = None,
+    address_label: str | None = None,
+) -> None:
+    """Fetch EPC data and add a segment-scoped portfolio asset."""
     if "portfolio" not in st.session_state:
         st.session_state.portfolio = []
-        
-    if len(st.session_state.portfolio) >= MAX_PORTFOLIO_SIZE:
-        st.error(f"Portfolio capacity reached (Max {MAX_PORTFOLIO_SIZE} buildings).")
+
+    segment = st.session_state.get("user_segment")
+    seg_count = sum(1 for p in st.session_state.portfolio if p.get("segment") == segment)
+    if seg_count >= MAX_PORTFOLIO_SIZE:
+        st.error(
+            f"Portfolio capacity reached for this segment (Max {MAX_PORTFOLIO_SIZE} buildings)."
+        )
         return
-        
-    # fetch_epc_data reads API URL/key from env/secrets and only accepts postcode
+
     try:
+        # Resolve missing coordinates via free OSM/Nominatim postcode search.
+        if (lat is None or lon is None):
+            geo_hits = search_addresses(postcode, limit=1)
+            if geo_hits:
+                lat = geo_hits[0].get("lat")
+                lon = geo_hits[0].get("lon")
+
         epc_data = fetch_epc_data(postcode)
-        entry = init_portfolio_entry(postcode, st.session_state.user_segment, epc_data, lat=lat, lon=lon)
+        entry = init_portfolio_entry(
+            postcode,
+            segment,
+            epc_data,
+            lat=lat,
+            lon=lon,
+            address_label=address_label,
+        )
         st.session_state.portfolio.append(entry)
+
         if epc_data.get("_is_stub", True):
             st.toast(f"Estimated EPC data used for {postcode}.", icon="⚠️")
             st.warning(epc_data.get("_stub_reason", "EPC API unavailable — using estimated data."))
@@ -577,7 +652,7 @@ def _portfolio_buildings_map() -> dict[str, dict]:
     return {
         p["postcode"]: {
             **p.get("physics_model_input", {}),
-            "description": f"{_generate_building_name(p['postcode'])} — {p['postcode']} (EPC {p.get('epc_band', 'Unknown')})",
+            "description": f"{_generate_building_name(p['postcode'])} — {p.get('address_label', p['postcode'])} (EPC {p.get('epc_band', 'Unknown')})",
             "segment": p.get("segment"),
         }
         for p in _active_portfolio_entries()
@@ -632,6 +707,23 @@ def _safe_nested_number(container: dict, *keys: str, default: float = 0.0) -> fl
             return default
         current = current.get(key)
     return _safe_number(current, default=default)
+
+
+def _asset_summary_rows(assets: list[dict]) -> list[dict[str, Any]]:
+    """Build a concise asset table for Dashboard/Financial tabs."""
+    rows: list[dict[str, Any]] = []
+    for p in assets:
+        rows.append(
+            {
+                "Building": _building_name(p.get("postcode", "Unknown")),
+                "Address": p.get("address_label", p.get("postcode", "Unknown")),
+                "Postcode": p.get("postcode", "Unknown"),
+                "EPC": p.get("epc_band", "Unknown"),
+                "Segment": compliance.SEGMENT_META.get(p.get("segment"), {}).get("label", p.get("segment", "Unknown")),
+                "Floor area (m²)": int(float(p.get("floor_area_m2", 0) or 0)),
+            }
+        )
+    return rows
 def _hydrate_portfolio_results(portfolio: list[dict], weather_data: dict) -> tuple[int, list[str]]:
     """Ensure each portfolio entry has baseline/combined result payloads.
 
@@ -956,7 +1048,7 @@ with st.sidebar:
             _results = search_addresses(_postcode_query, limit=12)
         # If no addresses returned from API, offer the bare postcode as a fallback option
         if not _results:
-            _results = [{"label": f"{_postcode_query.upper()} (postcode only)", "lat": 0.0, "lon": 0.0, "postcode": _postcode_query.upper()}]
+            _results = [{"label": f"{_postcode_query.upper()} (postcode only)", "lat": None, "lon": None, "postcode": _postcode_query.upper()}]
         st.session_state["asset_lookup_results"] = _results
         st.session_state["_last_postcode_searched"] = _postcode_query
     elif not _postcode_query:
@@ -987,7 +1079,12 @@ with st.sidebar:
             elif any(p.get("postcode") == postcode and p.get("segment") == st.session_state.user_segment for p in st.session_state.portfolio):
                 st.info(f"{postcode} is already in this segment portfolio.")
             else:
-                add_to_portfolio(postcode, lat=chosen.get("lat"), lon=chosen.get("lon"))
+                add_to_portfolio(
+                    postcode,
+                    lat=chosen.get("lat"),
+                    lon=chosen.get("lon"),
+                    address_label=chosen.get("label"),
+                )
                 st.session_state["_reset_address_picker"] = True
                 st.rerun()
 
@@ -1002,7 +1099,10 @@ with st.sidebar:
             options=_seg_ids,
             default=_active_default,
             max_selections=MAX_ACTIVE_ANALYSIS_BUILDINGS,
-            format_func=lambda _id: next((f"{_building_name(p['postcode'])} · {p['postcode']} (EPC {p['epc_band']})" for p in _seg_portfolio if p["id"] == _id), _id),
+            format_func=lambda _id: next((
+                f"{_building_name(p['postcode'])} · {p.get('address_label', p['postcode'])} (EPC {p['epc_band']})"
+                for p in _seg_portfolio if p["id"] == _id
+            ), _id),
             key="active_analysis_ids",
         )
         if not _chosen_assets:
@@ -1012,7 +1112,12 @@ with st.sidebar:
         for p_item in _seg_portfolio:
             col_id, col_btn = st.columns([4, 1])
             with col_id:
-                st.markdown(f"<div style='font-size:0.8rem; color:#CBD8E6; padding-top: 5px;'>{_building_name(p_item['postcode'])} · {p_item['postcode']} (EPC: {p_item['epc_band']})</div>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<div style='font-size:0.8rem; color:#CBD8E6; padding-top: 5px;'>"
+                    f"{_building_name(p_item['postcode'])} · {p_item.get('address_label', p_item['postcode'])} "
+                    f"(EPC: {p_item['epc_band']})</div>",
+                    unsafe_allow_html=True,
+                )
             with col_btn:
                 if st.button("❌", key=f"del_{p_item['id']}", help="Remove asset"):
                     remove_from_portfolio(p_item['id'])
@@ -1693,10 +1798,16 @@ with _tab_dash:
             "without site-specific survey."
         )
 
+    # ── Selected Address & Building Details ──────────────────────────────────
+    st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='sec-hdr'>🏢 Selected Address & Building Details</div>", unsafe_allow_html=True)
+    _dash_assets = _active_portfolio_entries()
+    if _dash_assets:
+        st.dataframe(pd.DataFrame(_asset_summary_rows(_dash_assets)), width="stretch", hide_index=True)
+
     # ── Portfolio Map (2D) ───────────────────────────────────────────────────
     st.markdown("<div style='height:16px;'></div>", unsafe_allow_html=True)
     st.markdown("<div class='sec-hdr'>🗺️ Portfolio Map</div>", unsafe_allow_html=True)
-    _dash_assets = _active_portfolio_entries()
     _map_rows = [
         {
             "building_name": _building_name(p.get("postcode", "Unknown")),
@@ -2978,6 +3089,9 @@ with _tab_fin:
     if not _segment_assets:
         st.info("Add assets to your portfolio to view financial projections.")
     else:
+        st.markdown("<div class='sec-hdr'>🏢 Selected Address & Building Details</div>", unsafe_allow_html=True)
+        st.dataframe(pd.DataFrame(_asset_summary_rows(_segment_assets)), width="stretch", hide_index=True)
+        st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
         total_install = sum(_safe_nested_number(p, "combined_results", "install_cost_gbp") for p in _segment_assets)
         total_annual_saving = sum(_safe_nested_number(p, "combined_results", "annual_saving_gbp") for p in _segment_assets)
         

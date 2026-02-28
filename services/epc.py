@@ -214,8 +214,8 @@ def search_addresses(query: str, limit: int = 5, timeout_s: int = 8) -> list[dic
                 out.append(
                     {
                         "label": label,
-                        "lat": _to_float(row.get("latitude"), 0.0),
-                        "lon": _to_float(row.get("longitude"), 0.0),
+                        "lat": _to_float(row.get("latitude"), None),
+                        "lon": _to_float(row.get("longitude"), None),
                         "postcode": _normalize_postcode(str(row.get("postcode") or postcode)),
                     }
                 )
@@ -241,8 +241,8 @@ def search_addresses(query: str, limit: int = 5, timeout_s: int = 8) -> list[dic
             return [
                 {
                     "label": f"{result_postcode}, UK",
-                    "lat": _to_float((data or {}).get("lat"), 0.0),
-                    "lon": _to_float((data or {}).get("lon"), 0.0),
+                    "lat": _to_float((data or {}).get("lat"), None),
+                    "lon": _to_float((data or {}).get("lon"), None),
                     "postcode": result_postcode,
                 }
             ]
@@ -271,8 +271,8 @@ def search_addresses(query: str, limit: int = 5, timeout_s: int = 8) -> list[dic
         out.append(
             {
                 "label": disp,
-                "lat": _to_float(row.get("lat"), 0.0),
-                "lon": _to_float(row.get("lon"), 0.0),
+                "lat": _to_float(row.get("lat"), None),
+                "lon": _to_float(row.get("lon"), None),
                 "postcode": _normalize_postcode(str(address.get("postcode", "") or postcode)),
             }
         )
