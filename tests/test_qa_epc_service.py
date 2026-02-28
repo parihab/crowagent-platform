@@ -13,7 +13,7 @@ _root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _root not in sys.path:
     sys.path.insert(0, _root)
 
-from services.epc import fetch_epc_data
+from services.epc import fetch_epc_data, search_addresses
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -110,3 +110,84 @@ class TestEpcStubData:
         monkeypatch.delenv("EPC_API_KEY", raising=False)
         result = fetch_epc_data("LS1 1BA")
         assert isinstance(result, dict)
+
+def test_search_addresses_uses_epc_api_rows(monkeypatch):
+    import requests
+
+    class MockResp:
+        status_code = 200
+        content = b"1"
+
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self._payload
+
+    calls = []
+
+    def mock_get(url, *args, **kwargs):
+        calls.append(url)
+        if "epc.opendatacommunities.org" in url and "domestic/search" in url:
+            return MockResp(
+                {
+                    "rows": [
+                        {
+                            "address1": "1 Test Street",
+                            "address2": "Reading",
+                            "postcode": "RG1 1AA",
+                            "latitude": "51.454",
+                            "longitude": "-0.973",
+                        }
+                    ]
+                }
+            )
+        if "epc.opendatacommunities.org" in url and "non-domestic/search" in url:
+            return MockResp({"rows": []})
+        raise AssertionError(f"Unexpected URL: {url}")
+
+    monkeypatch.setenv("EPC_API_KEY", "abc123")
+    monkeypatch.setattr(requests, "get", mock_get)
+
+    result = search_addresses("rg11aa", limit=3)
+    assert result
+    assert result[0]["postcode"] == "RG1 1AA"
+    assert "1 Test Street" in result[0]["label"]
+    assert any("domestic/search" in c for c in calls)
+
+
+def test_search_addresses_falls_back_to_findthatpostcode(monkeypatch):
+    import requests
+
+    class MockResp:
+        status_code = 200
+        content = b"1"
+
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self._payload
+
+    def mock_get(url, *args, **kwargs):
+        if "findthatpostcode.uk" in url:
+            return MockResp({"data": {"postcode": "SW1A 2AA", "lat": 51.501, "lon": -0.141}})
+        raise requests.exceptions.ConnectionError()
+
+    monkeypatch.delenv("EPC_API_KEY", raising=False)
+    monkeypatch.setattr(requests, "get", mock_get)
+
+    result = search_addresses("SW1A2AA", limit=5)
+    assert result == [
+        {"label": "SW1A 2AA, UK", "lat": 51.501, "lon": -0.141, "postcode": "SW1A 2AA"}
+    ]
+
+
+def test_search_addresses_rejects_non_postcode_query():
+    assert search_addresses("this is not a postcode", limit=5) == []

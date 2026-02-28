@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import re
 from typing import Any
+from urllib.parse import quote
 
 import requests
 from requests import Response
@@ -21,6 +22,7 @@ EPC_API_KEY_ENV = "EPC_API_KEY"
 EPC_USERNAME = "crowagent.platform@gmail.com"
 EPC_STRICT_NO_RECORDS_ENV = "EPC_STRICT_NO_RECORDS"
 VALID_EPC_BANDS = {"A", "B", "C", "D", "E", "F", "G"}
+UK_POSTCODE_RE = re.compile(r"\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b", re.IGNORECASE)
 
 
 def _request_epc(url: str, postcode: str, api_key: str, timeout_s: int) -> Response:
@@ -28,6 +30,17 @@ def _request_epc(url: str, postcode: str, api_key: str, timeout_s: int) -> Respo
     return requests.get(
         url,
         params={"postcode": postcode, "size": 1},
+        headers={"Accept": "application/json"},
+        auth=(EPC_USERNAME, api_key),
+        timeout=timeout_s,
+    )
+
+
+def _request_epc_search(url: str, postcode: str, api_key: str, limit: int, timeout_s: int) -> Response:
+    """Search an EPC endpoint for address rows in a postcode."""
+    return requests.get(
+        url,
+        params={"postcode": postcode, "size": max(1, min(limit, 50))},
         headers={"Accept": "application/json"},
         auth=(EPC_USERNAME, api_key),
         timeout=timeout_s,
@@ -55,6 +68,17 @@ def _to_float(value: Any, default: float) -> float:
 def _normalize_band(raw: Any) -> str:
     band = str(raw or "Unknown").upper().replace("+", "").replace("-", "")
     return band if band in VALID_EPC_BANDS else "Unknown"
+
+
+def _normalize_postcode(value: str) -> str:
+    cleaned = str(value or "").strip().upper()
+    match = UK_POSTCODE_RE.search(cleaned)
+    if not match:
+        return ""
+    compact = re.sub(r"\s+", "", match.group(1).upper())
+    if len(compact) < 5:
+        return ""
+    return f"{compact[:-3]} {compact[-3:]}"
 
 
 def _stub(reason: str) -> dict[str, Any]:
@@ -136,15 +160,91 @@ def fetch_epc_data(postcode: str, timeout_s: int = 10) -> dict[str, Any]:
 
 
 def search_addresses(query: str, limit: int = 5, timeout_s: int = 8) -> list[dict[str, Any]]:
-    """Search UK addresses for picker UX using Nominatim (fallback-safe)."""
-    q = query.strip()
-    if len(q) < 3:
+    """Search UK addresses for picker UX via EPC API with resilient fallbacks."""
+    q = str(query or "").strip()
+    postcode = _normalize_postcode(q)
+    if not postcode:
         return []
+
+    out: list[dict[str, Any]] = []
+    seen_labels: set[str] = set()
+
+    api_key = os.getenv(EPC_API_KEY_ENV, "").strip()
+    base_url = os.getenv(EPC_API_URL_ENV, "https://epc.opendatacommunities.org/api/v1").rstrip("/")
+
+    if api_key:
+        for endpoint in ("domestic/search", "non-domestic/search"):
+            try:
+                resp = _request_epc_search(
+                    url=f"{base_url}/{endpoint}",
+                    postcode=postcode,
+                    api_key=api_key,
+                    limit=limit,
+                    timeout_s=timeout_s,
+                )
+                resp.raise_for_status()
+                rows = (resp.json() or {}).get("rows", []) if resp.content else []
+            except (requests.RequestException, ValueError, TypeError, AttributeError):
+                continue
+
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                parts = [
+                    str(row.get("address") or "").strip(),
+                    str(row.get("address1") or "").strip(),
+                    str(row.get("address2") or "").strip(),
+                    str(row.get("address3") or "").strip(),
+                    str(row.get("postcode") or postcode).strip().upper(),
+                ]
+                label = ", ".join([p for p in parts if p])
+                if not label:
+                    continue
+                if label in seen_labels:
+                    continue
+                seen_labels.add(label)
+                out.append(
+                    {
+                        "label": label,
+                        "lat": _to_float(row.get("latitude"), 0.0),
+                        "lon": _to_float(row.get("longitude"), 0.0),
+                        "postcode": _normalize_postcode(str(row.get("postcode") or postcode)),
+                    }
+                )
+                if len(out) >= limit:
+                    return out
+
+    if out:
+        return out
+
+    # Fallback for environments without EPC key or empty EPC results.
+    # findthatpostcode often resolves full UK postcode metadata quickly.
+    try:
+        encoded_pc = quote(postcode.replace(" ", ""))
+        resp = requests.get(
+            f"https://findthatpostcode.uk/postcodes/{encoded_pc}.json",
+            timeout=timeout_s,
+        )
+        resp.raise_for_status()
+        payload = resp.json() if resp.content else {}
+        data = payload.get("data") if isinstance(payload, dict) else {}
+        result_postcode = _normalize_postcode(str((data or {}).get("postcode") or postcode))
+        if result_postcode:
+            return [
+                {
+                    "label": f"{result_postcode}, UK",
+                    "lat": _to_float((data or {}).get("lat"), 0.0),
+                    "lon": _to_float((data or {}).get("lon"), 0.0),
+                    "postcode": result_postcode,
+                }
+            ]
+    except (requests.RequestException, ValueError, TypeError, AttributeError):
+        pass
 
     try:
         resp = requests.get(
             "https://nominatim.openstreetmap.org/search",
-            params={"q": q, "countrycodes": "gb", "format": "jsonv2", "addressdetails": 1, "limit": limit},
+            params={"q": postcode, "countrycodes": "gb", "format": "jsonv2", "addressdetails": 1, "limit": limit},
             headers={"User-Agent": "CrowAgentPlatform/2.0"},
             timeout=timeout_s,
         )
@@ -153,7 +253,6 @@ def search_addresses(query: str, limit: int = 5, timeout_s: int = 8) -> list[dic
     except (requests.RequestException, ValueError, TypeError):
         return []
 
-    out: list[dict[str, Any]] = []
     for row in rows:
         if not isinstance(row, dict):
             continue
@@ -166,7 +265,7 @@ def search_addresses(query: str, limit: int = 5, timeout_s: int = 8) -> list[dic
                 "label": disp,
                 "lat": _to_float(row.get("lat"), 0.0),
                 "lon": _to_float(row.get("lon"), 0.0),
-                "postcode": str(address.get("postcode", "")).upper().strip(),
+                "postcode": _normalize_postcode(str(address.get("postcode", "") or postcode)),
             }
         )
     return out

@@ -1051,9 +1051,9 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
         st.markdown(
-            "<div style='background:#FFF3CD;border:1px solid #E8B35D;border-radius:6px;padding:10px;'>"
-            "<div style='font-size:0.80rem;color:#4A2F00;font-weight:800;margin-bottom:6px;'>🔒 Security Notice</div>"
-            "<div style='font-size:0.80rem;color:#4A2F00;line-height:1.55;'>"
+            "<div style='background:#12324F;border:1px solid #2E5573;border-radius:6px;padding:10px;'>"
+            "<div style='font-size:0.80rem;color:#EAF4FF;font-weight:800;margin-bottom:6px;'>🔒 Security Notice</div>"
+            "<div style='font-size:0.80rem;color:#CFE6F6;line-height:1.55;'>"
             "• Keys exist in your session only (cleared on browser close)<br/>"
             "• Keys are not committed to source control by this app<br/>"
             "• Each user should enter their own key independently<br/>"
