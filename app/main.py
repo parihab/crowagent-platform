@@ -8,7 +8,6 @@ NOTE: This is a transitional stub maintained during the refactor.
 import streamlit as st
 from .session import init_session
 from .branding import PAGE_CONFIG, inject_branding
-from .utils import show_congratulations
 from .segments import get_segment_handler, SEGMENT_IDS, SEGMENT_LABELS
 
 
