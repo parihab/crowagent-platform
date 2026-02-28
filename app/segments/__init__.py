@@ -1,58 +1,78 @@
-# ═══════════════════════════════════════════════════════════════════════════════
-# CrowAgent™ Platform — Segment Package
-# © 2026 Aparajita Parihar. All rights reserved.
-#
-# Public API:
-#   get_segment_handler(segment_id) -> SegmentHandler
-#   SEGMENT_IDS   : list[str]
-#   SEGMENT_LABELS: dict[str, str]
-# ═══════════════════════════════════════════════════════════════════════════════
+"""
+This package contains the logic for different customer segments.
 
-from __future__ import annotations
+The __init__.py file acts as a public interface, exporting a factory function
+(get_segment_handler) to retrieve the correct handler class for a given
+segment ID. It also defines the canonical list of segment IDs and their
+display labels.
+
+This setup uses lazy loading via importlib to avoid importing all segment
+modules on startup, which can speed up cold-start times.
+"""
 
 import importlib
+from typing import TYPE_CHECKING
 
-from .base import SegmentHandler
+# Use TYPE_CHECKING to avoid circular import at runtime
+if TYPE_CHECKING:
+    from .base import SegmentHandler
 
-# Lazy class loading map — defers import until first use.
-_MODULE_MAP: dict[str, tuple[str, str]] = {
-    "university_he":        ("app.segments.university_he",        "UniversityHEHandler"),
-    "smb_landlord":         ("app.segments.commercial_landlord",  "CommercialLandlordHandler"),
-    "smb_industrial":       ("app.segments.smb_industrial",       "SMBIndustrialHandler"),
-    "individual_selfbuild": ("app.segments.individual_selfbuild", "IndividualSelfBuildHandler"),
-}
+# Define the canonical segment identifiers and their display labels
+SEGMENT_IDS = [
+    "university_he",
+    "commercial_landlord",
+    "smb_industrial",
+    "individual_selfbuild",
+]
 
-SEGMENT_IDS: list[str] = list(_MODULE_MAP)
-
-SEGMENT_LABELS: dict[str, str] = {
-    "university_he":        "🏛️ University / Higher Education",
-    "smb_landlord":         "🏢 Commercial Landlord",
-    "smb_industrial":       "🏭 SMB Industrial",
+SEGMENT_LABELS = {
+    "university_he": "🏛️ University / Higher Education",
+    "commercial_landlord": "🏢 Commercial Landlord",
+    "smb_industrial": "🏭 SMB Industrial",
     "individual_selfbuild": "🏠 Individual Self-Build",
 }
 
+# The registry maps segment IDs to the relative path of their handler classes.
+# This allows for lazy loading.
+_REGISTRY = {
+    "university_he": ".university_he.UniversityHEHandler",
+    "commercial_landlord": ".commercial_landlord.CommercialLandlordHandler",
+    "smb_industrial": ".smb_industrial.SMBIndustrialHandler",
+    "individual_selfbuild": ".individual_selfbuild.IndividualSelfBuildHandler",
+}
 
-def get_segment_handler(segment_id: str) -> SegmentHandler:
-    """Return an instantiated SegmentHandler for the given segment ID.
+def get_segment_handler(segment_id: str) -> "SegmentHandler":
+    """
+    Lazily imports and returns an instance of the appropriate segment handler.
+
+    This function acts as a factory. Based on the segment_id, it dynamically
+    imports the necessary module and instantiates the handler class within it.
 
     Args:
-        segment_id: One of the keys in SEGMENT_IDS.
+        segment_id: The identifier for the desired customer segment.
 
     Returns:
-        An instance of the appropriate SegmentHandler subclass.
+        An instance of the corresponding SegmentHandler subclass.
 
     Raises:
-        KeyError: if segment_id is not a recognised segment.
+        ValueError: If the segment_id is not found in the registry.
     """
-    if segment_id not in _MODULE_MAP:
-        raise KeyError(
-            f"Unknown segment ID {segment_id!r}. "
-            f"Valid IDs: {SEGMENT_IDS}"
-        )
-    module_path, class_name = _MODULE_MAP[segment_id]
-    module = importlib.import_module(module_path)
-    cls = getattr(module, class_name)
-    return cls()
+    if segment_id not in _REGISTRY:
+        raise ValueError(f"Unknown segment: {segment_id!r}")
 
+    module_path, class_name = _REGISTRY[segment_id].rsplit('.', 1)
 
-__all__ = ["SegmentHandler", "get_segment_handler", "SEGMENT_IDS", "SEGMENT_LABELS"]
+    # Lazily import the required module relative to the current package
+    try:
+        module = importlib.import_module(module_path, package=__package__)
+    except ImportError as e:
+        raise ImportError(f"Could not import module for segment '{segment_id}'. {e}")
+
+    # Get the handler class from the imported module
+    try:
+        handler_class = getattr(module, class_name)
+    except AttributeError:
+        raise AttributeError(f"Could not find class '{class_name}' in module '{module_path}'")
+
+    # Return an instance of the handler
+    return handler_class()

@@ -1,85 +1,74 @@
-# ═══════════════════════════════════════════════════════════════════════════════
-# CrowAgent™ Platform — Segment Handler Abstract Base Class
-# © 2026 Aparajita Parihar. All rights reserved.
-#
-# Architecture rule:
-#   Zero Streamlit imports permitted in this file or any SegmentHandler subclass.
-#   Segment handlers are pure data/configuration providers.
-#   All rendering is the responsibility of app/tabs/*.py modules.
-# ═══════════════════════════════════════════════════════════════════════════════
+"""
+Defines the abstract base class for all segment handlers.
+"""
 
 from __future__ import annotations
-
 import abc
-
+from typing import Any
 
 class SegmentHandler(abc.ABC):
-    """Abstract base class for all CrowAgent user-segment handlers.
-
-    Concrete subclasses provide building registries, scenario whitelists,
-    and compliance metadata for a specific customer segment.  They contain
-    NO rendering logic and import NO Streamlit symbols.
     """
+    Abstract base class for all segment-specific logic.
 
-    # ── Abstract properties ───────────────────────────────────────────────────
+    Each subclass is responsible for defining the buildings, scenarios, and
+    compliance checks relevant to its specific customer segment. This class
+    defines the contract that all segment handlers must follow.
+    """
 
     @property
     @abc.abstractmethod
     def segment_id(self) -> str:
-        """Canonical snake_case segment identifier (e.g. 'university_he')."""
+        """A unique machine-readable identifier for the segment (e.g., 'university_he')."""
+        raise NotImplementedError
 
     @property
     @abc.abstractmethod
     def display_label(self) -> str:
-        """Human-readable label with emoji prefix (e.g. '🏛️ University / HE')."""
+        """The user-facing name of the segment (e.g., '🏛️ University / Higher Education')."""
+        raise NotImplementedError
 
     @property
     @abc.abstractmethod
-    def building_registry(self) -> dict[str, dict]:
-        """Dict mapping building name → building specification dict.
-
-        Each value must contain at minimum:
-          floor_area_m2, height_m, glazing_ratio,
-          u_value_wall, u_value_roof, u_value_glazing,
-          baseline_energy_mwh, occupancy_hours, description,
-          built_year, building_type.
-        """
+    def building_registry(self) -> dict[str, dict[str, Any]]:
+        """A dictionary of building templates available for this segment."""
+        raise NotImplementedError
 
     @property
     @abc.abstractmethod
     def scenario_whitelist(self) -> list[str]:
-        """Ordered list of scenario names available to this segment.
-
-        Every entry must be a key in config.scenarios.SCENARIOS.
-        """
+        """A list of scenario keys (from config.scenarios) applicable to this segment."""
+        raise NotImplementedError
 
     @property
     @abc.abstractmethod
     def default_scenarios(self) -> list[str]:
-        """Scenario names pre-selected on first load.
-
-        Must be a subset of scenario_whitelist.
-        """
+        """The list of scenario keys that should be selected by default for this segment."""
+        raise NotImplementedError
 
     @property
     @abc.abstractmethod
     def compliance_checks(self) -> list[str]:
-        """Compliance module IDs relevant to this segment.
+        """A list of compliance check identifiers used by the Compliance Hub tab."""
+        raise NotImplementedError
 
-        Valid values: 'epc_mees', 'part_l', 'fhs', 'secr'.
+    def get_building(self, name: str) -> dict[str, Any]:
         """
+        Retrieves a building template from the registry by its name.
 
-    # ── Concrete methods ──────────────────────────────────────────────────────
+        Args:
+            name: The key of the building to retrieve from the registry.
 
-    def get_building(self, name: str) -> dict:
-        """Return the building spec for *name* from this segment's registry.
+        Returns:
+            The building data dictionary.
 
         Raises:
-            KeyError: if *name* is not present in building_registry.
+            KeyError: If the building name is not found in this segment's registry,
+                      providing a helpful error message.
         """
-        if name not in self.building_registry:
+        try:
+            return self.building_registry[name]
+        except KeyError:
             raise KeyError(
-                f"Building {name!r} not found in {self.segment_id!r} registry. "
-                f"Available: {list(self.building_registry)}"
+                f"Building '{name}' not found in segment '{self.segment_id}'. "
+                f"Available buildings: {list(self.building_registry.keys())}"
             )
-        return self.building_registry[name]

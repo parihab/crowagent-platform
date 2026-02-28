@@ -103,27 +103,32 @@ def _stub(reason: str) -> dict[str, Any]:
     }
 
 
-def fetch_epc_data(postcode: str, timeout_s: int = 10) -> dict[str, Any]:
+def fetch_epc_data(
+    postcode: str,
+    timeout_s: int = 10,
+    api_key: str | None = None,
+    base_url: str | None = None,
+) -> dict[str, Any]:
     """Fetch real EPC data for a UK postcode utilizing the OpenData API."""
     normalized = postcode.strip().upper()
     if len(normalized.replace(" ", "")) < 5:
         raise ValueError("Invalid postcode format.")
 
-    base_url = os.getenv(EPC_API_URL_ENV, "https://epc.opendatacommunities.org/api/v1").rstrip("/")
-    api_key = os.getenv(EPC_API_KEY_ENV, "").strip()
-    if not api_key:
+    final_base_url = (base_url or os.getenv(EPC_API_URL_ENV, "https://epc.opendatacommunities.org/api/v1")).rstrip("/")
+    final_api_key = api_key or os.getenv(EPC_API_KEY_ENV, "")
+    if not final_api_key:
         return _stub("EPC API key not configured; using deterministic estimate.")
 
     endpoints = [
-        f"{base_url}/domestic/search",
-        f"{base_url}/non-domestic/search",
+        f"{final_base_url}/domestic/search",
+        f"{final_base_url}/non-domestic/search",
     ]
     had_transport_error = False
 
     for url in endpoints:
         is_domestic = "domestic/search" in url
         try:
-            resp = _request_epc(url=url, postcode=normalized, api_key=api_key, timeout_s=timeout_s)
+            resp = _request_epc(url=url, postcode=normalized, api_key=final_api_key, timeout_s=timeout_s)
             resp.raise_for_status()
             payload = resp.json() if resp.content else {}
 
@@ -171,7 +176,13 @@ def fetch_epc_data(postcode: str, timeout_s: int = 10) -> dict[str, Any]:
     return _stub(f"No EPC records found for postcode: {postcode}; using deterministic estimate.")
 
 
-def search_addresses(query: str, limit: int = 5, timeout_s: int = 8) -> list[dict[str, Any]]:
+def search_addresses(
+    query: str,
+    limit: int = 5,
+    timeout_s: int = 8,
+    api_key: str | None = None,
+    base_url: str | None = None,
+) -> list[dict[str, Any]]:
     """Search UK addresses for picker UX via EPC API with resilient fallbacks."""
     q = str(query or "").strip()
     postcode = _normalize_postcode(q)
@@ -181,16 +192,16 @@ def search_addresses(query: str, limit: int = 5, timeout_s: int = 8) -> list[dic
     out: list[dict[str, Any]] = []
     seen_labels: set[str] = set()
 
-    api_key = os.getenv(EPC_API_KEY_ENV, "").strip()
-    base_url = os.getenv(EPC_API_URL_ENV, "https://epc.opendatacommunities.org/api/v1").rstrip("/")
+    final_api_key = api_key or os.getenv(EPC_API_KEY_ENV, "")
+    final_base_url = (base_url or os.getenv(EPC_API_URL_ENV, "https://epc.opendatacommunities.org/api/v1")).rstrip("/")
 
-    if api_key:
+    if final_api_key:
         for endpoint in ("domestic/search", "non-domestic/search"):
             try:
                 resp = _request_epc_search(
-                    url=f"{base_url}/{endpoint}",
+                    url=f"{final_base_url}/{endpoint}",
                     postcode=postcode,
-                    api_key=api_key,
+                    api_key=final_api_key,
                     limit=limit,
                     timeout_s=timeout_s,
                 )
