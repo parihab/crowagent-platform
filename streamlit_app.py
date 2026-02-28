@@ -1,7 +1,17 @@
-# entry point for Streamlit Cloud and simple local runs
+"""
+# Crow Agent Platform
 
-# import the main module from the app package which executes the
-# Streamlit script when imported.  This wrapper makes it easier for the
-# cloud to discover the correct app file without manual settings.
+This is the main entry point for the Streamlit application.
 
-from app import main  # noqa: F401
+This script initializes the multi-page Streamlit application and serves as the primary
+launch point. It directs users to the main application page and other functional
+modules, which are organized as separate pages.
+
+"""
+
+import streamlit as st
+
+# Redirect to the main application page.
+# This is a workaround to use a multi-page app structure where the main app
+# is not in the root script.
+st.switch_page("app/main.py")
