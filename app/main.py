@@ -864,7 +864,7 @@ with st.sidebar:
         st.rerun()
 
     st.markdown("<div class='sb-section'>🧪 Scenarios</div>", unsafe_allow_html=True)
-    st.caption("Select one intervention scenario to compare outcomes.")
+    st.caption("Select one or more intervention scenarios to compare outcomes.")
     _scenario_options = _segment_scenario_options(st.session_state.user_segment)
 
     # Validate stored selection against current segment options (pre-widget assignment is OK in Streamlit)
@@ -883,8 +883,7 @@ with st.sidebar:
         "Scenario selection",
         options=_scenario_options,
         key="selected_scenario_names",
-        max_selections=1,
-        help="Choose one intervention scenario for calculations.",
+        help="Choose one or more intervention scenarios for calculations.",
         on_change=_on_scenario_change,
     )
     _update_location_query_params()
@@ -2850,7 +2849,7 @@ with _tab_fin:
         with fc1:
             st.markdown("<div class='chart-card'><div class='chart-title'>💰 Annual Cost Savings</div>", unsafe_allow_html=True)
             fig_s = go.Figure(go.Indicator(mode="number+delta", value=total_annual_saving, number={"prefix": "£", "valueformat": ",.0f"}))
-            fig_s.update_layout(**CHART_LAYOUT, height=200)
+            fig_s.update_layout(**{**CHART_LAYOUT, "height": 200})
             st.plotly_chart(fig_s, width="stretch", config={"displayModeBar": False})
             st.markdown("</div>", unsafe_allow_html=True)
 
@@ -2858,7 +2857,7 @@ with _tab_fin:
             st.markdown("<div class='chart-card'><div class='chart-title'>⏱ Simple Payback Period</div>", unsafe_allow_html=True)
             payback = (total_install / total_annual_saving) if total_annual_saving > 0 else 0
             fig_p = go.Figure(go.Indicator(mode="number", value=payback, number={"valueformat": ".1f"}))
-            fig_p.update_layout(**CHART_LAYOUT, height=200)
+            fig_p.update_layout(**{**CHART_LAYOUT, "height": 200})
             st.plotly_chart(fig_p, width="stretch", config={"displayModeBar": False})
             st.markdown("</div>", unsafe_allow_html=True)
 
