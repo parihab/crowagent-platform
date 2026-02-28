@@ -12,7 +12,6 @@ import plotly.graph_objects as go
 
 from app.main import _card # As per spec, import shared component from main
 from app.segments.base import SegmentHandler
-import app.visualization_3d as viz
 import core.physics as physics
 
 def render(handler: SegmentHandler, weather: dict, portfolio: list[dict]):
@@ -49,17 +48,10 @@ def render(handler: SegmentHandler, weather: dict, portfolio: list[dict]):
 
     st.divider()
 
-    # --- 3D Campus Visualization ---
-    # The 3D viz is specific to the University segment's hardcoded buildings.
-    # For other segments, we can show a portfolio summary.
-    if handler.segment_id == "university_he":
-        viz.render_campus_3d_map(
-            selected_scenario_names=handler.scenario_whitelist,
-            weather=weather
-        )
-    else:
-        st.subheader("Portfolio Summary")
-        st.dataframe(pd.DataFrame(active_portfolio), use_container_width=True)
+    # --- Portfolio Summary ---
+    # Handler-agnostic: display for all segments (no segment branching permitted).
+    st.subheader("Portfolio Summary")
+    st.dataframe(pd.DataFrame(active_portfolio), use_container_width=True)
 
     st.divider()
 

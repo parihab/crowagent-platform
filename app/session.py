@@ -38,6 +38,8 @@ def init_session() -> None:
         "building_names": {},
         "selected_scenario_names": [],
         "onboarding_complete": False,
+        "discount_rate": 5.0,
+        "analysis_period_yrs": 10,
     }
 
     # Use setdefault to initialize any keys that are not already present

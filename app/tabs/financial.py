@@ -64,9 +64,9 @@ def render(handler: SegmentHandler, portfolio: list[dict]):
     st.subheader("Net Present Value (NPV) Analysis")
     c1, c2 = st.columns(2)
     with c1:
-        st.session_state.discount_rate = st.slider("Discount Rate (%)", 1.0, 15.0, 5.0, 0.5)
+        st.slider("Discount Rate (%)", 1.0, 15.0, 5.0, 0.5, key="discount_rate")
     with c2:
-        st.session_state.analysis_period_yrs = st.slider("Analysis Period (Years)", 5, 30, 10, 1)
+        st.slider("Analysis Period (Years)", 5, 30, 10, 1, key="analysis_period_yrs")
     st.caption("NPV calculations will use these parameters in future versions.")
 
     st.divider()
