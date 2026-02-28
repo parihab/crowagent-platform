@@ -17,6 +17,8 @@ from urllib.parse import quote
 import requests
 from requests import Response
 
+import streamlit as st
+
 class EPCFetchError(RuntimeError):
     """Raised when EPC lookup fails and stub data cannot be generated."""
 
@@ -103,6 +105,7 @@ def _stub(reason: str) -> dict[str, Any]:
     }
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
 def fetch_epc_data(
     postcode: str,
     timeout_s: int = 10,

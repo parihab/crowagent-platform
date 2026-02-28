@@ -8,6 +8,8 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 
 from __future__ import annotations
+import functools
+import json
 
 from config.constants import (
     CI_ELECTRICITY as GRID_CARBON_INTENSITY_KG_PER_KWH,  # noqa: F401
@@ -81,7 +83,39 @@ def _model_heating_demand_mwh(
     return max(0.0, (q_trans_wh + q_inf_wh) / 1_000_000.0 - solar_gain_mwh * SOLAR_UTILISATION_FACTOR)
 
 
-def calculate_thermal_load(
+def _make_cache_key(building: dict, scenario: dict, weather: dict, tariff: float, carbon: float) -> tuple:
+    """Create a hashable key from mutable dictionary inputs for LRU caching."""
+    return (
+        json.dumps(building, sort_keys=True),
+        json.dumps(scenario, sort_keys=True),
+        round(weather.get("temperature_c", 10.0), 1),
+        round(tariff, 4),
+        round(carbon, 5),
+    )
+
+
+@functools.lru_cache(maxsize=512)
+def _calculate_thermal_load_cached(
+    building_json: str,
+    scenario_json: str,
+    temp_rounded: float,
+    tariff: float,
+    carbon: float
+) -> dict:
+    """Cached internal implementation using hashable inputs."""
+    building = json.loads(building_json)
+    scenario = json.loads(scenario_json)
+    weather = {"temperature_c": temp_rounded}
+    return _calculate_thermal_load_impl(
+        building,
+        scenario,
+        weather,
+        tariff_gbp_per_kwh=tariff,
+        carbon_intensity_kg_per_kwh=carbon
+    )
+
+
+def _calculate_thermal_load_impl(
     building: dict,
     scenario: dict,
     weather_data: dict,
@@ -90,13 +124,7 @@ def calculate_thermal_load(
     carbon_intensity_kg_per_kwh: float = GRID_CARBON_INTENSITY_KG_PER_KWH,
 ) -> dict:
     """
-    Physics-informed thermal load calculation.
-    Q_transmission = U × A × ΔT × hours  [Wh]
-    Q_infiltration = 0.33 × ACH × Vol × ΔT  [Wh]
-    Ref: Raissi et al. (2019) doi:10.1016/j.jcp.2018.10.045
-
-    DISCLAIMER: Simplified steady-state model. Results are indicative only.
-    Not for use as sole basis for investment decisions.
+    Internal implementation of the physics model.
     """
     _validate_model_inputs(building, scenario, weather_data)
     if tariff_gbp_per_kwh <= 0:
@@ -187,3 +215,36 @@ def calculate_thermal_load(
         "u_roof":              round(u_roof, 2),
         "u_glazing":           round(u_glazing, 2),
     }
+
+
+def calculate_thermal_load(
+    building: dict,
+    scenario: dict,
+    weather_data: dict,
+    tariff_gbp_per_kwh: float = DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH,
+    carbon_intensity_kg_per_kwh: float = GRID_CARBON_INTENSITY_KG_PER_KWH,
+) -> dict:
+    """
+    Public entry point for the physics engine with LRU caching.
+    
+    Physics-informed thermal load calculation.
+    Q_transmission = U × A × ΔT × hours  [Wh]
+    Q_infiltration = 0.33 × ACH × Vol × ΔT  [Wh]
+    Ref: Raissi et al. (2019) doi:10.1016/j.jcp.2018.10.045
+
+    DISCLAIMER: Simplified steady-state model. Results are indicative only.
+    Not for use as sole basis for investment decisions.
+    """
+    # Generate cache key from inputs
+    key = _make_cache_key(
+        building, 
+        scenario, 
+        weather_data, 
+        tariff_gbp_per_kwh, 
+        carbon_intensity_kg_per_kwh
+    )
+    
+    # Call cached implementation
+    # We return a dict copy to ensure the cached result is not mutated by the caller
+    result = _calculate_thermal_load_cached(*key)
+    return dict(result)
