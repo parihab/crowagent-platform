@@ -69,6 +69,9 @@ def init_session() -> None:
         "selected_building_name": None,
         "building_names": {},
 
+        # Active page (manual routing — replaces st.navigation)
+        "_current_page": "dashboard",
+
         # Sidebar visibility toggle (True = visible)
         "sidebar_visible": True,
 
