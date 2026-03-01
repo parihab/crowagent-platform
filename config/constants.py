@@ -4,6 +4,7 @@ Physical and financial constants for the CrowAgent™ Platform.
 
 # Grid & Energy
 CI_ELECTRICITY = 0.20482  # kgCO2e/kWh (BEIS 2023)
+
 CI_GAS = 0.18316
 CI_OIL = 0.24666
 CI_LPG = 0.21448

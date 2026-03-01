@@ -55,6 +55,7 @@ def init_session() -> None:
         "gemini_key_valid": False,
         "owm_key": _get_secret("OWM_KEY"),
         "met_office_key": _get_secret("MET_OFFICE_KEY"),
+        "epc_key": _get_secret("EPC_API_KEY"),
 
         # Financial analysis parameters
         "energy_tariff_gbp_per_kwh": ELEC_COST_PER_KWH,

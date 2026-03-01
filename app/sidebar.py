@@ -120,6 +120,12 @@ def render_sidebar():
                 value=st.session_state.get("owm_key", ""),
                 type="password"
             )
+            
+            st.session_state.epc_key = st.text_input(
+                "EPC OpenData Key (Optional)",
+                value=st.session_state.get("epc_key", ""),
+                type="password"
+            )
 
         st.divider()
         
