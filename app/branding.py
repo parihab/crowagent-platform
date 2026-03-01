@@ -181,10 +181,10 @@ def render_card(label: str, value: str, subtext: str, accent_class: str = "") ->
     """
     st.markdown(
         f"""
-        <div class="kpi-card {accent_class}">
-            <div class="kpi-label">{html.escape(label)}</div>
-            <div class="kpi-value">{html.escape(value)}</div>
-            <div class="kpi-subtext">{html.escape(subtext)}</div>
+        <div class="kpi-card {accent_class}" role="group" aria-label="{html.escape(label)}: {html.escape(value)}">
+            <div class="kpi-label" aria-hidden="true">{html.escape(label)}</div>
+            <div class="kpi-value" aria-hidden="true">{html.escape(value)}</div>
+            <div class="kpi-subtext" aria-hidden="true">{html.escape(subtext)}</div>
         </div>
         """,
         unsafe_allow_html=True,

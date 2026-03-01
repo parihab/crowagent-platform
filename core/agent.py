@@ -94,10 +94,7 @@ AGENT_TOOLS = [
             "properties": {
                 "building_name": {
                     "type": "string",
-                    "description": (
-                        "One of: 'Greenfield Library', "
-                        "'Greenfield Arts Building', 'Greenfield Science Block'"
-                    ),
+                    "description": "The name of the building to analyze. Must be one of the currently active buildings in the portfolio.",
                 },
                 "scenario_name": {
                     "type": "string",
@@ -173,10 +170,7 @@ AGENT_TOOLS = [
             "properties": {
                 "building_name": {
                     "type": "string",
-                    "description": (
-                        "One of: 'Greenfield Library', "
-                        "'Greenfield Arts Building', 'Greenfield Science Block'"
-                    ),
+                    "description": "The name of the building to retrieve info for.",
                 },
             },
             "required": ["building_name"],
@@ -193,10 +187,7 @@ AGENT_TOOLS = [
             "properties": {
                 "building_name": {
                     "type": "string",
-                    "description": (
-                        "One of: 'Greenfield Library', "
-                        "'Greenfield Arts Building', 'Greenfield Science Block'"
-                    ),
+                    "description": "The name of the building to rank scenarios for.",
                 },
                 "rank_by": {
                     "type": "string",

@@ -102,7 +102,7 @@ def run() -> None:
     # ── Footer ───────────────────────────────────────────────────────────────
     st.markdown(
         f"""
-        <div class="ent-footer">
+        <div class="ent-footer" role="contentinfo">
             <img src="{branding.get_logo_uri()}" style="height: 28px; margin-bottom: 14px; opacity: 0.85;">
             <div style="color: #CBD8E6; font-size: 0.9rem; font-weight: 600; margin-bottom: 10px; letter-spacing: 0.5px;">
                 CrowAgent™ Sustainability AI Decision Intelligence Platform v2.0.0 · Working Prototype

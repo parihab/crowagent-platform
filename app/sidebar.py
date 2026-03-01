@@ -268,7 +268,7 @@ def _render_weather_widget() -> Dict[str, Any]:
 
     # Custom Weather Card
     st.markdown(f"""
-    <div style="background: #0D2640; border: 1px solid #1A3A5C; border-radius: 6px; padding: 10px; margin-top: 5px;">
+    <div role="status" aria-label="Current Weather: {weather.get('temperature_c', 0)} degrees celsius, {weather.get('description', '')}" style="background: #0D2640; border: 1px solid #1A3A5C; border-radius: 6px; padding: 10px; margin-top: 5px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div style="font-size: 1.8rem; font-weight: 700; color: #F0F4F8;">{weather.get('temperature_c', 0):.1f}°C</div>
             <div style="text-align: right;">
