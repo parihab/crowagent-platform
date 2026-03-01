@@ -44,23 +44,19 @@ def _get_epc_username() -> str:
 
 def _request_epc(url: str, postcode: str, api_key: str, timeout_s: int) -> Response:
     """Request an EPC endpoint using required auth and headers."""
-    return requests.get(
-        url,
+    return requests.get(url, timeout=timeout_s,
         params={"postcode": postcode, "size": 1},
         headers={"Accept": "application/json"},
         auth=(_get_epc_username(), api_key),
-        timeout=timeout_s,
     )
 
 
 def _request_epc_search(url: str, postcode: str, api_key: str, limit: int, timeout_s: int) -> Response:
     """Search an EPC endpoint for address rows in a postcode."""
-    return requests.get(
-        url,
+    return requests.get(url, timeout=timeout_s,
         params={"postcode": postcode, "size": max(1, min(limit, 50))},
         headers={"Accept": "application/json"},
         auth=(_get_epc_username(), api_key),
-        timeout=timeout_s,
     )
 
 
@@ -259,9 +255,7 @@ def search_addresses(
     # findthatpostcode often resolves full UK postcode metadata quickly.
     try:
         encoded_pc = quote(postcode.replace(" ", ""))
-        resp = requests.get(
-            f"https://findthatpostcode.uk/postcodes/{encoded_pc}.json",
-            timeout=timeout_s,
+        resp = requests.get(f"https://findthatpostcode.uk/postcodes/{encoded_pc}.json", timeout=timeout_s,
         )
         resp.raise_for_status()
         payload = resp.json() if resp.content else {}
@@ -281,11 +275,9 @@ def search_addresses(
         pass
 
     try:
-        resp = requests.get(
-            "https://nominatim.openstreetmap.org/search",
+        resp = requests.get("https://nominatim.openstreetmap.org/search", timeout=timeout_s,
             params={"q": postcode, "countrycodes": "gb", "format": "jsonv2", "addressdetails": 1, "limit": limit},
             headers={"User-Agent": "CrowAgentPlatform/2.0"},
-            timeout=timeout_s,
         )
         resp.raise_for_status()
         rows = resp.json() if resp.content else []

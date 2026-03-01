@@ -9,6 +9,10 @@ def render(handler, portfolio: list[dict]) -> None:
     """
     Render the Financial Analysis tab.
     """
+    if not portfolio:
+        st.info("Portfolio is empty. Add a building in the sidebar to begin.")
+        return
+
     st.subheader("Investment & Return Analysis")
     
     # Controls

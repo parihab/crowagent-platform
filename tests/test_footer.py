@@ -19,7 +19,7 @@ def test_footer_includes_centered_logo(monkeypatch):
     """
     captured = []
 
-    def fake_markdown(html, unsafe_allow_html=False):
+    def fake_markdown(html, **kwargs):
         captured.append(html)
 
     monkeypatch.setattr(main.st, "markdown", fake_markdown)

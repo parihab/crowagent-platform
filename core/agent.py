@@ -415,12 +415,9 @@ def _call_gemini(api_key: str, messages: list, use_tools: bool = True) -> dict:
         }
 
     try:
-        resp = requests.post(
-            GEMINI_URL,
-            params={"key": api_key},
-            headers={"Content-Type": "application/json"},
+        resp = requests.post(GEMINI_URL, timeout=30,
+            headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
             json=payload,
-            timeout=30,
         )
     except requests.exceptions.Timeout:
         return {"error": "Gemini API request timed out (30 s). Check your connection and retry."}

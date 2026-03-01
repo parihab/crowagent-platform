@@ -1,6 +1,8 @@
+import html as html_mod
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import app.branding as branding
 from app.branding import render_card
 from app.visualization_3d import render_campus_3d_map
 from core.physics import calculate_thermal_load
@@ -11,6 +13,10 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
     """
     Render the main Dashboard tab.
     """
+    if not portfolio:
+        st.info("Portfolio is empty. Add a building in the sidebar to begin.")
+        return
+
     # 1. KPI Cards
     # Calculate aggregate metrics for the active portfolio/segment
     total_energy_mwh = 0.0
@@ -45,16 +51,21 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
     
     with col_wx:
         st.subheader("Live Conditions")
-        st.markdown(f"""
+        _temp = html_mod.escape(str(weather.get('temperature_c', '--')))
+        _cond = html_mod.escape(str(weather.get('condition', 'Unknown')))
+        _wind = html_mod.escape(str(weather.get('wind_speed_mph', '--')))
+        _hum  = html_mod.escape(str(weather.get('humidity_pct', '--')))
+        _loc  = html_mod.escape(str(weather.get('location_name', 'Unknown')))
+        branding.render_html(f"""
         <div class="wx-widget">
-            <div class="wx-temp">{weather.get('temperature_c', '--')}°C</div>
-            <div class="wx-desc">{weather.get('condition', 'Unknown')}</div>
-            <div class="wx-row">💨 Wind: {weather.get('wind_speed_mph', '--')} mph</div>
-            <div class="wx-row">💧 Humidity: {weather.get('humidity_pct', '--')}%</div>
-            <div class="wx-row">📍 {weather.get('location_name', 'Unknown')}</div>
+            <div class="wx-temp">{_temp}°C</div>
+            <div class="wx-desc">{_cond}</div>
+            <div class="wx-row">💨 Wind: {_wind} mph</div>
+            <div class="wx-row">💧 Humidity: {_hum}%</div>
+            <div class="wx-row">📍 {_loc}</div>
         </div>
-        """, unsafe_allow_html=True)
-        
+        """)
+
         st.caption(f"Source: {weather.get('source', 'Unknown')}")
 
     with col_map:

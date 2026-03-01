@@ -2,6 +2,7 @@ import streamlit as st
 import logging
 import re
 import uuid
+import html as html_mod
 from typing import Tuple, Optional, Dict, Any
 
 # Services
@@ -10,6 +11,7 @@ import services.epc as epc_service
 import core.agent as agent_service
 
 # App modules
+import app.branding as branding
 from app.segments import SEGMENT_LABELS
 from config.scenarios import SEGMENT_SCENARIOS, SCENARIOS
 
@@ -140,14 +142,14 @@ def render_sidebar() -> Tuple[Optional[str], Dict[str, Any], str]:
 
 def _render_segment_gate():
     """Renders the 4-card segment selection screen."""
-    st.markdown("""
+    branding.render_html("""
     <div style='text-align: center; padding: 2rem 0 3rem 0;'>
-        <h1 style='margin-bottom: 0.5rem;'>Welcome to CrowAgent™</h1>
+        <h1 style='margin-bottom: 0.5rem;'>Welcome to CrowAgent&#x2122;</h1>
         <p style='font-size: 1.1rem; color: #8AACBF; max-width: 600px; margin: 0 auto;'>
-            Select your user profile to configure the platform's physics engine and compliance tools for your specific needs.
+            Select your user profile to configure the platform&#x27;s physics engine and compliance tools for your specific needs.
         </p>
     </div>
-    """, unsafe_allow_html=True)
+    """)
     
     cols = st.columns(2)
     
@@ -266,22 +268,27 @@ def _render_weather_widget() -> Dict[str, Any]:
         # st.toast(f"Weather fetch failed: {e}", icon="⚠️")
         weather = {"temperature_c": 10.0, "description": "Fallback", "location_name": loc_name}
 
-    # Custom Weather Card
-    st.markdown(f"""
-    <div role="status" aria-label="Current Weather: {weather.get('temperature_c', 0)} degrees celsius, {weather.get('description', '')}" style="background: #0D2640; border: 1px solid #1A3A5C; border-radius: 6px; padding: 10px; margin-top: 5px;">
+    # Custom Weather Card — values escaped per security policy
+    _temp   = html_mod.escape(f"{weather.get('temperature_c', 0):.1f}")
+    _loc    = html_mod.escape(str(weather.get('location_name', 'Unknown')))
+    _desc   = html_mod.escape(str(weather.get('description', '-')))
+    _wind   = html_mod.escape(str(weather.get('wind_speed_mph', 0)))
+    _hum    = html_mod.escape(str(weather.get('humidity_pct', 0)))
+    branding.render_html(f"""
+    <div role="status" aria-label="Current Weather: {_temp} degrees celsius, {_desc}" style="background: #0D2640; border: 1px solid #1A3A5C; border-radius: 6px; padding: 10px; margin-top: 5px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div style="font-size: 1.8rem; font-weight: 700; color: #F0F4F8;">{weather.get('temperature_c', 0):.1f}°C</div>
+            <div style="font-size: 1.8rem; font-weight: 700; color: #F0F4F8;">{_temp}°C</div>
             <div style="text-align: right;">
-                <div style="font-size: 0.75rem; color: #8AACBF;">{weather.get('location_name', 'Unknown')}</div>
-                <div style="font-size: 0.8rem; color: #CBD8E6;">{weather.get('description', '-')}</div>
+                <div style="font-size: 0.75rem; color: #8AACBF;">{_loc}</div>
+                <div style="font-size: 0.8rem; color: #CBD8E6;">{_desc}</div>
             </div>
         </div>
         <div style="margin-top: 5px; font-size: 0.7rem; color: #5A7A90; display: flex; gap: 10px;">
-            <span>💨 {weather.get('wind_speed_mph', 0)} mph</span>
-            <span>💧 {weather.get('humidity_pct', 0)}%</span>
+            <span>💨 {_wind} mph</span>
+            <span>💧 {_hum}%</span>
         </div>
     </div>
-    """, unsafe_allow_html=True)
+    """)
     
     return weather
 
@@ -429,10 +436,11 @@ def render_ai_advisor(handler, weather_data: Dict[str, Any]):
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
-    # Display chat history
+    # Display chat history — user content is html.escape()d (SEC policy)
     for msg in st.session_state.chat_history:
         role_class = "ca-user" if msg["role"] == "user" else "ca-ai"
-        st.markdown(f"<div class='{role_class}'>{msg['content']}</div>", unsafe_allow_html=True)
+        safe_content = html_mod.escape(str(msg["content"]))
+        branding.render_html(f"<div class='{role_class}'>{safe_content}</div>")
 
     # Chat input
     if prompt := st.chat_input("Ask about energy efficiency..."):
