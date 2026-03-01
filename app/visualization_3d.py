@@ -22,6 +22,8 @@ import pandas as pd
 import streamlit as st
 
 from config.constants import CI_ELECTRICITY, ELEC_COST_PER_KWH, HEATING_SETPOINT_C
+from config.scenarios import SCENARIOS
+from app.segments.university_he import BUILDINGS
 
 try:
     import pydeck as pdk
@@ -229,7 +231,7 @@ def _compute_all_buildings(
     Each row includes both baseline and scenario energy/carbon figures so the
     tooltip can show the full comparison in one hover card.
     """
-    from ..core.physics import BUILDINGS, SCENARIOS, calculate_thermal_load
+    from core.physics import calculate_thermal_load
 
     scenario_cfg = SCENARIOS.get(scenario_name)
     if scenario_cfg is None:
@@ -781,7 +783,7 @@ def _render_building_info_panel(
     KPI strip    — 4 metrics: energy, carbon, cost, grid intensity
     Tabs         — 📋 Overview | 📅 Seasonal Energy | ⚡ Scenarios
     """
-    from ..core.physics import BUILDINGS, SCENARIOS, calculate_thermal_load
+    from core.physics import calculate_thermal_load
 
     bdata  = BUILDINGS.get(building_name)
     if bdata is None:
@@ -861,7 +863,7 @@ def _render_building_info_panel(
 
 def _info_tab_overview(bdata: dict, scenario_names: list[str], weather: dict) -> None:
     """Building specs + scenario comparison bar chart."""
-    from core.physics import SCENARIOS, calculate_thermal_load
+    from core.physics import calculate_thermal_load
     import plotly.graph_objects as go
 
     spec_l, spec_r = st.columns(2)
@@ -986,7 +988,7 @@ def _info_tab_scenarios(
     bdata: dict, scenario_names: list[str], weather: dict
 ) -> None:
     """Scenario comparison dataframe with energy, carbon, saving, cost, payback."""
-    from core.physics import SCENARIOS, calculate_thermal_load
+    from core.physics import calculate_thermal_load
 
     if not scenario_names:
         st.info("Select one or more scenarios in the sidebar to compare.")
