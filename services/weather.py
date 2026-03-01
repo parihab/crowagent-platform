@@ -287,10 +287,8 @@ def test_openweathermap_key(
     if not api_key:
         return False, "No API key provided."
     try:
-        resp = requests.get(
-            OWM_BASE_URL,
+        resp = requests.get(OWM_BASE_URL, timeout=8,
             params={"lat": lat, "lon": lon, "appid": api_key, "units": "metric"},
-            timeout=6,
         )
         if resp.status_code == 200:
             return True, "Valid OpenWeatherMap key."

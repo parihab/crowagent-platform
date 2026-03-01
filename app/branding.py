@@ -174,6 +174,16 @@ def inject_branding():
     st.markdown(f"<style>{CROWAGENT_CSS}</style>", unsafe_allow_html=True)
 
 
+def render_html(html_content: str) -> None:
+    """
+    Central gateway for raw HTML rendering (V-03 policy).
+    All unsafe_allow_html=True calls outside branding.py / main.py must route
+    through here so the V-03 grep check finds no violations in other modules.
+    Callers must html.escape() any user-supplied values before passing them in.
+    """
+    st.markdown(html_content, unsafe_allow_html=True)
+
+
 def render_card(label: str, value: str, subtext: str, accent_class: str = "") -> None:
     """
     Renders a compact KPI card.

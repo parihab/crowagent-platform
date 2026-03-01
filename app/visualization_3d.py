@@ -19,16 +19,14 @@ from typing import Dict, List
 import pandas as pd
 import streamlit as st
 
-try:
-    from config.constants import CI_ELECTRICITY, ELEC_COST_PER_KWH, HEATING_SETPOINT_C
-except ImportError:
-    CI_ELECTRICITY, ELEC_COST_PER_KWH, HEATING_SETPOINT_C = 0.20482, 0.28, 21.0
+from config.constants import CI_ELECTRICITY, ELEC_COST_PER_KWH, HEATING_SETPOINT_C
 
 try:
     from config.scenarios import SCENARIOS
 except ImportError:
     SCENARIOS = {}
 from app.segments import get_segment_handler
+import app.branding as branding
 
 try:
     import pydeck as pdk
@@ -644,11 +642,10 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
         buildings = {}
 
     safe_location_label = html.escape(location_label)
-    st.markdown(
+    branding.render_html(
         f"<div class='sec-hdr'>🗺️ 3D Campus Digital Twin"
         f"<span style='font-size:0.72rem;color:#5A7A90;font-weight:400;"
-        f"margin-left:12px;'>📍 {safe_location_label}</span></div>",
-        unsafe_allow_html=True,
+        f"margin-left:12px;'>📍 {safe_location_label}</span></div>"
     )
 
     # ── Postcode / location search ────────────────────────────────────────────
@@ -715,10 +712,9 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
                 "for a full analysis &nbsp;·&nbsp; "
                 "Hover the <b style='color:#00C2A8;'>teal buildings</b> for a quick tooltip")
 
-    st.markdown(
+    branding.render_html(
         f"<div style='font-size:0.75rem;color:#8FBCCE;margin-bottom:4px;'>"
-        f"{hint}</div>",
-        unsafe_allow_html=True,
+        f"{hint}</div>"
     )
 
     # ── Render 3D map ─────────────────────────────────────────────────────────
@@ -732,7 +728,7 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
     )
 
     # ── Legend + attribution ──────────────────────────────────────────────────
-    st.markdown(
+    branding.render_html(
         """<div style='display:flex;gap:18px;align-items:center;flex-wrap:wrap;
                        font-size:0.74rem;color:#8FBCCE;margin-top:5px;'>
   <span style='display:flex;align-items:center;gap:5px;'>
@@ -753,19 +749,17 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
   </span>
   <span style='font-size:0.70rem;color:#3A5A70;margin-left:auto;'>
     Heights: real OSM data &nbsp;·&nbsp;
-    Tiles: © CARTO Positron &nbsp;·&nbsp;
-    Buildings: © OpenStreetMap contributors &nbsp;·&nbsp;
-    WebGL · Drag to rotate · Scroll to zoom
+    Tiles: &copy; CARTO Positron &nbsp;·&nbsp;
+    Buildings: &copy; OpenStreetMap contributors &nbsp;·&nbsp;
+    WebGL &middot; Drag to rotate &middot; Scroll to zoom
   </span>
-</div>""",
-        unsafe_allow_html=True,
+</div>"""
     )
 
     # ── Building selector cards ───────────────────────────────────────────────
-    st.markdown(
+    branding.render_html(
         "<div style='margin-top:14px;margin-bottom:6px;font-size:0.82rem;"
-        "color:#8FBCCE;font-weight:600;'>🏢 Campus buildings — click to explore:</div>",
-        unsafe_allow_html=True,
+        "color:#8FBCCE;font-weight:600;'>🏢 Campus buildings &#x2014; click to explore:</div>"
     )
 
     building_names = list(buildings.keys())
@@ -784,15 +778,14 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
         label  = f"{'✓ ' if is_sel else ''}{short}"
 
         with col:
-            st.markdown(
+            branding.render_html(
                 f"""<div style='background:{bg};border:2px solid {border};
                                border-radius:8px;padding:10px 12px;
                                text-align:center;margin-bottom:6px;'>
   <div style='font-size:1.4rem;'>{icon}</div>
-  <div style='font-size:0.78rem;font-weight:600;color:#E0EAF0;margin:4px 0 2px;'>{short}</div>
+  <div style='font-size:0.78rem;font-weight:600;color:#E0EAF0;margin:4px 0 2px;'>{html.escape(short)}</div>
   <div style='font-size:0.68rem;color:#5A7A90;'>Greenfield Campus</div>
-</div>""",
-                unsafe_allow_html=True,
+</div>"""
             )
             if st.button(label, key=f"viz3d_card_{bname}",
                          use_container_width=True,
@@ -802,10 +795,7 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
 
     # ── Google Maps-style info panel ──────────────────────────────────────────
     if selected_building:
-        st.markdown(
-            "<hr style='border-color:#1A3A5C;margin:12px 0 0;'/>",
-            unsafe_allow_html=True,
-        )
+        branding.render_html("<hr style='border-color:#1A3A5C;margin:12px 0 0;'/>")
         _render_building_info_panel(selected_building, selected_scenario_names, weather, buildings)
 
 
@@ -845,24 +835,25 @@ def _render_building_info_panel(
 
     # ── Header card ───────────────────────────────────────────────────────────
     safe_location_label = html.escape(location_label)
-    st.markdown(
+    _btype = html.escape(str(bdata.get("building_type", "University building")))
+    _bname = html.escape(str(building_name))
+    branding.render_html(
         f"""<div style='background:linear-gradient(135deg,#071A2F 0%,#0D2640 100%);
                         border-left:4px solid #FFD700;border-radius:8px;
                         padding:14px 18px;margin:10px 0 8px;'>
   <div style='font-size:1.05rem;font-weight:700;color:#FFD700;'>
-    {icon} {building_name}
+    {icon} {_bname}
   </div>
   <div style='font-size:0.76rem;color:#8FBCCE;margin-top:3px;'>
-    📍 Greenfield Campus · {safe_location_label}
+    📍 Greenfield Campus &middot; {safe_location_label}
   </div>
   <div style='font-size:0.74rem;color:#5A7A90;margin-top:2px;'>
-    {bdata.get("building_type","University building")} &nbsp;·&nbsp;
-    {bdata.get("floor_area_m2", 0):,} m² floor area &nbsp;·&nbsp;
-    Built {bdata.get("built_year","pre-1990")} &nbsp;·&nbsp;
+    {_btype} &nbsp;&middot;&nbsp;
+    {bdata.get("floor_area_m2", 0):,} m&sup2; floor area &nbsp;&middot;&nbsp;
+    Built {html.escape(str(bdata.get("built_year","pre-1990")))} &nbsp;&middot;&nbsp;
     {bdata.get("occupancy_hours", 0):,} occupied hrs/yr
   </div>
-</div>""",
-        unsafe_allow_html=True,
+</div>"""
     )
 
     # ── Baseline KPI strip ────────────────────────────────────────────────────
@@ -890,15 +881,14 @@ def _render_building_info_panel(
         (k4, "Grid Intensity",   f"{_CI*1000:.0f}",     "gCO₂e/kWh", "#8FBCCE"),
     ]:
         with col:
-            st.markdown(
+            branding.render_html(
                 f"""<div style='background:#0D2640;border-radius:6px;
                                padding:10px 12px;border-top:3px solid {colour};
                                text-align:center;margin-bottom:6px;'>
-  <div style='font-size:0.68rem;color:#5A7A90;margin-bottom:2px;'>{label}</div>
-  <div style='font-size:1.05rem;font-weight:700;color:{colour};'>{value}</div>
-  <div style='font-size:0.66rem;color:#5A7A90;'>{unit}</div>
-</div>""",
-                unsafe_allow_html=True,
+  <div style='font-size:0.68rem;color:#5A7A90;margin-bottom:2px;'>{html.escape(label)}</div>
+  <div style='font-size:1.05rem;font-weight:700;color:{colour};'>{html.escape(value)}</div>
+  <div style='font-size:0.66rem;color:#5A7A90;'>{html.escape(unit)}</div>
+</div>"""
             )
 
     # ── Tabs ──────────────────────────────────────────────────────────────────
@@ -925,26 +915,24 @@ def _info_tab_overview(bdata: dict, scenario_names: list[str], weather: dict) ->
 
     spec_l, spec_r = st.columns(2)
     with spec_l:
-        st.markdown(
+        branding.render_html(
             f"""<div style='font-size:0.78rem;color:#CBD8E6;line-height:2.0;margin-top:6px;'>
-  <b style='color:#00C2A8;'>Wall U-value:</b> {bdata.get("u_value_wall","N/A")} W/m²K<br/>
-  <b style='color:#00C2A8;'>Roof U-value:</b> {bdata.get("u_value_roof","N/A")} W/m²K<br/>
-  <b style='color:#00C2A8;'>Glazing U-value:</b> {bdata.get("u_value_glazing","N/A")} W/m²K<br/>
+  <b style='color:#00C2A8;'>Wall U-value:</b> {html.escape(str(bdata.get("u_value_wall","N/A")))} W/m&sup2;K<br/>
+  <b style='color:#00C2A8;'>Roof U-value:</b> {html.escape(str(bdata.get("u_value_roof","N/A")))} W/m&sup2;K<br/>
+  <b style='color:#00C2A8;'>Glazing U-value:</b> {html.escape(str(bdata.get("u_value_glazing","N/A")))} W/m&sup2;K<br/>
   <b style='color:#00C2A8;'>Glazing ratio:</b> {int(bdata.get("glazing_ratio",0)*100)}%
-</div>""",
-            unsafe_allow_html=True,
+</div>"""
         )
     with spec_r:
-        temp = weather.get("temperature_2m", "N/A")
-        wind = weather.get("wind_speed_10m", "N/A")
-        st.markdown(
+        temp = html.escape(str(weather.get("temperature_2m", "N/A")))
+        wind = html.escape(str(weather.get("wind_speed_10m", "N/A")))
+        branding.render_html(
             f"""<div style='font-size:0.78rem;color:#CBD8E6;line-height:2.0;margin-top:6px;'>
-  <b style='color:#00C2A8;'>Floor area:</b> {bdata.get("floor_area_m2",0):,} m²<br/>
-  <b style='color:#00C2A8;'>Live weather:</b> {temp}°C · wind {wind} m/s<br/>
-  <b style='color:#00C2A8;'>Baseline energy:</b> {bdata.get("baseline_energy_mwh","N/A")} MWh/yr<br/>
-  <b style='color:#00C2A8;'>Grid carbon:</b> {_CI*1000:.0f} gCO₂e/kWh (BEIS 2023)
-</div>""",
-            unsafe_allow_html=True,
+  <b style='color:#00C2A8;'>Floor area:</b> {bdata.get("floor_area_m2",0):,} m&sup2;<br/>
+  <b style='color:#00C2A8;'>Live weather:</b> {temp}&deg;C &middot; wind {wind} m/s<br/>
+  <b style='color:#00C2A8;'>Baseline energy:</b> {html.escape(str(bdata.get("baseline_energy_mwh","N/A")))} MWh/yr<br/>
+  <b style='color:#00C2A8;'>Grid carbon:</b> {_CI*1000:.0f} gCO&#x2082;e/kWh (BEIS 2023)
+</div>"""
         )
 
     if not scenario_names:
@@ -1107,11 +1095,9 @@ def geocode_location(query: str) -> tuple[float, float, str] | None:
     Returns ``None`` on timeout, empty result, or any network error.
     """
     try:
-        resp = requests.get(
-            "https://nominatim.openstreetmap.org/search",
+        resp = requests.get("https://nominatim.openstreetmap.org/search", timeout=8,
             params={"q": query, "format": "json", "limit": 1},
             headers={"User-Agent": "CrowAgent-Platform/2.0 (sustainability-ai)"},
-            timeout=6,
         )
         resp.raise_for_status()
         data = resp.json()

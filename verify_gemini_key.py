@@ -38,11 +38,9 @@ def test_gemini_api(api_key: str) -> dict:
     }
     
     try:
-        resp = requests.post(
-            url,
-            params={"key": api_key},
+        resp = requests.post(url, timeout=10,
+            headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
             json=payload,
-            timeout=10
         )
         
         print(f"HTTP Status: {resp.status_code}")
@@ -77,11 +75,9 @@ def test_gemini_api(api_key: str) -> dict:
             
             # Try v1beta as fallback
             url_beta = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent"
-            resp_beta = requests.post(
-                url_beta,
-                params={"key": api_key},
+            resp_beta = requests.post(url_beta, timeout=10,
+                headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
                 json=payload,
-                timeout=10
             )
             
             if resp_beta.status_code == 200:

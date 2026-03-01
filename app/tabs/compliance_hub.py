@@ -7,6 +7,10 @@ def render(handler, portfolio: list[dict]) -> None:
     Render the UK Compliance Hub tab.
     Dynamically renders panels based on handler.compliance_checks.
     """
+    if not portfolio:
+        st.info("Portfolio is empty. Add a building in the sidebar to begin.")
+        return
+
     st.header(f"Compliance: {handler.display_label}")
     
     checks = handler.compliance_checks
