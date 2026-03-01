@@ -2,14 +2,19 @@
 📊 Dashboard Tab Renderer
 =========================
 Renders the main dashboard view for all segments.
-Includes:
-- KPI Cards (Energy, Carbon, Cost, Payback)
-- 3D Digital Twin Map
-- Live Weather Widget
-- Thermal Load Analysis Chart
-- Portfolio Asset Table
+
+Block order (per Prompt B specification):
+  1. Page Title (h2 + caption)
+  2. Segment Switch Modal (if pending)
+  3. KPI Cards (Portfolio Energy, Carbon, Cost, Active Assets)
+  4. 3D Map Section
+  5. Portfolio Management Section
+  6. Asset Performance Summary Table
+  7. Thermal Load Analysis Chart
 """
 from __future__ import annotations
+
+import html as html_mod
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -18,7 +23,61 @@ import streamlit as st
 import app.branding as branding
 import core.physics as physics
 from config.scenarios import SCENARIOS
-from app.portfolio_modal import render_portfolio_modal
+
+
+def _render_segment_switch_modal() -> None:
+    """
+    Renders the segment switch confirmation panel.
+    Uses st.container(border=True) with .switch-modal CSS class.
+    Shows: warning text, segment being switched to,
+           PDF download button, Continue button, Cancel button.
+    """
+    from services.report_generator import generate_portfolio_report
+    from app.session import switch_segment_with_defaults
+    from app.segments import SEGMENT_LABELS
+
+    pending = st.session_state.get("pending_segment_switch", "")
+    new_label = SEGMENT_LABELS.get(pending, pending) if pending else "new segment"
+
+    with st.container(border=True):
+        branding.render_html(
+            '<div class="switch-modal">'
+            f'<h3 style="color:#F0B429;">⚠️ Switch to {html_mod.escape(str(new_label))}?</h3>'
+            '<p style="color:#3A576B; font-size:0.9rem;">'
+            "Your current portfolio and analysis will be replaced "
+            "with the new segment defaults. Would you like to "
+            "download your current report first?</p>"
+            "</div>"
+        )
+        col_dl, col_go, col_cancel = st.columns([2, 1.5, 1.5])
+        with col_dl:
+            try:
+                report_bytes = generate_portfolio_report(
+                    segment=st.session_state.get("user_segment"),
+                    portfolio=st.session_state.get("portfolio", []),
+                    scenario_results={},
+                    compliance_results={},
+                )
+                ext = "pdf" if report_bytes[:4] == b"%PDF" else "html"
+                st.download_button(
+                    label="📄 Download Portfolio Report",
+                    data=report_bytes,
+                    file_name=f"CrowAgent_Report_{st.session_state.get('user_segment', 'portfolio')}.{ext}",
+                    mime=f"application/{ext}",
+                    use_container_width=True,
+                )
+            except Exception:
+                st.caption("Report generation unavailable.")
+        with col_go:
+            if st.button("Continue without downloading", use_container_width=True):
+                if pending:
+                    switch_segment_with_defaults(pending)
+                st.rerun()
+        with col_cancel:
+            if st.button("Cancel", use_container_width=True, type="secondary"):
+                st.session_state.show_segment_switch_modal = False
+                st.session_state.pending_segment_switch = None
+                st.rerun()
 
 
 def render(handler, weather: dict, portfolio: list[dict]) -> None:
@@ -30,16 +89,24 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
         weather: Current weather data dictionary.
         portfolio: Full list of portfolio assets (will be filtered by segment).
     """
-    # 0. Modal Trigger & Logic
-    if st.session_state.get("show_portfolio_modal"):
-        render_portfolio_modal()
+    # ── BLOCK 1: PAGE TITLE ──────────────────────────────────────────────────
+    selected_names = st.session_state.get("selected_scenario_names", [])
+    if not selected_names:
+        selected_names = handler.default_scenarios
 
-    # Header Row with Portfolio Trigger
-    h_col1, h_col2 = st.columns([4, 1])
-    with h_col2:
-        if st.button(f"📂 Manage Portfolio ({len(portfolio)})", key="btn_dash_manage_port", use_container_width=True):
-            st.session_state.show_portfolio_modal = True
-            st.rerun()
+    branding.render_html(
+        '<h2 style="font-family:Rajdhani,sans-serif; '
+        'color:#071A2F; margin-bottom:4px;">📊 Portfolio Dashboard</h2>'
+    )
+    st.caption(
+        f"Active segment: {handler.display_label} · "
+        f"{len(portfolio)} assets · "
+        f"Scenario: {selected_names[0] if selected_names else 'None'}"
+    )
+
+    # ── BLOCK 2: SEGMENT SWITCH MODAL ────────────────────────────────────────
+    if st.session_state.get("show_segment_switch_modal"):
+        _render_segment_switch_modal()
 
     # 1. Filter portfolio for this segment
     segment_portfolio = [p for p in portfolio if p.get("segment") == handler.segment_id]
@@ -48,16 +115,11 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
         st.info("Portfolio is empty. Add a building in the sidebar to begin analysis.")
         return
 
-    # 2. Resolve active scenarios
-    selected_names = st.session_state.get("selected_scenario_names", [])
-    if not selected_names:
-        selected_names = handler.default_scenarios
-
     # Ensure Baseline is present for comparison
     if "Baseline (No Intervention)" not in selected_names:
         selected_names = ["Baseline (No Intervention)"] + selected_names
 
-    # 3. Calculate results
+    # Calculate results
     tariff = st.session_state.get("energy_tariff_gbp_per_kwh", 0.28)
     scenario_totals = {}
 
@@ -75,7 +137,6 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
         }
 
         for building in segment_portfolio:
-            # Ensure height_m exists (migration for existing sessions)
             if "height_m" not in building:
                 building["height_m"] = 3.5
             r = physics.calculate_thermal_load(building, s_data, weather, tariff)
@@ -87,94 +148,107 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
 
         scenario_totals[s_name] = totals
 
-    # 4. Determine "Best" scenario for KPIs (max energy saving)
+    # Determine baseline and best scenario for KPIs
+    baseline_data = scenario_totals.get("Baseline (No Intervention)", {})
     comparison_scenarios = [s for s in selected_names if s != "Baseline (No Intervention)"]
-    if comparison_scenarios:
-        best_scenario = max(comparison_scenarios, key=lambda s: scenario_totals[s]["energy_saving_mwh"])
-        kpi_data = scenario_totals[best_scenario]
-    else:
-        kpi_data = scenario_totals.get("Baseline (No Intervention)", {})
 
-    # 5. Render KPIs
+    # ── BLOCK 3: KPI CARDS ────────────────────────────────────────────────────
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         branding.render_card(
-            label="Energy Saved",
-            value=f"{kpi_data.get('energy_saving_mwh', 0):,.1f}",
-            subtext="MWh / year",
+            label="PORTFOLIO ENERGY",
+            value=f"{baseline_data.get('annual_energy_mwh', 0):,.1f}",
+            subtext="MWh / yr",
             accent_class="accent-teal",
         )
     with col2:
+        # Carbon: total_energy × BEIS 2023 factor (0.20482 tCO2e/MWh)
+        total_carbon = baseline_data.get("annual_energy_mwh", 0) * 0.20482
         branding.render_card(
-            label="Carbon Abated",
-            value=f"{kpi_data.get('carbon_saving_tco2', 0):,.1f}",
-            subtext="tCO₂e / year",
+            label="CARBON FOOTPRINT",
+            value=f"{total_carbon:,.1f}",
+            subtext="tCO₂e / yr",
             accent_class="accent-green",
         )
     with col3:
+        total_cost = baseline_data.get("annual_energy_mwh", 0) * 1000 * tariff
         branding.render_card(
-            label="Cost Saved",
-            value=f"£{kpi_data.get('cost_saving_gbp', 0):,.0f}",
-            subtext="per year",
+            label="EST. ENERGY COST",
+            value=f"£{total_cost:,.0f}",
+            subtext="per annum",
             accent_class="accent-gold",
         )
     with col4:
-        total_install = kpi_data.get("install_cost_gbp", 0)
-        total_save = kpi_data.get("cost_saving_gbp", 0)
-        payback_str = f"{(total_install / total_save):.1f}" if total_save > 0 else "-"
         branding.render_card(
-            label="Est. Payback",
-            value=payback_str,
-            subtext="Years",
+            label="ACTIVE ASSETS",
+            value=str(len(segment_portfolio)),
+            subtext="Buildings",
             accent_class="accent-navy",
         )
 
-    st.markdown("---")
+    branding.render_html('<div class="main-section-divider"></div>')
 
-    # 6. Render 3D Map & Weather
-    c_map, c_wx = st.columns([2, 1])
+    # ── BLOCK 4: 3D MAP SECTION ───────────────────────────────────────────────
+    branding.render_html('<div class="sec-hdr">🌍 Campus / Portfolio Digital Twin</div>')
+    from app.visualization_3d import render_3d_building
+    render_3d_building(segment_portfolio)
 
-    with c_map:
-        st.markdown('<div class="sec-hdr">Campus / Portfolio Digital Twin</div>', unsafe_allow_html=True)
-        from app.visualization_3d import render_3d_building
-        render_3d_building(segment_portfolio)
+    branding.render_html('<div class="main-section-divider"></div>')
 
-    with c_wx:
-        st.markdown('<div class="sec-hdr">Live Conditions</div>', unsafe_allow_html=True)
-        temp = weather.get("temperature_c", 0)
-        desc = weather.get("description", "Unknown").title()
-        loc = weather.get("location_name", "Unknown Location")
+    # ── BLOCK 5: PORTFOLIO MANAGEMENT SECTION ─────────────────────────────────
+    from app.components.portfolio_manager import render_portfolio_section
 
-        st.markdown(
-            f"""
-            <div class="wx-widget">
-                <div style="display:flex; justify-content:space-between; align-items:start;">
-                    <div>
-                        <div class="wx-desc">{desc}</div>
-                        <div class="wx-temp">{temp:.1f}°C</div>
-                    </div>
-                    <div style="text-align:right;">
-                        <div style="color:#8FBCCE; font-size:1.5rem;">☁️</div>
-                    </div>
-                </div>
-                <div class="wx-row">📍 {loc}</div>
-                <div class="wx-row">💨 Wind: {weather.get('wind_speed_mph', 0)} mph</div>
-                <div class="wx-row">💧 Humidity: {weather.get('humidity_pct', 0)}%</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    branding.render_html(
+        '<div class="portfolio-section-hdr">'
+        "📋 Asset Portfolio Management</div>"
+    )
+    render_portfolio_section()
 
-    # 7. Render Thermal Load Chart
-    st.markdown('<div class="sec-hdr">Thermal Load Analysis</div>', unsafe_allow_html=True)
+    branding.render_html('<div class="main-section-divider"></div>')
+
+    # ── BLOCK 6: ASSET PERFORMANCE SUMMARY TABLE ──────────────────────────────
+    branding.render_html('<div class="sec-hdr">📊 Asset Performance Summary</div>')
+    st.caption(
+        "Physics-based simulation of heating demand under "
+        "current weather conditions."
+    )
+
+    table_rows = []
+    for b in segment_portfolio:
+        table_rows.append({
+            "Building": b.get("display_name", b.get("name", "Unknown")),
+            "Type": b.get("building_type", "—"),
+            "Area (m²)": b.get("floor_area_m2", 0),
+            "Baseline (MWh)": b.get("baseline_energy_mwh", 0),
+            "Built": b.get("built_year", "—"),
+        })
+
+    st.dataframe(
+        pd.DataFrame(table_rows),
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Area (m²)": st.column_config.NumberColumn(format="%.0f"),
+            "Baseline (MWh)": st.column_config.NumberColumn(format="%.1f"),
+        },
+    )
+
+    branding.render_html('<div class="main-section-divider"></div>')
+
+    # ── BLOCK 7: THERMAL LOAD CHART ───────────────────────────────────────────
+    branding.render_html('<div class="sec-hdr">📈 Thermal Load Analysis</div>')
+    st.caption(
+        "Physics-based simulation of heating demand under "
+        "current weather conditions."
+    )
 
     chart_data = []
     for s_name in selected_names:
         if s_name in scenario_totals:
             chart_data.append({
                 "Scenario": s_name,
-                "Energy (MWh)": scenario_totals[s_name]["annual_energy_mwh"]
+                "Energy (MWh)": scenario_totals[s_name]["annual_energy_mwh"],
             })
 
     if chart_data:
@@ -183,39 +257,16 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
         fig.add_trace(go.Bar(
             x=df_chart["Scenario"],
             y=df_chart["Energy (MWh)"],
-            marker_color='#00C2A8',
+            marker_color="#00C2A8",
             text=df_chart["Energy (MWh)"].apply(lambda x: f"{x:.1f}"),
-            textposition='auto'
+            textposition="auto",
         ))
         fig.update_layout(
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
             margin=dict(t=20, b=40, l=40, r=20),
             height=350,
             yaxis_title="Annual Energy (MWh)",
-            font=dict(family="Nunito Sans")
+            font=dict(family="Nunito Sans"),
         )
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-    # 8. Portfolio Table
-    st.markdown('<div class="sec-hdr">Portfolio Assets</div>', unsafe_allow_html=True)
-
-    table_rows = []
-    for b in segment_portfolio:
-        table_rows.append({
-            "Building Name": b.get("name", "Unknown"),
-            "Postcode": b.get("postcode", "-"),
-            "Floor Area (m²)": b.get("floor_area_m2", 0),
-            "Baseline Energy (MWh)": b.get("baseline_energy_mwh", 0),
-            "EPC Band": b.get("epc_band", "N/A"),
-        })
-
-    st.dataframe(
-        pd.DataFrame(table_rows),
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "Floor Area (m²)": st.column_config.NumberColumn(format="%.0f"),
-            "Baseline Energy (MWh)": st.column_config.NumberColumn(format="%.1f"),
-        },
-    )

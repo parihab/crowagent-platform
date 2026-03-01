@@ -41,6 +41,7 @@ import app.tabs.compliance_hub as tab_compliance
 import app.tabs.ai_advisor as tab_ai_advisor
 import core.about as about_page
 from app.segments import SEGMENT_IDS, get_segment_handler
+from app.session import ensure_portfolio_defaults
 
 # Re-export for any legacy caller that does `from app.main import _card`
 _card = branding.render_card
@@ -255,10 +256,13 @@ def run() -> None:
     # 3. Session state — idempotent, safe to call on every rerun
     session.init_session()
 
-    # 4. URL query-param bootstrap
+    # 4. Ensure portfolio defaults are populated if segment is active
+    ensure_portfolio_defaults()
+
+    # 5. URL query-param bootstrap
     _resolve_query_params()
 
-    # 5. Segment gate ─────────────────────────────────────────────────────────
+    # 6. Segment gate ─────────────────────────────────────────────────────────
     # render_sidebar() shows the full-screen 4-card onboarding when no segment
     # is selected and returns (None, {}, "").  We must not build st.navigation
     # in that state, so we return early here.
@@ -266,11 +270,11 @@ def run() -> None:
         sidebar.render_sidebar()
         return
 
-    # 6. Sidebar controls (segment label, scenarios, portfolio, weather)
+    # 7. Sidebar controls (segment label, scenarios, portfolio, weather)
     _segment, _weather, _location = sidebar.render_sidebar()
     st.session_state["_current_weather"] = _weather
 
-    # 7. Route to active page — _page_setup() inside each wrapper handles
+    # 8. Route to active page — _page_setup() inside each wrapper handles
     # CSS injection, logo bar, sidebar CSS, and the nav button row.
     _ROUTE = {
         "dashboard":  _page_dashboard,
