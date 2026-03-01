@@ -9,12 +9,8 @@ import services.epc as epc
 import core.agent as agent
 from app.utils import validate_gemini_key
 
-def render_sidebar():
-    """
-    Renders the sidebar and returns (segment_id, weather_dict, location_name).
-    If no segment is selected, renders the onboarding gate and returns (None, None, None).
-    """
-    # Onboarding Gate
+def render_onboarding():
+    """Renders onboarding gate. Returns True if onboarding active (stop execution)."""
     if not st.session_state.get("user_segment"):
         if branding.get_logo_uri():
             _, c, _ = st.columns([1, 2, 1])
@@ -31,9 +27,11 @@ def render_sidebar():
                 if st.button(label, key=f"btn_{seg_id}", use_container_width=True):
                     st.session_state.user_segment = seg_id
                     st.rerun()
-        return None, None, None
+        return True
+    return False
 
-    # Normal Sidebar
+def render_minimal_sidebar():
+    """Renders minimal sidebar content (Logo, Change Segment)."""
     with st.sidebar:
         if branding.get_logo_uri():
             st.image(branding.get_logo_uri(), use_container_width=True)
@@ -46,8 +44,39 @@ def render_sidebar():
             st.rerun()
             
         st.divider()
-        
-        # ── Portfolio Management ─────────────────────────────────────────────
+        st.info("⚙️ Configure Portfolio & Settings in the 'Settings' tab.")
+
+def get_weather_data():
+    """Fetches weather data based on session state."""
+    try:
+        # Safely handle potential missing exception class during refactor
+        WeatherError = getattr(wx, "WeatherFetchError", Exception)
+        weather = wx.get_weather(
+            lat=st.session_state.get("wx_lat", 51.4543),
+            lon=st.session_state.get("wx_lon", -0.9781),
+            location_name=st.session_state.get("wx_location_name", "Reading, Berkshire, UK"),
+            provider=st.session_state.get("wx_provider", "open_meteo"),
+            met_office_key=st.session_state.get("met_office_key"),
+            openweathermap_key=st.session_state.get("owm_key")
+        )
+    except WeatherError as e:
+        # st.warning(f"Weather unavailable: {e}") # Don't warn here, just return fallback
+        weather = {
+            "temperature_c": 10.0, 
+            "condition": "Unavailable", 
+            "condition_icon": "⚠️",
+            "description": "Data unavailable"
+        }
+    return weather
+
+def render_settings_tab(weather_data):
+    """Renders the Settings tab content (Portfolio, Location, Keys)."""
+    
+    st.header("⚙️ Configuration & Settings")
+    
+    col1, col2 = st.columns([1, 1])
+    
+    with col1:
         st.subheader("🏢 Asset Portfolio")
         
         # Add Building
@@ -113,7 +142,7 @@ def render_sidebar():
         else:
             st.info("No assets in portfolio. Add one above.")
 
-        st.divider()
+    with col2:
         st.subheader("📍 Location")
         
         # Location Selector
@@ -132,43 +161,23 @@ def render_sidebar():
             st.session_state.wx_lon = meta["lon"]
             st.rerun()
 
-        # Weather Service Integration
-        try:
-            # Safely handle potential missing exception class during refactor
-            WeatherError = getattr(wx, "WeatherFetchError", Exception)
-            weather = wx.get_weather(
-                lat=st.session_state.get("wx_lat", 51.4543),
-                lon=st.session_state.get("wx_lon", -0.9781),
-                location_name=st.session_state.get("wx_location_name", "Reading, Berkshire, UK"),
-                provider=st.session_state.get("wx_provider", "open_meteo"),
-                met_office_key=st.session_state.get("met_office_key"),
-                openweathermap_key=st.session_state.get("owm_key")
-            )
-        except WeatherError as e:
-            st.warning(f"Weather unavailable: {e}")
-            weather = {
-                "temperature_c": 10.0, 
-                "condition": "Unavailable", 
-                "condition_icon": "⚠️",
-                "description": "Data unavailable"
-            }
-
-        # Weather Widget
-        condition_safe = html.escape(weather.get('condition', ''))
+        # Weather Widget Display (using passed weather data)
+        condition_safe = html.escape(weather_data.get('condition', ''))
         st.markdown(
             f"""
             <div class="wx-widget">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <div class="wx-temp">{weather.get('temperature_c')}°C</div>
-                    <div style="font-size:2rem;">{weather.get('condition_icon')}</div>
+                    <div class="wx-temp">{weather_data.get('temperature_c')}°C</div>
+                    <div style="font-size:2rem;">{weather_data.get('condition_icon')}</div>
                 </div>
                 <div class="wx-desc">{condition_safe}</div>
-                <div class="wx-row">💨 {weather.get('wind_speed_mph', 0)} mph &nbsp; 💧 {weather.get('humidity_pct', 0)}%</div>
+                <div class="wx-row">💨 {weather_data.get('wind_speed_mph', 0)} mph &nbsp; 💧 {weather_data.get('humidity_pct', 0)}%</div>
             </div>
             """,
             unsafe_allow_html=True
         )
         
+        st.subheader("🔑 API Keys")
         with st.expander("🔑 API Keys & Config"):
             gemini_input = st.text_input(
                 "Gemini API Key",
@@ -202,39 +211,33 @@ def render_sidebar():
                 type="password"
             )
 
-
-        # ── AI Advisor ───────────────────────────────────────────────────────
-        st.subheader("🤖 AI Advisor")
+def render_ai_advisor():
+    """Renders the AI Advisor chat interface."""
+    st.header("🤖 AI Advisor")
         
-        # Chat History Display
-        for msg in st.session_state.chat_history:
-            role = "user" if msg["role"] == "user" else "assistant"
-            with st.chat_message(role):
-                st.markdown(msg["content"])
+    # Chat History Display
+    for msg in st.session_state.chat_history:
+        role = "user" if msg["role"] == "user" else "assistant"
+        with st.chat_message(role):
+            st.markdown(msg["content"])
 
-        # Chat Input
-        if prompt := st.chat_input("Ask about your portfolio..."):
-            if not st.session_state.get("gemini_key"):
-                st.error("Please enter a Gemini API Key above to use the AI Advisor.")
-            else:
-                st.session_state.chat_history.append({"role": "user", "content": prompt})
-                with st.chat_message("user"):
-                    st.markdown(prompt)
-                
-                with st.chat_message("assistant"):
-                    with st.spinner("Thinking..."):
-                        # Prepare context from active buildings
-                        active_buildings = {b["name"]: b for b in segment_assets if b["id"] in st.session_state.active_analysis_ids}
-                        # Call agent
-                        response = agent.run_agent_turn(
-                            prompt, 
-                            st.session_state.chat_history, 
-                            st.session_state.gemini_key, 
-                            active_buildings, 
-                            SCENARIOS,
-                            tariff=st.session_state.get("energy_tariff_gbp_per_kwh", 0.28)
-                        )
-                        st.markdown(response)
-                        st.session_state.chat_history.append({"role": "assistant", "content": response})
-
-        return st.session_state.user_segment, weather, st.session_state.get("wx_location_name")
+    # Chat Input
+    if prompt := st.chat_input("Ask about your portfolio..."):
+        if not st.session_state.get("gemini_key"):
+            st.error("Please enter a Gemini API Key in the Settings tab to use the AI Advisor.")
+        else:
+            st.session_state.chat_history.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            
+            with st.chat_message("assistant"):
+                with st.spinner("Thinking..."):
+                    # Prepare context from active buildings
+                    segment_assets = [b for b in st.session_state.portfolio if b.get("segment") == st.session_state.user_segment]
+                    active_buildings = {b["name"]: b for b in segment_assets if b["id"] in st.session_state.active_analysis_ids}
+                    # Call agent
+                    response = agent.run_agent_turn(
+                        prompt, 
+                        st.session_state.chat_history, 
+                        st.session_state.gemini_key, 
+                        active_buildings, 
