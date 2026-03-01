@@ -1,13 +1,11 @@
 import streamlit as st
 import logging
 import re
-import uuid
 import html as html_mod
 from typing import Tuple, Optional, Dict, Any
 
 # Services
 import services.weather as weather_service
-import services.epc as epc_service
 import core.agent as agent_service
 
 # App modules
@@ -19,12 +17,11 @@ from config.scenarios import SEGMENT_SCENARIOS, SCENARIOS
 try:
     from app.utils import _extract_uk_postcode, validate_gemini_key
 except ImportError:
-    # Fallback if utils not fully migrated
     def _extract_uk_postcode(text: str) -> str:
         if not text: return ""
         match = re.search(r'([Gg][Ii][Rr] 0[Aa]{2})|((([A-Za-z][0-9]{1,2})|(([A-Za-z][A-Ha-hJ-Yj-y][0-9]{1,2})|(([A-Za-z][0-9][A-Za-z])|([A-Za-z][A-Ha-hJ-Yj-y][0-9][A-Za-z]?))))\s?[0-9][A-Za-z]{2})', text)
         return match.group(0).upper() if match else ""
-    
+
     def validate_gemini_key(key: str) -> Tuple[bool, str]:
         if not key: return False, "Key is empty"
         if not key.startswith("AIza"): return False, "Key should start with 'AIza'"
@@ -32,37 +29,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# Segment-specific UI configurations
-SEGMENT_CONFIG = {
-    "university_he": {
-        "portfolio_label": "Campus Estate",
-        "add_label": "Add Building",
-        "demo_label": "Load Campus Block",
-        "scenario_label": "Decarbonisation Strategy",
-        "icon": "🏛️"
-    },
-    "smb_landlord": {
-        "portfolio_label": "Property Portfolio",
-        "add_label": "Add Property",
-        "demo_label": "Load Commercial Unit",
-        "scenario_label": "Retrofit Packages",
-        "icon": "🏢"
-    },
-    "smb_industrial": {
-        "portfolio_label": "Facility List",
-        "add_label": "Add Site",
-        "demo_label": "Load Warehouse",
-        "scenario_label": "Efficiency Measures",
-        "icon": "🏭"
-    },
-    "individual_selfbuild": {
-        "portfolio_label": "Dwelling Details",
-        "add_label": "Set Home Location",
-        "demo_label": "Load Sample Home",
-        "scenario_label": "Renovation Options",
-        "icon": "🏠"
-    }
-}
 
 def render_sidebar() -> Tuple[Optional[str], Dict[str, Any], str]:
     """
@@ -75,7 +41,7 @@ def render_sidebar() -> Tuple[Optional[str], Dict[str, Any], str]:
         return None, {}, ""
 
     segment = st.session_state.user_segment
-    
+
     # 2. Sidebar Content
     with st.sidebar:
         # Active Segment Display
@@ -83,24 +49,26 @@ def render_sidebar() -> Tuple[Optional[str], Dict[str, Any], str]:
             c1, c2 = st.columns([3, 1])
             c1.markdown(f"**{SEGMENT_LABELS.get(segment, segment)}**")
             if c2.button("🔁", key="btn_change_seg", help="Switch Segment"):
-                st.session_state.user_segment = None
+                st.session_state.show_segment_switch_modal = True
+                st.session_state.pending_segment_switch = None
                 st.rerun()
-            
+
         st.markdown("---")
 
         # Scenarios
         _render_scenario_selector(segment)
-        
+
         st.markdown("---")
 
-        # Portfolio Controls
-        _render_portfolio_controls(segment)
-        
+        # Portfolio is now managed in the Dashboard page
+        # Show compact read-only summary only
+        _render_portfolio_summary_compact()
+
         st.markdown("---")
 
         # Weather
         weather_data = _render_weather_widget()
-        
+
         st.markdown("---")
 
         # System Configuration (Grouped)
@@ -114,15 +82,15 @@ def render_sidebar() -> Tuple[Optional[str], Dict[str, Any], str]:
                 step=0.01,
                 format="%.2f"
             )
-            
+
             st.markdown("---")
-            
+
             # API Keys
             st.caption("API Access")
             _render_api_keys_content()
-            
+
             st.markdown("---")
-            
+
             # Audit Log
             st.caption("Recent Activity")
             if "audit_log" not in st.session_state:
@@ -140,6 +108,28 @@ def render_sidebar() -> Tuple[Optional[str], Dict[str, Any], str]:
 
     return segment, weather_data, weather_data.get("location_name", "Unknown")
 
+
+def _render_portfolio_summary_compact() -> None:
+    """
+    Compact read-only portfolio summary in sidebar.
+    Shows asset count and names only.
+    No add/remove controls — those live in the dashboard.
+    """
+    portfolio = st.session_state.get("portfolio", [])
+    with st.container(border=True):
+        st.markdown(
+            '<div class="sb-section">Asset Portfolio</div>',
+            unsafe_allow_html=True
+        )
+        if not portfolio:
+            st.caption("No assets loaded.")
+        else:
+            st.caption(f"{len(portfolio)} properties active")
+            for asset in portfolio[:3]:
+                name = asset.get("display_name", "Unknown")
+                st.markdown(f"· {name}")
+
+
 def _render_segment_gate():
     """Renders the 4-card segment selection screen."""
     branding.render_html("""
@@ -150,9 +140,9 @@ def _render_segment_gate():
         </p>
     </div>
     """)
-    
+
     cols = st.columns(2)
-    
+
     with cols[0]:
         with st.container(border=True):
             st.markdown("### 🏛️ University / HE")
@@ -168,9 +158,9 @@ def _render_segment_gate():
             if st.button("Select Landlord Profile", key="btn_seg_landlord", use_container_width=True, type="primary"):
                 st.session_state.user_segment = "smb_landlord"
                 st.rerun()
-                
+
     cols2 = st.columns(2)
-    
+
     with cols2[0]:
         with st.container(border=True):
             st.markdown("### 🏭 SMB Industrial")
@@ -186,6 +176,7 @@ def _render_segment_gate():
             if st.button("Select Self-Build Profile", key="btn_seg_self", use_container_width=True, type="primary"):
                 st.session_state.user_segment = "individual_selfbuild"
                 st.rerun()
+
 
 def _render_scenario_selector(segment: str):
     """Renders checkboxes for scenarios available to the segment."""
@@ -205,67 +196,24 @@ def _render_scenario_selector(segment: str):
             selected.append(sc_id)
     st.session_state.selected_scenario_names = selected
 
-def _render_portfolio_controls(segment: str):
-    """Renders Add/Remove building controls."""
-    st.subheader("Asset Portfolio")
-    
-    # Quick Add Demo Button (UX Improvement)
-    if st.button("🎲 Add Demo Building", key="btn_add_demo", help="Quickly add a sample building for testing", use_container_width=True):
-        _add_demo_building(segment)
-
-    with st.expander("➕ Add by Postcode", expanded=False):
-        postcode_input = st.text_input("Postcode", key="inp_add_pc").upper()
-        if st.button("Search & Add", key="btn_add_bldg"):
-            clean_pc = _extract_uk_postcode(postcode_input)
-            if clean_pc:
-                with st.spinner("Fetching EPC data..."):
-                    add_to_portfolio(clean_pc, segment)
-            else:
-                st.toast("Invalid UK Postcode", icon="⚠️")
-
-    portfolio = st.session_state.get("portfolio", [])
-    seg_portfolio = [p for p in portfolio if p.get("segment") == segment]
-    
-    if not seg_portfolio:
-        st.info("Portfolio empty. Add a building to start.")
-        return
-
-    options = {p["id"]: p.get("display_name", p["id"]) for p in seg_portfolio}
-    if "active_analysis_ids" not in st.session_state:
-        st.session_state.active_analysis_ids = list(options.keys())[:5]
-        
-    selected_ids = st.multiselect(
-        "Select Assets for Dashboard",
-        options=list(options.keys()),
-        format_func=lambda x: options[x],
-        default=[x for x in st.session_state.active_analysis_ids if x in options],
-        key="ms_active_assets"
-    )
-    st.session_state.active_analysis_ids = selected_ids
-    
-    if st.button("Clear Portfolio", key="btn_clear_port"):
-        st.session_state.portfolio = [p for p in portfolio if p.get("segment") != segment]
-        st.session_state.active_analysis_ids = []
-        st.rerun()
 
 def _render_weather_widget() -> Dict[str, Any]:
     """Renders weather provider selection and current weather."""
     st.subheader("Live Weather")
     provider = st.selectbox("Source", ["open_meteo", "met_office", "manual"], index=0, key="sb_wx_prov", label_visibility="collapsed")
     st.session_state.weather_provider = provider
-    
+
     lat = st.session_state.get("wx_lat", 51.45)
     lon = st.session_state.get("wx_lon", -0.97)
     loc_name = st.session_state.get("wx_location_name", "Reading (Default)")
-    
+
     try:
         weather = weather_service.get_weather(
             lat, lon, loc_name, provider,
             met_key=st.session_state.get("met_office_key"),
             owm_key=st.session_state.get("openweathermap_key")
         )
-    except Exception as e:
-        # st.toast(f"Weather fetch failed: {e}", icon="⚠️")
+    except Exception:
         weather = {"temperature_c": 10.0, "description": "Fallback", "location_name": loc_name}
 
     # Custom Weather Card — values escaped per security policy
@@ -289,8 +237,9 @@ def _render_weather_widget() -> Dict[str, Any]:
         </div>
     </div>
     """)
-    
+
     return weather
+
 
 def _render_api_keys_content():
     """Renders the content for API keys input."""
@@ -304,13 +253,13 @@ def _render_api_keys_content():
         format="%.2f",
         help="Used for financial calculations across all scenarios."
     )
-    
+
     st.markdown("---")
-    
+
     # API Keys
     st.markdown("**API Access**")
     gem_key = st.text_input("Gemini API Key", value=st.session_state.get("gemini_key", ""), type="password", key="inp_gem_key", help="Required for AI Advisor features.")
-    
+
     if gem_key != st.session_state.get("gemini_key"):
         st.session_state.gemini_key = gem_key
         is_valid, msg = validate_gemini_key(gem_key)
@@ -319,118 +268,30 @@ def _render_api_keys_content():
             st.toast("Gemini Key Validated", icon="✅")
         else:
             st.error(f"Invalid Key: {msg}")
-    
+
     # Auto-validate if key exists (e.g. from secrets) but validity not set
     if st.session_state.get("gemini_key") and not st.session_state.get("gemini_key_valid"):
         is_valid, msg = validate_gemini_key(st.session_state.gemini_key)
         st.session_state.gemini_key_valid = is_valid
 
     st.markdown("---")
-    
+
     # Audit Log
     st.markdown("**Recent Activity**")
     if "audit_log" not in st.session_state:
         st.session_state.audit_log = []
-    
+
     if not st.session_state.audit_log:
         st.caption("No activity logged.")
     else:
         for entry in st.session_state.audit_log[-3:]:
             st.caption(f"{entry.get('timestamp', '')[-8:]} • {entry.get('event', '')}")
 
-def add_to_portfolio(postcode: str, segment: str):
-    api_key = st.session_state.get("epc_api_key", "")
-    try:
-        epc_data = epc_service.fetch_epc_data(postcode, api_key=api_key)
-    except Exception:
-        epc_data = {"postcode": postcode, "address": f"Unknown ({postcode})"}
-    
-    entry = init_portfolio_entry(epc_data, segment)
-    if "portfolio" not in st.session_state: st.session_state.portfolio = []
-    
-    # Check for duplicates
-    if any(p["id"] == entry["id"] for p in st.session_state.portfolio):
-        return
-
-    st.session_state.portfolio.append(entry)
-    
-    # Auto-select the new building
-    if "active_analysis_ids" not in st.session_state:
-        st.session_state.active_analysis_ids = []
-    st.session_state.active_analysis_ids.append(entry["id"])
-    
-    st.toast(f"Added {entry['display_name']}", icon="✅")
-
-def _add_demo_building(segment: str):
-    """Adds a segment-appropriate demo building to the portfolio."""
-    demos = {
-        "university_he": {"address": "Greenfield Library", "floor_area": 8500, "epc": "C"},
-        "smb_landlord": {"address": "Unit 4, Enterprise Park", "floor_area": 450, "epc": "D"},
-        "smb_industrial": {"address": "Logistics Hub North", "floor_area": 2500, "epc": "E"},
-        "individual_selfbuild": {"address": "The Old Vicarage", "floor_area": 145, "epc": "F"},
-    }
-    data = demos.get(segment, demos["university_he"])
-    entry = {
-        "id": str(uuid.uuid4())[:8],
-        "segment": segment,
-        "postcode": "DEMO",
-        "display_name": data["address"],
-        "floor_area_m2": float(data["floor_area"]),
-        "epc_rating": data["epc"],
-        "latitude": 51.45, "longitude": -0.97,
-        "is_demo": True,
-        # Add baseline energy for physics engine
-        "baseline_energy_mwh": float(data["floor_area"]) * 0.15, # Rough estimate
-        "building_type": segment,
-        "built_year": 1985,
-        "occupancy_hours": 3000,
-        "height_m": 3.5,
-        "u_value_wall": 1.2,
-        "u_value_roof": 0.8,
-        "u_value_glazing": 2.8,
-        "glazing_ratio": 0.3
-    }
-    if "portfolio" not in st.session_state: st.session_state.portfolio = []
-    st.session_state.portfolio.append(entry)
-    
-    # Auto-select
-    if "active_analysis_ids" not in st.session_state:
-        st.session_state.active_analysis_ids = []
-    st.session_state.active_analysis_ids.append(entry["id"])
-    
-    st.toast(f"Added {entry['display_name']} to portfolio!", icon="🎲")
-
-def remove_from_portfolio(building_id: str):
-    if "portfolio" in st.session_state:
-        st.session_state.portfolio = [p for p in st.session_state.portfolio if p["id"] != building_id]
-
-def init_portfolio_entry(epc_data: dict, segment: str) -> dict:
-    # Generate a deterministic ID based on postcode if possible, else random
-    pc = epc_data.get("postcode", str(uuid.uuid4()))
-    
-    return {
-        "id": str(uuid.uuid4())[:8],
-        "segment": segment,
-        "postcode": epc_data.get("postcode"),
-        "display_name": epc_data.get("address", "Unknown Building"),
-        "floor_area_m2": float(epc_data.get("total-floor-area", 100.0)),
-        "epc_rating": epc_data.get("current-energy-rating", "E"),
-        "latitude": 51.45, "longitude": -0.97, # Mock lat/lon for now as EPC doesn't always give it
-        "baseline_energy_mwh": float(epc_data.get("total-floor-area", 100.0)) * 0.15,
-        "building_type": segment,
-        "built_year": 1990,
-        "occupancy_hours": 2500,
-        "height_m": 3.5,
-        "u_value_wall": 1.0,
-        "u_value_roof": 0.6,
-        "u_value_glazing": 2.5,
-        "glazing_ratio": 0.25
-    }
 
 def render_ai_advisor(handler, weather_data: Dict[str, Any]):
     """Renders the AI Advisor chat interface."""
     st.subheader("🤖 AI Advisor")
-    
+
     if not st.session_state.get("gemini_key_valid"):
         st.info("Enter your Gemini API key in Settings to enable the AI Advisor.")
         return
@@ -469,10 +330,11 @@ def render_ai_advisor(handler, weather_data: Dict[str, Any]):
             except Exception as e:
                 st.error(f"AI Error: {str(e)}")
 
+
 def render_settings_tab(weather_data: Dict[str, Any]):
     """Renders the Settings tab content."""
     st.header("⚙️ Settings")
-    
+
     st.subheader("System Status")
     st.json({
         "segment": st.session_state.get("user_segment"),
@@ -481,7 +343,7 @@ def render_settings_tab(weather_data: Dict[str, Any]):
         "portfolio_size": len(st.session_state.get("portfolio", [])),
         "gemini_active": st.session_state.get("gemini_key_valid", False)
     })
-    
+
     st.subheader("Data Management")
     if st.button("Clear All Session Data", type="secondary"):
         for key in list(st.session_state.keys()):
