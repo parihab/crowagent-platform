@@ -69,6 +69,9 @@ def init_session() -> None:
         "selected_building_name": None,
         "building_names": {},
 
+        # Sidebar visibility toggle (True = visible)
+        "sidebar_visible": True,
+
         # Location / weather
         "wx_city": "Reading, Berkshire",
         "wx_lat": 51.4543,

@@ -116,55 +116,53 @@ header[data-testid="stHeader"] > * {
   color: #071A2F !important;
 }
 
-/* ── st.navigation sidebar nav items ──────────────────────────────────── */
-/* Guarantee full pointer-event interactivity for the navigation container. */
-[data-testid="stSidebarNav"],
-[data-testid="stSidebarNavItems"],
-[data-testid="stSidebarNavLink"],
-[data-testid="stSidebarNavLink"] * {
-  pointer-events: auto !important;
-  cursor: pointer !important;
+/* ── Streamlit Top Navigation Bar (position="top") ─────────────────────── */
+/* Targets the native horizontal nav bar rendered by st.navigation(position="top") */
+[data-testid="stTopNavigation"] {
+  background: #071A2F !important;
+  border-bottom: 2px solid #00C2A8 !important;
+  padding: 0 16px !important;
 }
-
-/* Logo area */
-[data-testid="stSidebarHeader"] {
-  padding: 12px 16px 8px !important;
-  border-bottom: 1px solid #1A3A5C !important;
-}
-[data-testid="stLogo"] img,
-[data-testid="stLogo"] {
-  max-height: 46px !important;
-  width: auto !important;
-}
-
-/* Nav link — default state */
-[data-testid="stSidebarNavLink"] {
-  display: flex !important;
-  align-items: center !important;
-  gap: 8px !important;
-  padding: 8px 14px !important;
-  margin: 2px 6px !important;
-  border-radius: 6px !important;
+[data-testid="stTopNavigation"] a,
+[data-testid="stTopNavigation"] button {
   font-family: 'Rajdhani', sans-serif !important;
-  font-size: 0.93rem !important;
+  font-size: 0.9rem !important;
   font-weight: 600 !important;
   color: #9ABDD0 !important;
   text-decoration: none !important;
-  transition: background 0.15s ease, color 0.15s ease, border-left 0.1s ease !important;
+  padding: 10px 14px !important;
+  border-bottom: 3px solid transparent !important;
+  transition: color 0.15s ease, border-bottom-color 0.15s ease !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
 }
-
-/* Nav link — hover */
-[data-testid="stSidebarNavLink"]:hover {
-  background: rgba(0, 194, 168, 0.12) !important;
+[data-testid="stTopNavigation"] a:hover,
+[data-testid="stTopNavigation"] button:hover {
   color: #00C2A8 !important;
+  background: rgba(0, 194, 168, 0.08) !important;
 }
-
-/* Nav link — active / current page */
-[data-testid="stSidebarNavLink"][aria-current="page"] {
-  background: rgba(0, 194, 168, 0.18) !important;
+[data-testid="stTopNavigation"] [aria-current="page"],
+[data-testid="stTopNavigation"] a[aria-selected="true"],
+[data-testid="stTopNavigation"] button[aria-selected="true"] {
   color: #00C2A8 !important;
-  border-left: 3px solid #00C2A8 !important;
+  border-bottom: 3px solid #00C2A8 !important;
   font-weight: 700 !important;
+}
+
+/* ── Sidebar Toggle Button ──────────────────────────────────────────────── */
+/* The "☰ / ✕" button rendered in _render_logo_and_toggle(). */
+button[data-testid="baseButton-secondary"][kind="secondary"].sidebar-toggle,
+div[data-testid="column"] button[aria-label="sidebar-toggle"] {
+  min-width: 44px !important;   /* WCAG 2.5.5 touch target */
+  min-height: 44px !important;
+}
+/* Mobile: ensure toggle button is easy to tap */
+@media (max-width: 768px) {
+  [data-testid="stTopNavigation"] a,
+  [data-testid="stTopNavigation"] button {
+    font-size: 0.80rem !important;
+    padding: 8px 8px !important;
+  }
 }
 
 /* ── Status Pills ──────────────────────────────────────────────────────── */
