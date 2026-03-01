@@ -7,6 +7,7 @@ from __future__ import annotations
 import streamlit as st
 import sys
 import os
+import html
 
 # Ensure project root is in sys.path for absolute imports
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -25,9 +26,9 @@ def _card(label: str, value: str, subtext: str, accent_class: str = "") -> None:
     st.markdown(
         f"""
         <div class="kpi-card {accent_class}">
-            <div class="kpi-label">{label}</div>
-            <div class="kpi-value">{value}</div>
-            <div class="kpi-subtext">{subtext}</div>
+            <div class="kpi-label">{html.escape(label)}</div>
+            <div class="kpi-value">{html.escape(value)}</div>
+            <div class="kpi-subtext">{html.escape(subtext)}</div>
         </div>
         """,
         unsafe_allow_html=True,

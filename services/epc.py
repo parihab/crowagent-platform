@@ -26,7 +26,7 @@ class EPCFetchError(RuntimeError):
 EPC_API_URL_ENV = "EPC_API_URL"
 EPC_API_KEY_ENV = "EPC_API_KEY"
 EPC_USERNAME_ENV = "EPC_USERNAME"
-EPC_USERNAME_DEFAULT = "crowagent.platform@gmail.com"
+EPC_USERNAME_DEFAULT = ""
 # Keep EPC_USERNAME for backward compatibility; call sites now read from env dynamically.
 EPC_USERNAME = EPC_USERNAME_DEFAULT
 EPC_STRICT_NO_RECORDS_ENV = "EPC_STRICT_NO_RECORDS"
