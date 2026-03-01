@@ -2,6 +2,7 @@ import streamlit as st
 import html
 import app.branding as branding
 from app.segments import SEGMENT_LABELS
+from config.scenarios import SCENARIOS
 import services.weather as wx
 import services.location as loc
 import services.epc as epc
@@ -57,6 +58,14 @@ def render_sidebar():
                     with st.spinner("Fetching EPC data..."):
                         epc_data = epc.fetch_epc_data(postcode_input, api_key=st.session_state.get("epc_key"))
                         
+                    # Calculate baseline energy using EPC current consumption if available, else estimate
+                    baseline_mwh = epc_data.get("floor_area_m2", 100.0) * 0.15 # Fallback estimate
+                    if "energy_consumption_current" in epc_data:
+                        try:
+                            baseline_mwh = epc_data.get("floor_area_m2", 100.0) * float(epc_data["energy_consumption_current"]) / 1000.0
+                        except (ValueError, TypeError):
+                            pass
+
                     # Create new portfolio entry
                     new_building = {
                         "id": f"bld_{len(st.session_state.portfolio) + 1}",
@@ -72,7 +81,7 @@ def render_sidebar():
                         "u_value_wall": 0.45,
                         "u_value_roof": 0.30,
                         "u_value_glazing": 2.8,
-                        "baseline_energy_mwh": epc_data.get("floor_area_m2", 100.0) * 0.15, # Rough estimate
+                        "baseline_energy_mwh": baseline_mwh,
                         "occupancy_hours": 3000,
                         "building_type": "Office",
                     }
@@ -217,7 +226,14 @@ def render_sidebar():
                         # Prepare context from active buildings
                         active_buildings = {b["name"]: b for b in segment_assets if b["id"] in st.session_state.active_analysis_ids}
                         # Call agent
-                        response = agent.run_agent_turn(prompt, st.session_state.chat_history, st.session_state.gemini_key, active_buildings, {})
+                        response = agent.run_agent_turn(
+                            prompt, 
+                            st.session_state.chat_history, 
+                            st.session_state.gemini_key, 
+                            active_buildings, 
+                            SCENARIOS,
+                            tariff=st.session_state.get("energy_tariff_gbp_per_kwh", 0.28)
+                        )
                         st.markdown(response)
                         st.session_state.chat_history.append({"role": "assistant", "content": response})
 

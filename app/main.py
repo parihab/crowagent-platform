@@ -94,7 +94,7 @@ def run() -> None:
                 © 2026 Aparajita Parihar · All rights reserved · Independent research project · CrowAgent™ is an unregistered trademark (UK IPO Class 42, registration pending) · Not licensed for commercial use without written permission
             </div>
             <div style="color: #3A5268; font-size: 0.7rem; font-family: monospace; letter-spacing: -0.2px;">
-                Physics: Raissi et al. (2019) J. Comp. Physics · doi:10.1016/j.jcp.2018.10.045 · Weather: Open-Meteo API + Met Office DataPoint · Carbon: BEIS 2023 · Costs: HESA 2022-23 · AI: Google Gemini 1.5 Pro
+                Physics: Raissi et al. (2019) J. Comp. Physics · <a href="https://doi.org/10.1016/j.jcp.2018.10.045" target="_blank" style="color: #3A5268; text-decoration: none;">doi:10.1016/j.jcp.2018.10.045</a> · Weather: Open-Meteo API + Met Office DataPoint · Carbon: BEIS 2023 · Costs: HESA 2022-23 · AI: Google Gemini 1.5 Pro
             </div>
         </div>
         """,

@@ -471,6 +471,7 @@ def run_agent_turn(
     gemini_key: str,
     building_registry: dict,
     scenario_registry: dict,
+    tariff: float = constants.DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH,
 ) -> dict:
     """
     Run the full agentic loop for one user turn.
@@ -548,7 +549,7 @@ def run_agent_turn(
 
                 # Execute the tool
                 result = execute_tool(
-                    name, fargs, building_registry, scenario_registry
+                    name, fargs, building_registry, scenario_registry, tariff
                 )
                 tool_calls_log.append({
                     "name": name,
