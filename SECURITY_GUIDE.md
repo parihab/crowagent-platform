@@ -137,6 +137,7 @@ export GEMINI_KEY="AIzaSy..."
 - [ ] **No API keys in .streamlit/secrets.toml** (should be comments only)
 - [ ] **`.streamlit/secrets.toml` is in .gitignore**
 - [ ] **Git history has no API keys** (check with: `git log --all -p | grep "AIza"`)
+- [ ] **No `os.environ` writes for API keys** (prevents cross-session leaks)
 - [ ] **README/docs tell users to bring their own keys**
 - [ ] **Sidebar has security notice** ✓ (already added)
 - [ ] **No plaintext keys in browser console** (check with F12 DevTools)

@@ -9,6 +9,7 @@ sharing the application URL publicly.
 
 import os
 import sys
+import re
 
 # ensure stdout can emit Unicode (emojis, etc.)
 # some environments default to 'ANSI_X3.4-1968' which causes
@@ -154,6 +155,43 @@ print("-" * 80)
 passed = os.path.exists('SECURITY_GUIDE.md')
 print("✅ SECURITY_GUIDE.md exists" if passed else "❌ SECURITY_GUIDE.md missing")
 checks.append(('✅ Security guide created' if passed else '❌ No security guide', passed))
+all_passed = all_passed and passed
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7. Check for unsafe os.environ usage (SEC-001)
+# ─────────────────────────────────────────────────────────────────────────────
+print("\n[7] Code Audit - Unsafe Environment Modification")
+print("-" * 80)
+
+has_unsafe_environ = False
+environ_assignment_re = re.compile(r'os\.environ\[.*\]\s*=')
+
+if os.path.exists('app/main.py'):
+    with open('app/main.py', 'r', encoding='utf-8') as f:
+        content = f.read()
+        if environ_assignment_re.search(content):
+            has_unsafe_environ = True
+            print("❌ Found unsafe os.environ modification in app/main.py (SEC-001)")
+            print("   Guidance: Pass API keys as function arguments, do not write to os.environ in Streamlit.")
+
+passed = not has_unsafe_environ
+if passed:
+    print("✅ No unsafe os.environ modification found")
+checks.append(('✅ No unsafe os.environ' if passed else '❌ Unsafe os.environ found', passed))
+all_passed = all_passed and passed
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 8. Check for hardcoded personal emails (SEC-003)
+# ─────────────────────────────────────────────────────────────────────────────
+print("\n[8] Code Audit - Hardcoded Personal Data")
+print("-" * 80)
+
+passed, msg = check_file_content(
+    'services/epc.py',
+    must_not_contain=['crowagent.platform@gmail.com']
+)
+print(msg)
+checks.append(('✅ No hardcoded emails' if passed else '❌ Hardcoded email found', passed))
 all_passed = all_passed and passed
 
 # ─────────────────────────────────────────────────────────────────────────────
