@@ -21,21 +21,21 @@ from config.scenarios import SCENARIOS
 SEGMENT_STARTER_QUESTIONS = {
     "university_he": [
         "Which campus building yields the best ROI for a deep retrofit?",
-        "How can we reduce Scope 1 & 2 emissions by 20% by 2030?",
-        "Compare the payback period of solar PV across all buildings.",
-        "What is the carbon impact of upgrading the Science Block glazing?"
+        "Analyze my portfolio's compliance gap for SECR reporting.",
+        "Which renewable energy scenario offers the fastest payback?",
+        "Draft a decarbonisation strategy for the Science Block."
     ],
     "smb_landlord": [
         "What is the cheapest way to bring my portfolio up to MEES Band C?",
         "Which property has the worst EPC rating and how do I fix it?",
         "Calculate the ROI of installing heat pumps in Unit 1.",
-        "Does a fabric upgrade make financial sense for the Office Block?"
+        "Compare insulation upgrades across all properties."
     ],
     "smb_industrial": [
         "How can I reduce Scope 1 emissions in my warehouse?",
         "What is the payback period for a solar roof installation?",
-        "Compare LED lighting vs heating upgrades for carbon reduction.",
-        "Estimate the energy savings of improving wall insulation."
+        "Analyze my portfolio's compliance gap for SECR reporting.",
+        "Estimate the energy savings of improving wall insulation in Unit 4."
     ],
     "individual_selfbuild": [
         "Does a heat pump meet the Future Homes Standard for my property?",
@@ -54,34 +54,52 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
         weather: Current weather data dictionary.
         portfolio: Full list of portfolio assets.
     """
-    # 1. Header & Disclaimer
+    # 1. Page Header
     st.markdown(
         """
-        <div style="margin-bottom: 20px;">
-            <h2 style="margin-bottom: 5px;">🤖 AI Sustainability Consultant</h2>
-            <div style="color: #5A7A90; font-size: 0.9rem;">
-                Physics-informed decision support for your portfolio.
-                <span style="background: rgba(240,180,41,0.15); color: #8A6D0B; padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; font-weight: 600; margin-left: 8px;">
-                    ⚠️ AI outputs are indicative only. Verify with a qualified surveyor.
-                </span>
-            </div>
-        </div>
+        # 🤖 CrowAgent™ AI Advisor
+        *Physics-grounded agentic AI that runs real thermal simulations, compares scenarios and gives evidence-based Net Zero investment recommendations.*
+        *(Powered by Google Gemini · Physics-informed reasoning · © 2026 Aparajita Parihar)*
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=False
     )
 
-    # 2. Check API Key
-    if not st.session_state.get("gemini_key_valid"):
-        st.info("🔑 Please enter a valid Google Gemini API key in the sidebar to activate the AI Advisor.")
+    # 2. Disclaimer Block
+    st.warning(
+        "**⚠️ AI Accuracy Disclaimer.** The AI Advisor generates responses based on physics tool outputs and large language model reasoning. Like all AI systems, it can make mistakes, misinterpret questions, or produce plausible-sounding but incorrect conclusions. All AI-generated recommendations must be independently verified by a qualified professional before any action is taken. This AI Advisor is not a substitute for professional engineering or financial advice. Results are indicative only."
+    )
+
+    # 3. API Key Gate
+    # Show ONLY if st.session_state.gemini_key is empty
+    if not st.session_state.get("gemini_key"):
+        st.markdown(
+            """
+            ### 🔑 Activate AI Advisor with a free Gemini API key
+            1. Visit aistudio.google.com
+            2. Sign in with any Google account
+            3. Click Get API key → Create API key
+            4. Paste it into API Keys in the sidebar
+
+            *Free tier · 1,500 requests/day · No credit card required*
+            *CrowAgent™ Platform*
+            """
+        )
         return
 
-    # 3. Initialize Chat History
+    # 4. Main Chat Interface (Only if API Key is provided)
+    
+    # Initialize Chat History
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
     if "agent_history" not in st.session_state:
         st.session_state.agent_history = []
     
-    # 4. Render Chat History
+    # Dynamic Segment Welcome text
+    st.markdown(
+        "\"Welcome to your AI Advisor. I am connected to your active property portfolio and ready to run thermal load simulations, analyze ROI, and check regulatory compliance.\""
+    )
+
+    # Render Chat History
     for msg in st.session_state.chat_history:
         role = msg["role"]
         content = msg["content"]
@@ -93,10 +111,10 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
                 unsafe_allow_html=True
             )
 
-    # 5. Starter Questions (Only if history is empty)
+    # Suggested Prompts Section - Show ONLY if chat history is empty
     if not st.session_state.chat_history:
         st.markdown("---")
-        st.markdown("**Suggested Questions:**")
+        st.markdown("**Suggested Queries for your Portfolio:**")
         
         questions = SEGMENT_STARTER_QUESTIONS.get(
             handler.segment_id, 
@@ -109,8 +127,8 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
                 _handle_user_input(q, handler, portfolio)
                 st.rerun()
 
-    # 6. Chat Input
-    if prompt := st.chat_input("Ask about your portfolio, scenarios, or regulations..."):
+    # Chat Input Box
+    if prompt := st.chat_input("Ask about your portfolio, expenses, or compliance..."):
         _handle_user_input(prompt, handler, portfolio)
         st.rerun()
 

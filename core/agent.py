@@ -42,6 +42,9 @@ into clear, actionable recommendations.
 CONTEXT:
 {segment_context}
 
+PORTFOLIO CONTEXT (Active Buildings):
+{portfolio_context}
+
 YOUR TOOLS — use them proactively, do not just answer from memory:
 • run_scenario: Run the PINN thermal model for one building + one intervention
 • compare_all_buildings: Run all buildings through one scenario simultaneously
@@ -493,9 +496,19 @@ def run_agent_turn(
     """
     # 1. Build Dynamic System Prompt
     seg_info = SEGMENT_CONTEXTS.get(segment, SEGMENT_CONTEXTS["university_he"])
+    
+    # Generate portfolio summary for context
+    portfolio_summary = []
+    for b_name, b_data in building_registry.items():
+        desc = b_data.get("description", "No description")
+        area = b_data.get("floor_area_m2", "N/A")
+        portfolio_summary.append(f"- {b_name}: {area}m², {desc}")
+    portfolio_context_str = "\n".join(portfolio_summary) if portfolio_summary else "No active buildings in portfolio."
+
     system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
         segment_label=seg_info["label"],
         segment_context=seg_info["context"],
+        portfolio_context=portfolio_context_str,
         ci_elec=constants.CI_ELECTRICITY,
         tariff=tariff,
         setpoint=constants.HEATING_SETPOINT_C,
