@@ -4,6 +4,8 @@ import app.branding as branding
 from app.segments import SEGMENT_LABELS
 import services.weather as wx
 import services.location as loc
+import services.epc as epc
+import core.agent as agent
 from app.utils import validate_gemini_key
 
 def render_sidebar():
@@ -118,5 +120,94 @@ def render_sidebar():
                 value=st.session_state.get("owm_key", ""),
                 type="password"
             )
+
+        st.divider()
+        
+        # ── Portfolio Management ─────────────────────────────────────────────
+        st.subheader("🏢 Asset Portfolio")
+        
+        # Add Building
+        with st.expander("Add Building", expanded=False):
+            postcode_input = st.text_input("Postcode", placeholder="SW1A 1AA", key="sb_pc_input", max_chars=10).strip()
+            if st.button("Search EPC", key="sb_epc_btn", disabled=not postcode_input):
+                try:
+                    with st.spinner("Fetching EPC data..."):
+                        epc_data = epc.fetch_epc_data(postcode_input, api_key=st.session_state.get("epc_key"))
+                        
+                    # Create new portfolio entry
+                    new_building = {
+                        "id": f"bld_{len(st.session_state.portfolio) + 1}",
+                        "name": f"Building at {postcode_input.upper()}",
+                        "postcode": postcode_input.upper(),
+                        "segment": st.session_state.user_segment,
+                        "floor_area_m2": epc_data.get("floor_area_m2", 100.0),
+                        "built_year": epc_data.get("built_year", 1990),
+                        "epc_band": epc_data.get("epc_band", "D"),
+                        # Default physics params
+                        "height_m": 12.0,
+                        "glazing_ratio": 0.4,
+                        "u_value_wall": 0.45,
+                        "u_value_roof": 0.30,
+                        "u_value_glazing": 2.8,
+                        "baseline_energy_mwh": epc_data.get("floor_area_m2", 100.0) * 0.15, # Rough estimate
+                        "occupancy_hours": 3000,
+                        "building_type": "Office",
+                    }
+                    st.session_state.portfolio.append(new_building)
+                    st.success(f"Added {new_building['name']}")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Failed to add building: {e}")
+
+        # Active Assets
+        segment_assets = [b for b in st.session_state.portfolio if b.get("segment") == st.session_state.user_segment]
+        if segment_assets:
+            asset_names = [b["name"] for b in segment_assets]
+            selected = st.multiselect(
+                "Active Analysis Assets",
+                options=asset_names,
+                default=asset_names[:3], # Select first 3 by default
+                key="sb_active_assets"
+            )
+            # Update active IDs based on selection
+            st.session_state.active_analysis_ids = [
+                b["id"] for b in segment_assets if b["name"] in selected
+            ]
+            
+            if st.button("Clear Portfolio", key="sb_clear_port"):
+                st.session_state.portfolio = [b for b in st.session_state.portfolio if b.get("segment") != st.session_state.user_segment]
+                st.session_state.active_analysis_ids = []
+                st.rerun()
+        else:
+            st.info("No assets in portfolio. Add one above.")
+
+        st.divider()
+
+        # ── AI Advisor ───────────────────────────────────────────────────────
+        st.subheader("🤖 AI Advisor")
+        
+        # Chat History Display
+        for msg in st.session_state.chat_history:
+            role = "user" if msg["role"] == "user" else "assistant"
+            with st.chat_message(role):
+                st.markdown(msg["content"])
+
+        # Chat Input
+        if prompt := st.chat_input("Ask about your portfolio..."):
+            if not st.session_state.get("gemini_key"):
+                st.error("Please enter a Gemini API Key above to use the AI Advisor.")
+            else:
+                st.session_state.chat_history.append({"role": "user", "content": prompt})
+                with st.chat_message("user"):
+                    st.markdown(prompt)
+                
+                with st.chat_message("assistant"):
+                    with st.spinner("Thinking..."):
+                        # Prepare context from active buildings
+                        active_buildings = {b["name"]: b for b in segment_assets if b["id"] in st.session_state.active_analysis_ids}
+                        # Call agent
+                        response = agent.run_agent_turn(prompt, st.session_state.chat_history, st.session_state.gemini_key, active_buildings, {})
+                        st.markdown(response)
+                        st.session_state.chat_history.append({"role": "assistant", "content": response})
 
         return st.session_state.user_segment, weather, st.session_state.get("wx_location_name")
