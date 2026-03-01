@@ -18,7 +18,7 @@ import streamlit as st
 import app.branding as branding
 import core.physics as physics
 from config.scenarios import SCENARIOS
-from app.components.portfolio_modal import render_portfolio_modal
+from app.portfolio_modal import render_portfolio_modal
 
 
 def render(handler, weather: dict, portfolio: list[dict]) -> None:
