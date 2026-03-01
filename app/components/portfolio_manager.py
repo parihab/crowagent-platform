@@ -167,6 +167,15 @@ def _render_search_panel(segment: str) -> None:
                 return
 
         results: list[dict] = st.session_state.get("portfolio_search_results", [])
+        # Normalise: drop non-dicts and ensure every result has an 'address' key
+        results = [r for r in results if isinstance(r, dict)]
+        for r in results:
+            if "address" not in r:
+                r["address"] = (
+                    r.get("display_name") or r.get("name") or "Unknown address"
+                )
+        st.session_state["portfolio_search_results"] = results
+
         if not results:
             return
 
@@ -180,7 +189,7 @@ def _render_search_panel(segment: str) -> None:
                 icon="ℹ️",
             )
 
-        address_labels = [r["address"] for r in results]
+        address_labels = [r.get("address", "Unknown") for r in results]
         selected_idx = st.selectbox(
             "Address",
             options=range(len(address_labels)),
@@ -211,7 +220,7 @@ def _render_search_panel(segment: str) -> None:
         st.markdown("**Building Details**")
         building_name = st.text_input(
             "Building Name",
-            value=selected_result["address"].split(",")[0].strip(),
+            value=selected_result.get("address", "Building").split(",")[0].strip(),
             key="pm_building_name",
         )
         floor_area = st.number_input(
