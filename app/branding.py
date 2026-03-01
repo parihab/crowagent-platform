@@ -46,8 +46,19 @@ CROWAGENT_CSS = """
 /* ── Global Typography ─────────────────────────────────────────────────── */
 html, body, [class*="css"] {
   font-family: 'Nunito Sans', sans-serif !important;
+  font-size: 15px;
 }
-h1, h2, h3, h4 {
+h1 {
+  font-family: 'Rajdhani', sans-serif !important;
+  font-size: 2rem !important;
+  letter-spacing: 0.5px !important;
+}
+h2 {
+  font-family: 'Rajdhani', sans-serif !important;
+  font-size: 1.5rem !important;
+  letter-spacing: 0.3px;
+}
+h3, h4 {
   font-family: 'Rajdhani', sans-serif !important;
   letter-spacing: 0.3px;
 }
@@ -216,15 +227,27 @@ div[data-testid="column"] button[aria-label="sidebar-toggle"] {
 .platform-topbar-right { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 
 /* ── KPI Cards ─────────────────────────────────────────────────────────── */
-.kpi-card { background:#ffffff; border-radius:8px; padding:18px 20px 14px; border:1px solid #E0EBF4; border-top:3px solid #00C2A8; box-shadow:0 2px 8px rgba(7,26,47,.05); height:100%; transition:transform .2s ease,box-shadow .2s ease; }
-.kpi-card:hover { transform:translateY(-4px); box-shadow:0 4px 12px rgba(7,26,47,.15); }
+.kpi-card {
+  background: #ffffff;
+  border-radius: 10px;
+  padding: 20px 22px 16px;
+  border: 1px solid #E0EBF4;
+  border-top: 4px solid #00C2A8;
+  box-shadow: 0 4px 16px rgba(7,26,47,.08);
+  height: 100%;
+  transition: transform .2s ease, box-shadow .2s ease, border-left-width 0.2s ease;
+}
+.kpi-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 8px 24px rgba(7,26,47,.18);
+}
 .kpi-card.accent-green { border-top-color:#1DB87A; }
 .kpi-card.accent-gold  { border-top-color:#F0B429; }
 .kpi-card.accent-teal  { border-top-color:#00C2A8; }
 .kpi-card.accent-navy  { border-top-color:#071A2F; }
 .kpi-card.accent-red   { border-top-color:#E84C4C; }
-.kpi-label   { font-family:'Rajdhani',sans-serif; font-size:0.78rem; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:#3A576B; margin-bottom:6px; }
-.kpi-value   { font-family:'Rajdhani',sans-serif; font-size:2rem; font-weight:700; color:#071A2F; line-height:1.1; }
+.kpi-label   { font-family:'Rajdhani',sans-serif; font-size:0.82rem; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:#3A576B; margin-bottom:6px; }
+.kpi-value   { font-family:'Rajdhani',sans-serif; font-size:2.2rem; font-weight:700; color:#071A2F; line-height:1.1; }
 .kpi-unit    { font-size:0.9rem; font-weight:500; color:#3A576B; margin-left:2px; }
 .kpi-delta-pos { color:#1DB87A; font-size:0.80rem; font-weight:700; margin-top:4px; }
 .kpi-delta-neg { color:#E84C4C; font-size:0.80rem; font-weight:700; margin-top:4px; }
@@ -232,7 +255,7 @@ div[data-testid="column"] button[aria-label="sidebar-toggle"] {
 .kpi-subtext { font-size:0.78rem; color:#5A7A90; margin-top:2px; }
 
 /* ── Section Headers & Charts ──────────────────────────────────────────── */
-.sec-hdr    { font-family:'Rajdhani',sans-serif; font-size:0.84rem; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:#00C2A8; border-bottom:1px solid rgba(0,194,168,.2); padding-bottom:6px; margin-bottom:14px; margin-top:4px; }
+.sec-hdr    { font-family:'Rajdhani',sans-serif; font-size:0.92rem; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:#00C2A8; border-bottom:1px solid rgba(0,194,168,.2); padding-bottom:6px; margin-bottom:14px; margin-top:8px; }
 .chart-card { background:#ffffff; border-radius:8px; border:1px solid #E0EBF4; padding:18px 18px 10px; box-shadow:0 2px 8px rgba(7,26,47,.04); margin-bottom:16px; }
 .chart-title   { font-family:'Rajdhani',sans-serif; font-size:0.88rem; font-weight:700; color:#071A2F; margin-bottom:4px; text-transform:uppercase; }
 .chart-caption { font-size:0.74rem; color:#8AACBF; margin-top:4px; font-style:italic; }
@@ -296,6 +319,98 @@ div[data-testid="column"] button[aria-label="sidebar-toggle"] {
 footer    { visibility: hidden; }
 div[data-testid="stToolbar"],
 div[data-testid="stStatusWidget"] { visibility: hidden; }
+
+/* ── Asset Cards ───────────────────────────────────────────────────────── */
+.asset-card {
+  background: #ffffff;
+  border-radius: 10px;
+  border: 1px solid #E0EBF4;
+  border-top: 4px solid #00C2A8;
+  padding: 18px 20px;
+  box-shadow: 0 2px 12px rgba(7,26,47,.06);
+  transition: transform .2s ease, box-shadow .2s ease;
+  height: 100%;
+}
+.asset-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 6px 20px rgba(7,26,47,.12);
+}
+.asset-name {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #071A2F;
+  margin-bottom: 2px;
+}
+.asset-type-badge {
+  display: inline-block;
+  background: rgba(0,194,168,.1);
+  color: #007A6A;
+  border-radius: 4px;
+  padding: 1px 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+.asset-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  color: #3A576B;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+.asset-row strong { color: #071A2F; }
+.epc-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #ffffff;
+  letter-spacing: 0.5px;
+}
+.epc-A { background: #00873D; }
+.epc-B { background: #2ECC40; color: #071A2F; }
+.epc-C { background: #85C226; color: #071A2F; }
+.epc-D { background: #F0B429; color: #071A2F; }
+.epc-E { background: #F06623; }
+.epc-F { background: #E84C4C; }
+.epc-G { background: #C0392B; }
+
+/* ── Portfolio Section Header ──────────────────────────────────────────── */
+.portfolio-section-hdr {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #071A2F;
+  padding: 12px 0 8px 0;
+  border-bottom: 2px solid #00C2A8;
+  margin-bottom: 18px;
+}
+
+/* ── Segment Switch Modal Overlay ──────────────────────────────────────── */
+.switch-modal {
+  background: #ffffff;
+  border: 1px solid #E0EBF4;
+  border-left: 5px solid #F0B429;
+  border-radius: 10px;
+  padding: 24px 28px;
+  box-shadow: 0 8px 32px rgba(7,26,47,.15);
+  margin: 16px 0;
+}
+
+/* ── Dashboard Section Divider ─────────────────────────────────────────── */
+.main-section-divider {
+  height: 1px;
+  background: linear-gradient(90deg,
+    rgba(0,194,168,0.4) 0%, rgba(0,194,168,0.05) 100%);
+  margin: 24px 0;
+}
 """
 
 logger = logging.getLogger(__name__)
