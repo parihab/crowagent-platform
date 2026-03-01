@@ -44,16 +44,11 @@ def render_sidebar() -> Tuple[Optional[str], Dict[str, Any], str]:
 
     # 2. Sidebar Content
     with st.sidebar:
-        # Active Segment Display
-        with st.container():
-            c1, c2 = st.columns([3, 1])
-            c1.markdown(f"**{SEGMENT_LABELS.get(segment, segment)}**")
-            if c2.button("🔁", key="btn_change_seg", help="Switch Segment"):
-                st.session_state.show_segment_switch_modal = True
-                st.session_state.pending_segment_switch = None
-                st.rerun()
+        # Branding
+        branding.render_sidebar_header()
 
-        st.markdown("---")
+        # Portfolio Summary
+        _render_portfolio_summary_compact()
 
         # Weather fetched silently; display lives in the Dashboard tab
         weather_data = _fetch_weather_silently()

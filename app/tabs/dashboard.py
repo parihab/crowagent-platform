@@ -25,59 +25,84 @@ import core.physics as physics
 from config.scenarios import SCENARIOS, SEGMENT_SCENARIOS
 
 
-def _render_segment_switch_modal() -> None:
-    """
-    Renders the segment switch confirmation panel.
-    Uses st.container(border=True) with .switch-modal CSS class.
-    Shows: warning text, segment being switched to,
-           PDF download button, Continue button, Cancel button.
-    """
-    from services.report_generator import generate_portfolio_report
-    from app.session import switch_segment_with_defaults
-    from app.segments import SEGMENT_LABELS
+from services.report_generator import generate_portfolio_report
+from app.session import switch_segment_with_defaults
+from app.segments import SEGMENT_LABELS
 
-    pending = st.session_state.get("pending_segment_switch", "")
-    new_label = SEGMENT_LABELS.get(pending, pending) if pending else "new segment"
 
-    with st.container(border=True):
-        branding.render_html(
-            '<div class="switch-modal">'
-            f'<h3 style="color:#F0B429;">⚠️ Switch to {html_mod.escape(str(new_label))}?</h3>'
-            '<p style="color:#3A576B; font-size:0.9rem;">'
-            "Your current portfolio and analysis will be replaced "
-            "with the new segment defaults. Would you like to "
-            "download your current report first?</p>"
-            "</div>"
-        )
-        col_dl, col_go, col_cancel = st.columns([2, 1.5, 1.5])
-        with col_dl:
-            try:
-                report_bytes = generate_portfolio_report(
-                    segment=st.session_state.get("user_segment"),
-                    portfolio=st.session_state.get("portfolio", []),
-                    scenario_results={},
-                    compliance_results={},
-                )
-                ext = "pdf" if report_bytes[:4] == b"%PDF" else "html"
-                st.download_button(
-                    label="📄 Download Portfolio Report",
-                    data=report_bytes,
-                    file_name=f"CrowAgent_Report_{st.session_state.get('user_segment', 'portfolio')}.{ext}",
-                    mime=f"application/{ext}",
-                    use_container_width=True,
-                )
-            except Exception:
-                st.caption("Report generation unavailable.")
-        with col_go:
-            if st.button("Continue without downloading", use_container_width=True):
-                if pending:
-                    switch_segment_with_defaults(pending)
-                st.rerun()
-        with col_cancel:
-            if st.button("Cancel", use_container_width=True, type="secondary"):
-                st.session_state.show_segment_switch_modal = False
-                st.session_state.pending_segment_switch = None
-                st.rerun()
+@st.dialog("Switch User Profile")
+def switch_profile_dialog():
+    """Renders the segment switch confirmation dialog."""
+    st.warning("⚠️ Warning: Switching profiles will clear your current portfolio and reset all scenarios to defaults.")
+
+    st.write("Select New Profile:")
+    current_segment = st.session_state.get("user_segment")
+
+    # Use a dictionary to map segment IDs to their labels for the buttons
+    other_segments = {
+        "smb_landlord": "🏢 Commercial Landlord",
+        "smb_industrial": "🏭 SMB Industrial",
+        "individual_selfbuild": "🏠 Individual Self-Build"
+    }
+    # Remove the current segment from the options
+    if current_segment in other_segments:
+        del other_segments[current_segment]
+
+    # Keep track of the selected segment within the dialog's state
+    if 'dialog_new_segment' not in st.session_state:
+        st.session_state.dialog_new_segment = None
+
+    cols = st.columns(len(other_segments))
+    for i, (segment_id, label) in enumerate(other_segments.items()):
+        if cols[i].button(label, key=f"dialog_seg_{segment_id}", use_container_width=True):
+            st.session_state.dialog_new_segment = segment_id
+            st.rerun()
+
+    new_segment = st.session_state.dialog_new_segment
+    st.markdown("---")
+
+    # --- Action Buttons ---
+    col_report, col_continue, col_cancel = st.columns([1.6, 2.2, 1])
+
+    def do_switch(segment_id):
+        """Helper to perform the switch and clean up state."""
+        switch_segment_with_defaults(segment_id)
+        del st.session_state.dialog_new_segment
+        st.rerun()
+
+    # Button 1: Continue by Report (Download then switch)
+    with col_report:
+        try:
+            report_bytes = generate_portfolio_report(
+                segment=st.session_state.user_segment,
+                portfolio=st.session_state.get("portfolio", []),
+                scenario_results={},
+                compliance_results={},
+            )
+            ext = "pdf" if report_bytes.startswith(b"%PDF") else "html"
+            st.download_button(
+                label="📄 Continue by Report",
+                data=report_bytes,
+                file_name=f"CrowAgent_Report_{st.session_state.user_segment}.{ext}",
+                mime=f"application/{ext}",
+                use_container_width=True,
+                disabled=not new_segment,
+                on_click=do_switch,
+                args=(new_segment,)
+            )
+        except Exception as e:
+            st.button("📄 Continue by Report", disabled=True, use_container_width=True, help=f"Report generation failed: {e}")
+
+    # Button 2: Continue Without Downloading
+    with col_continue:
+        if st.button("Continue Without Downloading", use_container_width=True, disabled=not new_segment):
+            do_switch(new_segment)
+
+    # Button 3: Cancel
+    with col_cancel:
+        if st.button("Cancel", use_container_width=True, type="secondary"):
+            del st.session_state.dialog_new_segment
+            st.rerun()
 
 
 def render(handler, weather: dict, portfolio: list[dict]) -> None:
@@ -89,7 +114,7 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
         weather: Current weather data dictionary.
         portfolio: Full list of portfolio assets (will be filtered by segment).
     """
-    # ── BLOCK 1: PAGE TITLE ──────────────────────────────────────────────────
+    # ── BLOCK 1: PAGE TITLE & SWITCHER ───────────────────────────────────────
     selected_names = st.session_state.get("selected_scenario_names", [])
     if not selected_names:
         selected_names = handler.default_scenarios
@@ -98,22 +123,23 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
         '<h2 style="font-family:Rajdhani,sans-serif; '
         'color:#071A2F; margin-bottom:4px;">📊 Portfolio Dashboard</h2>'
     )
-    st.caption(
-        f"Active segment: {handler.display_label} · "
-        f"{len(portfolio)} assets · "
-        f"Scenario: {selected_names[0] if selected_names else 'None'}"
-    )
-
-    # ── BLOCK 2: SEGMENT SWITCH MODAL ────────────────────────────────────────
-    if st.session_state.get("show_segment_switch_modal"):
-        _render_segment_switch_modal()
+    
+    # --- Profile Switcher UI ---
+    with st.container(border=True):
+        c1, c2 = st.columns([3, 1.2])
+        c1.markdown(f"Current Profile: **{handler.display_label}**")
+        if c2.button("🔁 Switch Profile", use_container_width=True):
+            # Clear any leftover state from a previous dialog run
+            if 'dialog_new_segment' in st.session_state:
+                del st.session_state.dialog_new_segment
+            switch_profile_dialog()
 
     # 1. Filter portfolio for this segment
     segment_portfolio = [p for p in portfolio if p.get("segment") == handler.segment_id]
 
     if not segment_portfolio:
-        st.info("Portfolio is empty. Add a building in the sidebar to begin analysis.")
-        return
+        st.info("Portfolio is empty. Add assets via the 'Portfolio Management' section below to begin analysis.")
+        st.stop()
 
     # Ensure Baseline is present for comparison
     if "Baseline (No Intervention)" not in selected_names:
@@ -153,8 +179,7 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
 
     # Determine baseline and best scenario for KPIs
     baseline_data = scenario_totals.get("Baseline (No Intervention)", {})
-    comparison_scenarios = [s for s in selected_names if s != "Baseline (No Intervention)"]
-
+    
     # ── BLOCK 3: KPI CARDS ────────────────────────────────────────────────────
     col1, col2, col3, col4 = st.columns(4)
 
