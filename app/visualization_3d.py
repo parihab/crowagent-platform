@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import math
 import requests
+import html
 from typing import Dict, List
 
 import overpy
@@ -481,7 +482,7 @@ def _render_2d_fallback(rows: list[dict]) -> None:
         yaxis=dict(gridcolor="#1A3A5C", title="MWh/yr"),
         showlegend=False,
     )
-    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     st.caption("2D fallback — 3D map requires a WebGL-capable browser (Chrome / Firefox)")
 
 
@@ -553,7 +554,7 @@ def _render_3d_map(
             selected_building=selected_building,
             map_style=_MAP_STYLE_LIGHT,
         )
-        st.pydeck_chart(deck, width="stretch")
+        st.pydeck_chart(deck, use_container_width=True)
     except Exception as exc:
         st.warning(f"3D map could not render ({exc}). Showing 2D fallback.")
         _render_2d_fallback(rows)
@@ -599,10 +600,11 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
     center_lat, center_lon, location_label = _get_map_center()
 
     # ── Section header ────────────────────────────────────────────────────────
+    safe_location_label = html.escape(location_label)
     st.markdown(
         f"<div class='sec-hdr'>🗺️ 3D Campus Digital Twin"
         f"<span style='font-size:0.72rem;color:#5A7A90;font-weight:400;"
-        f"margin-left:12px;'>📍 {location_label}</span></div>",
+        f"margin-left:12px;'>📍 {safe_location_label}</span></div>",
         unsafe_allow_html=True,
     )
 
@@ -614,6 +616,7 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
             placeholder="Enter postcode or place name — e.g. SW1A 1AA, Edinburgh, Tokyo…",
             key="viz3d_location_search",
             label_visibility="collapsed",
+            max_chars=60,
         )
     with btn_col:
         search_clicked = st.button("🔍 Search", key="viz3d_search_btn",
@@ -636,7 +639,7 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
                 st.session_state.viz3d_selected_building = None
                 st.rerun()
         else:
-            st.warning(f"Location '{search_query}' not found — try a different postcode or name.")
+            st.warning(f"Location '{html.escape(search_query)}' not found — try a different postcode or name.")
 
     # ── Scenario selector ─────────────────────────────────────────────────────
     scenario_for_map = st.selectbox(
@@ -786,6 +789,7 @@ def _render_building_info_panel(
     icon = _BUILDING_ICONS.get(building_name, "🏢")
 
     # ── Header card ───────────────────────────────────────────────────────────
+    safe_location_label = html.escape(location_label)
     st.markdown(
         f"""<div style='background:linear-gradient(135deg,#071A2F 0%,#0D2640 100%);
                         border-left:4px solid #FFD700;border-radius:8px;
@@ -794,7 +798,7 @@ def _render_building_info_panel(
     {icon} {building_name}
   </div>
   <div style='font-size:0.76rem;color:#8FBCCE;margin-top:3px;'>
-    📍 Greenfield Campus · {location_label}
+    📍 Greenfield Campus · {safe_location_label}
   </div>
   <div style='font-size:0.74rem;color:#5A7A90;margin-top:2px;'>
     {bdata.get("building_type","University building")} &nbsp;·&nbsp;
@@ -924,7 +928,7 @@ def _info_tab_overview(bdata: dict, scenario_names: list[str], weather: dict) ->
             yaxis=dict(gridcolor="#1A3A5C"),
             legend=dict(orientation="h", y=-0.28, font=dict(size=9)),
         )
-        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
 def _info_tab_seasonal(bdata: dict) -> None:
@@ -961,7 +965,7 @@ def _info_tab_seasonal(bdata: dict) -> None:
                     gridcolor="rgba(0,0,0,0)"),
         legend=dict(orientation="h", y=-0.28, font=dict(size=9)),
     )
-    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
     # Monthly cost grid — two rows of 6
     for row_months in [months[:6], months[6:]]:
@@ -1176,7 +1180,7 @@ def render_3d_energy_map(buildings_data: List[Dict]) -> None:
     try:
         st.pydeck_chart(
             _build_deck(rows, center_lat, center_lon),
-            width="stretch",
+            use_container_width=True,
         )
     except Exception as exc:
         st.warning(f"3D map failed: {exc}")

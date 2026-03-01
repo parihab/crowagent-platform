@@ -1,4 +1,5 @@
 import streamlit as st
+import html
 from app.segments import SEGMENT_LABELS
 import services.weather as wx
 import services.location as loc
@@ -70,6 +71,7 @@ def render_sidebar():
             }
 
         # Weather Widget
+        condition_safe = html.escape(weather.get('condition', ''))
         st.markdown(
             f"""
             <div class="wx-widget">
@@ -77,7 +79,7 @@ def render_sidebar():
                     <div class="wx-temp">{weather.get('temperature_c')}°C</div>
                     <div style="font-size:2rem;">{weather.get('condition_icon')}</div>
                 </div>
-                <div class="wx-desc">{weather.get('condition')}</div>
+                <div class="wx-desc">{condition_safe}</div>
                 <div class="wx-row">💨 {weather.get('wind_speed_mph', 0)} mph &nbsp; 💧 {weather.get('humidity_pct', 0)}%</div>
             </div>
             """,
