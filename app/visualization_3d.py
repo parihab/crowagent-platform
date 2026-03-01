@@ -21,6 +21,8 @@ import overpy
 import pandas as pd
 import streamlit as st
 
+from config.constants import CI_ELECTRICITY, ELEC_COST_PER_KWH, HEATING_SETPOINT_C
+
 try:
     import pydeck as pdk
     _PYDECK_AVAILABLE = True
@@ -61,12 +63,12 @@ _MONTH_NAMES: List[str] = [
 # The remaining 40% (lighting, equipment, hot water) is roughly flat year-round.
 # Heating load scales with heating degree days vs. the annual average.
 _HEATING_FRACTION = 0.60
-_UK_ANNUAL_AVG_TEMP_C = 11.0   # °C — UK annual mean (Met Office 1991–2020)
-_SETPOINT_C = 21.0             # Part L heating set-point
+_UK_ANNUAL_AVG_TEMP_C = 11.0    # °C — UK annual mean (Met Office 1991–2020)
+_SETPOINT_C = HEATING_SETPOINT_C  # Part L heating set-point
 
 # ── Emissions & cost constants ────────────────────────────────────────────────
-_CI               = 0.20482   # kgCO₂e/kWh  (BEIS 2023 grid intensity)
-_ELEC_GBP_PER_KWH = 0.28      # £/kWh        (HESA 2022-23 HE sector average)
+_CI               = CI_ELECTRICITY    # kgCO₂e/kWh  (BEIS 2023 grid intensity)
+_ELEC_GBP_PER_KWH = ELEC_COST_PER_KWH # £/kWh        (HESA 2022-23 HE sector average)
 
 # ── Building display icons ────────────────────────────────────────────────────
 _BUILDING_ICONS: dict[str, str] = {

@@ -4,6 +4,7 @@ Utility functions for the Streamlit application.
 import re
 import streamlit as st
 import time
+from typing import Any
 
 # Gemini API Key Validation
 # Matches the format "AIza" followed by 35 alphanumeric/hyphen/underscore characters.
@@ -15,6 +16,35 @@ def show_congratulations():
     st.success("Congratulations! You've successfully run the script.")
     time.sleep(1)
     st.balloons()
+
+def _extract_uk_postcode(text: str) -> str:
+    """
+    Extracts the first valid UK postcode from a string.
+    Returns the postcode in standard format (e.g., "SW1A 1AA") or empty string.
+    """
+    if not text:
+        return ""
+    # Regex for UK postcodes (simplified but robust for extraction)
+    match = re.search(r'\b([A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b', text, re.IGNORECASE)
+    if match:
+        return match.group(1).upper()
+    return ""
+
+def _safe_number(value: Any, default: float = 0.0) -> float:
+    """Safely converts a value to float, returning default on failure."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+def _safe_nested_number(container: dict, *keys: str, default: float = 0.0) -> float:
+    """Safely retrieves a nested number from a dict."""
+    current = container
+    for k in keys:
+        if not isinstance(current, dict):
+            return default
+        current = current.get(k)
+    return _safe_number(current, default)
 
 def validate_gemini_key(key: str) -> tuple[bool, str]:
     """

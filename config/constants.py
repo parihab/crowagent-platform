@@ -1,10 +1,37 @@
 """
-Physical and financial constants.
+Physical and financial constants for the CrowAgent™ Platform.
 """
-ELEC_COST_PER_KWH = 0.28
-GRID_CARBON_INTENSITY_KG_PER_KWH = 0.20482
+
+# Grid & Energy
+CI_ELECTRICITY = 0.20482  # kgCO2e/kWh (BEIS 2023)
+CI_GAS = 0.18316
+CI_OIL = 0.24666
+CI_LPG = 0.21448
+
+ELEC_COST_PER_KWH = 0.28  # £/kWh (HESA 2022-23)
 GAS_COST_PER_KWH = 0.07
+
+# Physics / Thermal Model
 HEATING_SETPOINT_C = 21.0
 HEATING_HOURS_PER_YEAR = 5800.0
 BASE_ACH = 0.5
-SOLAR_IRRADIANCE_KWH_M2_YEAR = 950.0
+SOLAR_IRRADIANCE_KWH_M2_YEAR = 1000.0
+
+# Compliance Targets (Part L 2021)
+PART_L_2021_U_WALL = 0.18
+PART_L_2021_U_ROOF = 0.15
+PART_L_2021_U_GLAZING = 1.4
+
+PART_L_2021_ND_U_WALL = 0.26
+PART_L_2021_ND_U_ROOF = 0.18
+PART_L_2021_ND_U_GLAZING = 1.6
+
+FHS_MAX_PRIMARY_ENERGY = 45.0  # kWh/m2/yr
+
+EPC_BANDS = {
+    "A": (92, 100), "B": (81, 91), "C": (69, 80), "D": (55, 68),
+    "E": (39, 54), "F": (21, 38), "G": (1, 20)
+}
+MEES_CURRENT_MIN_BAND = "E"
+MEES_2028_TARGET_BAND = "C"
+MEES_2030_TARGET_BAND = "B"
