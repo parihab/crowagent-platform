@@ -38,6 +38,7 @@ import app.sidebar as sidebar
 import app.tabs.dashboard as tab_dashboard
 import app.tabs.financial as tab_financial
 import app.tabs.compliance_hub as tab_compliance
+import app.tabs.ai_advisor as tab_ai_advisor
 import core.about as about_page
 from app.segments import SEGMENT_IDS, get_segment_handler
 
@@ -217,7 +218,7 @@ def _page_ai_advisor() -> None:
     _page_setup()
     handler, weather, portfolio = _get_page_context()
     if handler:
-        sidebar.render_ai_advisor(handler, weather)
+        tab_ai_advisor.render(handler, weather, portfolio)
     branding.render_footer()
 
 

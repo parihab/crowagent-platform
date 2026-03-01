@@ -55,24 +55,43 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
         portfolio: Full list of portfolio assets.
     """
     # 1. Header & Disclaimer
+    st.markdown("# 🤖 CrowAgent™ AI Advisor")
     st.markdown(
-        """
-        <div style="margin-bottom: 20px;">
-            <h2 style="margin-bottom: 5px;">🤖 AI Sustainability Consultant</h2>
-            <div style="color: #5A7A90; font-size: 0.9rem;">
-                Physics-informed decision support for your portfolio.
-                <span style="background: rgba(240,180,41,0.15); color: #8A6D0B; padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; font-weight: 600; margin-left: 8px;">
-                    ⚠️ AI outputs are indicative only. Verify with a qualified surveyor.
-                </span>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
+        "Physics-grounded agentic AI that runs real thermal "
+        "simulations, compares scenarios and gives evidence-based "
+        "Net Zero investment recommendations."
+    )
+    st.caption(
+        "Powered by Google Gemini · Physics-informed reasoning "
+        "· © 2026 Aparajita Parihar"
+    )
+    st.warning(
+        "⚠️ AI Accuracy Disclaimer. The AI Advisor generates responses "
+        "based on physics tool outputs and large language model reasoning. "
+        "Like all AI systems, it can make mistakes, misinterpret questions, "
+        "or produce plausible-sounding but incorrect conclusions. All "
+        "AI-generated recommendations must be independently verified by a "
+        "qualified professional before any action is taken. This AI Advisor "
+        "is not a substitute for professional engineering or financial "
+        "advice. Results are indicative only.",
+        icon=None,
     )
 
     # 2. Check API Key
-    if not st.session_state.get("gemini_key_valid"):
-        st.info("🔑 Please enter a valid Google Gemini API key in the sidebar to activate the AI Advisor.")
+    api_key = st.session_state.get("gemini_key", "").strip()
+
+    if not api_key:
+        # --- LOCKED STATE ---
+        with st.container(border=True):
+            st.markdown("### 🔑 Activate AI Advisor with a free Gemini API key")
+            st.markdown("""
+            1. Visit [aistudio.google.com](https://aistudio.google.com)
+            2. Sign in with any Google account
+            3. Click **Get API key** → **Create API key**
+            4. Paste it into **API Keys** in the sidebar
+            """)
+            st.caption("Free tier · 1,500 requests/day · No credit card required")
+            st.caption("CrowAgent™ Platform")
         return
 
     # 3. Initialize Chat History
@@ -106,16 +125,16 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
         cols = st.columns(2)
         for i, q in enumerate(questions):
             if cols[i % 2].button(q, key=f"starter_{i}", use_container_width=True):
-                _handle_user_input(q, handler, portfolio)
+                _handle_user_input(q, handler, portfolio, api_key)
                 st.rerun()
 
     # 6. Chat Input
     if prompt := st.chat_input("Ask about your portfolio, scenarios, or regulations..."):
-        _handle_user_input(prompt, handler, portfolio)
+        _handle_user_input(prompt, handler, portfolio, api_key)
         st.rerun()
 
 
-def _handle_user_input(user_text: str, handler, portfolio: list[dict]) -> None:
+def _handle_user_input(user_text: str, handler, portfolio: list[dict], api_key: str) -> None:
     """Process user input, run the agent loop, and update UI."""
     st.session_state.chat_history.append({"role": "user", "content": user_text})
     
@@ -131,7 +150,7 @@ def _handle_user_input(user_text: str, handler, portfolio: list[dict]) -> None:
             stream = agent.run_agent_turn(
                 user_message=user_text,
                 history=st.session_state.agent_history,
-                gemini_key=st.session_state.gemini_key,
+                gemini_key=api_key,
                 building_registry=building_registry,
                 scenario_registry=SCENARIOS,
                 tariff=st.session_state.get("energy_tariff_gbp_per_kwh", 0.28),
