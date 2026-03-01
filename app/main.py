@@ -1,27 +1,18 @@
 """
 CrowAgent™ Platform — Main Application Orchestrator
 =====================================================
-Navigation architecture: st.navigation(position="top")
-  • The 6-page horizontal nav bar is rendered by Streamlit INSIDE the main
-    content area (above the page body), NOT in the sidebar.
+Navigation architecture: in-content horizontal button bar
+  • After segment selection, run() renders:
+      logo+toggle → nav bar (6 page buttons) → active page content → footer
+  • Navigation is driven by `_current_page` in session state; each button
+    sets the key and calls st.rerun() — no st.navigation / URL routing needed.
   • Sidebar is reserved exclusively for operational controls (segment,
     scenarios, portfolio, weather).
-  • A sidebar toggle button (☰ / ✕) lives in the page logo bar on every page,
-    giving users — especially mobile users — a visible, tap-friendly way to
-    show or hide the controls panel.
 
-Sidebar toggle design:
+Sidebar toggle:
   • `sidebar_visible` session-state key (bool, default True).
   • When False: CSS `display:none` on stSidebar — content area expands.
-  • Streamlit's native hamburger (☰) in the top-left still works as a
-    secondary toggle — both mechanisms coexist safely.
-  • `initial_sidebar_state: "auto"` in PAGE_CONFIG means Streamlit
-    auto-collapses the sidebar on narrow (mobile) viewports on first load.
-
-DRY page wrappers:
-  • `_page_setup()` — called once at the top of every page wrapper.
-    Injects CSS, hides sidebar if needed, renders the logo+toggle bar.
-  • Each page wrapper then just calls its renderer and the footer.
+  • `initial_sidebar_state: "auto"` auto-collapses on mobile viewports.
 """
 from __future__ import annotations
 
@@ -120,6 +111,39 @@ def _render_logo_and_toggle() -> None:
 
 # ── Shared page setup ────────────────────────────────────────────────────────
 
+def _render_page_nav() -> None:
+    """Horizontal in-content navigation bar with one button per page.
+
+    Uses session-state key `_current_page` for routing; the active page
+    button is rendered as type="primary", others as type="secondary".
+    Compliance title is resolved dynamically from the current segment.
+    """
+    segment = st.session_state.get("user_segment", "")
+    compliance_label = _COMPLIANCE_TITLES.get(segment, "Compliance")
+    current = st.session_state.get("_current_page", "dashboard")
+
+    _NAV_ITEMS = [
+        ("dashboard",  "📊", "Dashboard"),
+        ("financial",  "📈", "Financial Analysis"),
+        ("compliance", "🏛️", compliance_label),
+        ("ai_advisor", "🤖", "AI Advisor"),
+        ("settings",   "⚙️", "Settings"),
+        ("about",      "ℹ️", "About & Contact"),
+    ]
+
+    cols = st.columns(len(_NAV_ITEMS))
+    for col, (key, icon, label) in zip(cols, _NAV_ITEMS):
+        with col:
+            if st.button(
+                f"{icon} {label}",
+                key=f"_nav_{key}",
+                use_container_width=True,
+                type="primary" if current == key else "secondary",
+            ):
+                st.session_state["_current_page"] = key
+                st.rerun()
+
+
 def _page_setup() -> None:
     """Single DRY call placed at the top of every page wrapper.
 
@@ -127,10 +151,12 @@ def _page_setup() -> None:
       1. inject_branding() — CSS must arrive before any rendered element.
       2. _inject_sidebar_css() — conditional hide rule (no-op when visible).
       3. _render_logo_and_toggle() — logo bar + toggle button.
+      4. _render_page_nav() — 6-button horizontal navigation row.
     """
     branding.inject_branding()
     _inject_sidebar_css()
     _render_logo_and_toggle()
+    _render_page_nav()
 
 
 # ── Shared context helper ────────────────────────────────────────────────────
@@ -243,29 +269,18 @@ def run() -> None:
     _segment, _weather, _location = sidebar.render_sidebar()
     st.session_state["_current_weather"] = _weather
 
-    # 7. Conditional sidebar hide CSS
-    _inject_sidebar_css()
-
-    # 8. Dynamic compliance page title (rebuilt every rerun → segment-aware)
-    _compliance_title = _COMPLIANCE_TITLES.get(
-        st.session_state.user_segment, "Compliance"
-    )
-
-    # 9. Build navigation — position="top" puts the 6-link bar in the main
-    # content area, NOT in the sidebar.  The sidebar is now controls-only.
-    _pages = [
-        st.Page(_page_dashboard,  title="Dashboard",          icon="📊", default=True),
-        st.Page(_page_financial,  title="Financial Analysis", icon="📈"),
-        st.Page(_page_compliance, title=_compliance_title,    icon="🏛️"),
-        st.Page(_page_ai_advisor, title="AI Advisor",         icon="🤖"),
-        st.Page(_page_settings,   title="Settings",           icon="⚙️"),
-        st.Page(_page_about,      title="About & Contact",    icon="ℹ️"),
-    ]
-
-    _nav = st.navigation(_pages, position="top")
-
-    # 10. Execute active page wrapper
-    _nav.run()
+    # 7. Route to active page — _page_setup() inside each wrapper handles
+    # CSS injection, logo bar, sidebar CSS, and the nav button row.
+    _ROUTE = {
+        "dashboard":  _page_dashboard,
+        "financial":  _page_financial,
+        "compliance": _page_compliance,
+        "ai_advisor": _page_ai_advisor,
+        "settings":   _page_settings,
+        "about":      _page_about,
+    }
+    _current = st.session_state.get("_current_page", "dashboard")
+    _ROUTE.get(_current, _page_dashboard)()
 
 
 if __name__ == "__main__":
