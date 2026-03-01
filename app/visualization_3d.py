@@ -1227,19 +1227,35 @@ def render_3d_energy_map(buildings_data: List[Dict]) -> None:
         _render_2d_fallback(rows)
         return
 
-    # Add synthetic polygon footprints for legacy callers that don't supply them
-    for row in rows:
-        if "polygon" not in row:
-            row["polygon"] = _synthetic_polygon(row["lat"], row["lon"])
-        if "scenario" not in row:
-            row["scenario"] = ""
-
     center_lat = sum(r["lat"] for r in rows) / len(rows)
     center_lon = sum(r["lon"] for r in rows) / len(rows)
 
+    # Use ColumnLayer for portfolio view (better for point data than synthetic polygons)
+    layer = pdk.Layer(
+        "ColumnLayer",
+        data=pd.DataFrame(rows),
+        get_position="[lon, lat]",
+        get_elevation="elevation",
+        elevation_scale=0.02,
+        radius=25,
+        get_fill_color="fill_color",
+        pickable=True,
+        auto_highlight=True,
+    )
+
     try:
         st.pydeck_chart(
-            _build_deck(rows, center_lat, center_lon),
+            pdk.Deck(
+                layers=[layer],
+                initial_view_state=pdk.ViewState(
+                    latitude=center_lat, longitude=center_lon, zoom=13, pitch=50
+                ),
+                tooltip={
+                    "html": "<b>{name}</b><br/>Energy: {energy_mwh:.1f} MWh<br/>Carbon: {carbon_t:.1f} t",
+                    "style": {"backgroundColor": "#0D2640", "color": "#E0EAF0"}
+                },
+                map_style=_MAP_STYLE_LIGHT,
+            ),
             use_container_width=True,
         )
     except Exception as exc:
