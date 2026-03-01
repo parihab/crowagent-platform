@@ -75,6 +75,9 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
         }
 
         for building in segment_portfolio:
+            # Ensure height_m exists (migration for existing sessions)
+            if "height_m" not in building:
+                building["height_m"] = 3.5
             r = physics.calculate_thermal_load(building, s_data, weather, tariff)
             totals["annual_energy_mwh"] += r["annual_energy_mwh"]
             totals["carbon_saving_tco2"] += r["carbon_saving_tco2"]

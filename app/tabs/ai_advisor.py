@@ -44,7 +44,7 @@ STARTER_PROMPTS = {
 }
 
 
-def render() -> None:
+def render(handler, weather: dict, portfolio: list[dict]) -> None:
     """Renders the AI Advisor tab."""
 
     # ── BLOCK 1: PAGE HEADER ──────────────────────────────────────────────────
