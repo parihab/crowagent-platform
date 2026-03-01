@@ -14,8 +14,11 @@ def _get_secret(key: str, default: str = "") -> str:
     Safely retrieves a secret from st.secrets, with a fallback to os.environ
     for local development (e.g., using a .env file).
     """
-    if hasattr(st, "secrets") and key in st.secrets:
-        return st.secrets[key]
+    try:
+        if hasattr(st, "secrets") and key in st.secrets:
+            return st.secrets[key]
+    except Exception:
+        pass
     return os.environ.get(key, default)
 
 
