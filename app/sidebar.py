@@ -241,3 +241,16 @@ def render_ai_advisor():
                         st.session_state.chat_history, 
                         st.session_state.gemini_key, 
                         active_buildings, 
+                        SCENARIOS,
+                        tariff=st.session_state.get("energy_tariff_gbp_per_kwh", 0.28)
+                    )
+
+                    # Handle response dict from agent
+                    answer = response.get("answer", "")
+                    if not answer and response.get("error"):
+                        answer = f"I encountered an error: {response['error']}"
+                    elif not answer:
+                        answer = "I'm sorry, I couldn't generate a response."
+
+                    st.markdown(answer)
+                    st.session_state.chat_history.append({"role": "assistant", "content": answer})
