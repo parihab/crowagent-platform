@@ -196,7 +196,7 @@ PAGE_CONFIG = {
     "page_title": "CrowAgent™ Platform",
     "page_icon": get_icon_uri() or "🌿",
     "layout": "wide",
-    "initial_sidebar_state": "expanded",
+    "initial_sidebar_state": "auto",
     "menu_items": {
         "Get Help": "mailto:crowagent.platform@gmail.com",
         "Report a bug": "https://github.com/WonderApri/crowagent-platform/issues",

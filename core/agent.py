@@ -493,8 +493,11 @@ def run_agent_turn(
     # Note: Freeze signature doesn't include current_context, but logic might need it.
     # We will assume context is embedded in user_message or handled by caller.
     # For strict compliance, we remove the explicit param from signature.
-    ctx_text = ""
-    # if current_context: ... (Removed to match signature)
+    
+    # Inject available buildings context to help the agent know valid tool arguments
+    b_names = list(building_registry.keys())
+    b_list = ", ".join(f"'{name}'" for name in b_names)
+    ctx_text = f"\n\n[System Context: Active buildings: {b_list}]" if b_names else ""
 
     messages.append({
         "role": "user",
