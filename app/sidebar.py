@@ -199,8 +199,8 @@ def _fetch_weather_silently() -> Dict[str, Any]:
     try:
         return weather_service.get_weather(
             lat, lon, loc_name, provider,
-            met_key=st.session_state.get("met_office_key"),
-            owm_key=st.session_state.get("openweathermap_key"),
+            met_office_key=st.session_state.get("met_office_key"),
+            openweathermap_key=st.session_state.get("openweathermap_key"),
         )
     except Exception:
         return {
