@@ -8,6 +8,7 @@ import streamlit as st
 import sys
 import os
 import html
+import logging
 
 # Ensure project root is in sys.path for absolute imports
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -53,6 +54,13 @@ def _resolve_query_params() -> None:
 
 # ── Main orchestrator ────────────────────────────────────────────────────────
 def run() -> None:
+    # Configure logging (CQ-004)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)]
+    )
+
     branding.inject_branding()
     session.init_session()
     _resolve_query_params()

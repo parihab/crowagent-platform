@@ -10,6 +10,7 @@ GET /api/v1/non-domestic/search
 from __future__ import annotations
 
 import os
+import logging
 import re
 from typing import Any
 from urllib.parse import quote
@@ -22,6 +23,8 @@ import streamlit as st
 class EPCFetchError(RuntimeError):
     """Raised when EPC lookup fails and stub data cannot be generated."""
 
+
+logger = logging.getLogger(__name__)
 
 EPC_API_URL_ENV = "EPC_API_URL"
 EPC_API_KEY_ENV = "EPC_API_KEY"
@@ -166,7 +169,8 @@ def fetch_epc_data(
                 "_is_stub": False,
                 "_stub_reason": "",
             }
-        except (requests.RequestException, ValueError, TypeError):
+        except (requests.RequestException, ValueError, TypeError) as e:
+            logger.warning("EPC API fetch failed for %s: %s", url, e)
             had_transport_error = True
             continue
 
@@ -188,6 +192,12 @@ def search_addresses(
 ) -> list[dict[str, Any]]:
     """Search UK addresses for picker UX via EPC API with resilient fallbacks."""
     q = str(query or "").strip()
+    
+    # Harden against long inputs (SEC-007)
+    if len(q) > 100:
+        logger.warning("Truncating long address query: %s...", q[:20])
+        q = q[:100]
+
     postcode = _normalize_postcode(q)
     if not postcode:
         return []
@@ -210,7 +220,8 @@ def search_addresses(
                 )
                 resp.raise_for_status()
                 rows = (resp.json() or {}).get("rows", []) if resp.content else []
-            except (requests.RequestException, ValueError, TypeError, AttributeError):
+            except (requests.RequestException, ValueError, TypeError, AttributeError) as e:
+                logger.warning("EPC API search error (%s): %s", endpoint, e)
                 continue
 
             for row in rows:
@@ -264,7 +275,8 @@ def search_addresses(
                     "postcode": result_postcode,
                 }
             ]
-    except (requests.RequestException, ValueError, TypeError, AttributeError):
+    except (requests.RequestException, ValueError, TypeError, AttributeError) as e:
+        logger.info("findthatpostcode fallback failed: %s", e)
         pass
 
     try:
@@ -276,7 +288,8 @@ def search_addresses(
         )
         resp.raise_for_status()
         rows = resp.json() if resp.content else []
-    except (requests.RequestException, ValueError, TypeError):
+    except (requests.RequestException, ValueError, TypeError) as e:
+        logger.warning("Nominatim search failed: %s", e)
         return []
 
     for row in rows:
