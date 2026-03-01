@@ -1258,3 +1258,6 @@ def render_4d_carbon_timeline(
     month = st.slider("Select Month", 1, 12, 1)
     st.markdown(f"**Carbon Intensity — {_MONTH_NAMES[month - 1]} 2025**")
     render_3d_energy_map(scenarios_over_time.get(month, []))
+
+# Alias for dashboard compatibility
+render_3d_building = render_3d_energy_map
