@@ -23,10 +23,10 @@ except ImportError:
         match = re.search(r'([Gg][Ii][Rr] 0[Aa]{2})|((([A-Za-z][0-9]{1,2})|(([A-Za-z][A-Ha-hJ-Yj-y][0-9]{1,2})|(([A-Za-z][0-9][A-Za-z])|([A-Za-z][A-Ha-hJ-Yj-y][0-9][A-Za-z]?))))\s?[0-9][A-Za-z]{2})', text)
         return match.group(0).upper() if match else ""
     
-    def validate_gemini_key(key: str) -> Tuple[bool, str, bool]:
-        if not key: return False, "Key is empty", False
-        if not key.startswith("AIza"): return False, "Key should start with 'AIza'", False
-        return True, "Valid format", True
+    def validate_gemini_key(key: str) -> Tuple[bool, str]:
+        if not key: return False, "Key is empty"
+        if not key.startswith("AIza"): return False, "Key should start with 'AIza'"
+        return True, "Valid format"
 
 logger = logging.getLogger(__name__)
 
@@ -197,8 +197,9 @@ def _render_weather_widget() -> Dict[str, Any]:
     provider = st.selectbox("Provider", ["open_meteo", "met_office", "manual"], index=0, key="sb_wx_prov")
     st.session_state.weather_provider = provider
     
-    lat, lon, loc_name = 51.45, -0.97, "Reading (Default)"
-    # Logic to find location from portfolio would go here
+    lat = st.session_state.get("wx_lat", 51.45)
+    lon = st.session_state.get("wx_lon", -0.97)
+    loc_name = st.session_state.get("wx_location_name", "Reading (Default)")
     
     try:
         weather = weather_service.get_weather(
@@ -220,7 +221,12 @@ def _render_api_keys():
         gem_key = st.text_input("Gemini API key", value=st.session_state.get("gemini_key", ""), type="password", key="inp_gem_key")
         if gem_key != st.session_state.get("gemini_key"):
             st.session_state.gemini_key = gem_key
-            is_valid, msg, _ = validate_gemini_key(gem_key)
+            is_valid, msg = validate_gemini_key(gem_key)
+            st.session_state.gemini_key_valid = is_valid
+        
+        # Auto-validate if key exists (e.g. from secrets) but validity not set
+        if st.session_state.get("gemini_key") and not st.session_state.get("gemini_key_valid"):
+            is_valid, msg = validate_gemini_key(st.session_state.gemini_key)
             st.session_state.gemini_key_valid = is_valid
 
 def _render_ai_advisor_panel():
@@ -279,15 +285,18 @@ def render_ai_advisor(handler, weather_data: Dict[str, Any]):
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
                 try:
-                    response = agent_service.run_agent_turn(
+                    result = agent_service.run_agent_turn(
                         prompt,
                         st.session_state.get("agent_history", []),
                         st.session_state.gemini_key,
                         handler.building_registry,
                         SCENARIOS
                     )
-                    st.markdown(response)
-                    st.session_state.chat_history.append({"role": "assistant", "content": response})
+                    answer = result.get("answer", "I couldn't generate a response.")
+                    st.markdown(answer)
+                    st.session_state.chat_history.append({"role": "assistant", "content": answer})
+                    if "updated_history" in result:
+                        st.session_state.agent_history = result["updated_history"]
                 except Exception as e:
                     st.error(f"AI Error: {str(e)}")
 

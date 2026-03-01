@@ -16,8 +16,6 @@ import math
 import requests
 import html
 from typing import Dict, List
-
-import overpy
 import pandas as pd
 import streamlit as st
 
@@ -30,6 +28,12 @@ try:
     _PYDECK_AVAILABLE = True
 except ImportError:
     _PYDECK_AVAILABLE = False
+
+try:
+    import overpy
+    _OVERPY_AVAILABLE = True
+except ImportError:
+    _OVERPY_AVAILABLE = False
 
 # ── Fictional Greenfield University — building offsets from city centre ───────
 # Expressed as (north_m, east_m) so the campus auto-relocates to whatever
@@ -751,6 +755,10 @@ def render_campus_3d_map(selected_scenario_names: list[str], weather: dict) -> N
     )
 
     building_names = list(buildings.keys())
+    if not building_names:
+        st.caption("No buildings available to display.")
+        return
+
     card_cols = st.columns(len(building_names))
 
     for col, bname in zip(card_cols, building_names):
@@ -1095,6 +1103,9 @@ def fetch_osm_buildings(lat: float, lon: float, radius_m: int = 700) -> List[Dic
     Returns a list of dicts with keys ``polygon`` ([lon, lat] pairs),
     ``height_m``, and ``name``.  Returns ``[]`` on any network/parse failure.
     """
+    if not _OVERPY_AVAILABLE:
+        return []
+
     d_lat = radius_m / 111_000.0
     d_lon = radius_m / (111_000.0 * math.cos(math.radians(lat)))
     bbox  = (lat - d_lat, lon - d_lon, lat + d_lat, lon + d_lon)
@@ -1134,6 +1145,9 @@ def fetch_osm_roads(lat: float, lon: float, radius_m: int = 700) -> List[Dict]:
     Returns a list of dicts with keys ``path`` ([[lon, lat], ...]),
     ``kind`` and ``width``. Returns ``[]`` on any network/parse failure.
     """
+    if not _OVERPY_AVAILABLE:
+        return []
+
     d_lat = radius_m / 111_000.0
     d_lon = radius_m / (111_000.0 * math.cos(math.radians(lat)))
     bbox = (lat - d_lat, lon - d_lon, lat + d_lat, lon + d_lon)
