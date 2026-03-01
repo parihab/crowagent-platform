@@ -77,5 +77,29 @@ def run() -> None:
     with tab3:
         tab_compliance.render(handler, portfolio)
 
+    # ── Footer ───────────────────────────────────────────────────────────────
+    st.markdown(
+        f"""
+        <div class="ent-footer">
+            <img src="{branding.get_logo_uri()}" style="height: 28px; margin-bottom: 14px; opacity: 0.85;">
+            <div style="color: #CBD8E6; font-size: 0.9rem; font-weight: 600; margin-bottom: 10px; letter-spacing: 0.5px;">
+                CrowAgent™ Sustainability AI Decision Intelligence Platform v2.0.0 · Working Prototype
+            </div>
+            <div style="color: #8AACBF; font-size: 0.8rem; margin-bottom: 16px; max-width: 700px; line-height: 1.6;">
+                ⚠️ <strong>Results Are Indicative Only.</strong> This platform uses simplified physics models calibrated against published UK higher education sector averages. 
+                Outputs should not be used as the sole basis for capital investment decisions. Consult a qualified energy surveyor before committing to any retrofit programme. 
+                Greenfield University is a fictional institution used for demonstration purposes. All data is illustrative.
+            </div>
+            <div style="color: #5A7A90; font-size: 0.75rem; margin-bottom: 8px;">
+                © 2026 Aparajita Parihar · All rights reserved · Independent research project · CrowAgent™ is an unregistered trademark (UK IPO Class 42, registration pending) · Not licensed for commercial use without written permission
+            </div>
+            <div style="color: #3A5268; font-size: 0.7rem; font-family: monospace; letter-spacing: -0.2px;">
+                Physics: Raissi et al. (2019) J. Comp. Physics · doi:10.1016/j.jcp.2018.10.045 · Weather: Open-Meteo API + Met Office DataPoint · Carbon: BEIS 2023 · Costs: HESA 2022-23 · AI: Google Gemini 1.5 Pro
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 if __name__ == "__main__":
     run()
