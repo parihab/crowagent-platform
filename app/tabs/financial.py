@@ -3,85 +3,84 @@ import pandas as pd
 import plotly.graph_objects as go
 from core.physics import calculate_thermal_load
 from config.scenarios import SCENARIOS
+from config.constants import ELEC_COST_PER_KWH
 
-def render(handler, portfolio):
+def render(handler, portfolio: list[dict]) -> None:
     """
     Render the Financial Analysis tab.
     """
-    st.header("📈 Financial Analysis")
+    st.subheader("Investment & Return Analysis")
     
-    # Inputs
+    # Controls
     c1, c2 = st.columns(2)
     with c1:
-        discount_rate = st.slider("Discount Rate (%)", 0.0, 15.0, 5.0, 0.5) / 100.0
+        discount_rate = st.slider("Discount Rate (%)", 1.0, 15.0, 5.0, 0.5) / 100.0
     with c2:
-        analysis_period = st.slider("Analysis Period (Years)", 5, 30, 10)
+        term_years = st.slider("Analysis Term (Years)", 5, 25, 10)
 
-    # Filter active buildings
-    active_ids = st.session_state.get("active_analysis_ids", [])
-    active_buildings = [b for b in portfolio if b["id"] in active_ids]
+    # Data Prep
+    buildings = handler.building_registry
+    scenarios = [s for s in handler.scenario_whitelist if s != "Baseline (No Intervention)"]
     
-    if not active_buildings:
-        # Fallback to registry
-        active_buildings = [{"name": k, **v} for k, v in handler.building_registry.items()]
+    if not buildings or not scenarios:
+        st.info("Insufficient data for financial analysis.")
+        return
 
-    # Calculate ROI Table
+    # ROI Table Construction
     roi_data = []
-    weather_stub = {"temperature_c": 10.0} # Use average for financial projection
     
-    for b in active_buildings:
-        for s_name in handler.scenario_whitelist:
-            if s_name == "Baseline (No Intervention)": continue
-            
-            s_cfg = SCENARIOS.get(s_name)
-            if not s_cfg: continue
-            
-            try:
-                res = calculate_thermal_load(b, s_cfg, weather_stub)
-                capex = res.get("install_cost_gbp", 0)
-                annual_save = res.get("annual_saving_gbp", 0)
-                
-                # Simple NPV calculation
-                npv = -capex
-                for y in range(1, analysis_period + 1):
-                    npv += annual_save / ((1 + discount_rate) ** y)
-                
-                roi_data.append({
-                    "Building": b["name"],
-                    "Scenario": s_name,
-                    "Capex (£)": capex,
-                    "Annual Saving (£)": annual_save,
-                    "Payback (Yrs)": res.get("payback_years", 999),
-                    f"NPV ({analysis_period}yr)": round(npv, 0)
-                })
-            except Exception:
-                pass
+    # Dummy weather for steady-state annual calc (using annual avg approx 10.5C)
+    avg_weather = {"temperature_c": 10.5}
+    
+    for b_name, b_data in buildings.items():
+        # Get baseline first
+        bl_res = calculate_thermal_load(b_data, SCENARIOS["Baseline (No Intervention)"], avg_weather)
+        bl_cost = bl_res["annual_saving_gbp"] # This is saving vs itself (0), we need absolute cost
+        # Re-calc absolute baseline cost
+        bl_energy = bl_res["scenario_energy_mwh"]
+        bl_annual_cost = bl_energy * 1000 * ELEC_COST_PER_KWH
 
-    if roi_data:
-        df = pd.DataFrame(roi_data)
-        
-        # ROI Table
-        st.subheader("Investment Matrix")
-        st.dataframe(
-            df.style.format({
-                "Capex (£)": "£{:,.0f}",
-                "Annual Saving (£)": "£{:,.0f}",
-                "Payback (Yrs)": "{:.1f}",
-                f"NPV ({analysis_period}yr)": "£{:,.0f}"
-            }),
-            use_container_width=True
-        )
-        
-        # Payback Chart
-        st.subheader("Payback Comparison")
-        fig = go.Figure()
-        fig.add_trace(go.Bar(
-            x=df["Scenario"],
-            y=df["Payback (Yrs)"],
-            text=df["Building"],
-            marker_color="#00C2A8"
-        ))
-        fig.update_layout(yaxis_title="Years to Payback")
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("No financial data available. Check building parameters.")
+        for s_name in scenarios:
+            sc = SCENARIOS[s_name]
+            res = calculate_thermal_load(b_data, sc, avg_weather)
+            
+            saving_gbp = res["annual_saving_gbp"]
+            capex = res["install_cost_gbp"]
+            payback = res["payback_years"]
+            
+            # Simple NPV
+            cash_flows = [-capex] + [saving_gbp] * term_years
+            npv = sum(cf / ((1 + discount_rate) ** t) for t, cf in enumerate(cash_flows))
+            
+            roi_data.append({
+                "Building": b_name,
+                "Intervention": s_name,
+                "Capex (£)": capex,
+                "Annual Saving (£)": saving_gbp,
+                "Payback (Yrs)": payback if payback else 999,
+                f"{term_years}-Yr NPV (£)": npv
+            })
+
+    df = pd.DataFrame(roi_data)
+    
+    # Display Table
+    st.dataframe(
+        df.style.format({
+            "Capex (£)": "£{:,.0f}",
+            "Annual Saving (£)": "£{:,.0f}",
+            "Payback (Yrs)": "{:.1f}",
+            f"{term_years}-Yr NPV (£)": "£{:,.0f}"
+        }),
+        use_container_width=True,
+        hide_index=True
+    )
+
+    # Visualisation
+    st.subheader("Payback Period Comparison")
+    fig = go.Figure()
+    for s_name in scenarios:
+        subset = df[df["Intervention"] == s_name]
+        fig.add_trace(go.Bar(x=subset["Building"], y=subset["Payback (Yrs)"], name=s_name))
+    
+    fig.update_layout(yaxis_title="Years", barmode='group', height=400, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font=dict(color='#CBD8E6'))
+    st.plotly_chart(fig, use_container_width=True)

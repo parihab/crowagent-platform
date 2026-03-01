@@ -2,106 +2,105 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from app.branding import render_card
-from core.physics import calculate_thermal_load
 from app.visualization_3d import render_campus_3d_map
+from core.physics import calculate_thermal_load
 from config.scenarios import SCENARIOS
+from config.constants import CI_ELECTRICITY, ELEC_COST_PER_KWH
 
-def render(handler, weather, portfolio):
+def render(handler, weather: dict, portfolio: list[dict]) -> None:
     """
-    Render the Dashboard tab.
+    Render the main Dashboard tab.
     """
-    # Safely access default_scenarios with fallback
-    default_scenarios = getattr(handler, "default_scenarios", ["Baseline (No Intervention)"])
-
-    # Filter active buildings
-    active_ids = st.session_state.get("active_analysis_ids", [])
-    active_buildings = [b for b in portfolio if b["id"] in active_ids]
+    # 1. KPI Cards
+    # Calculate aggregate metrics for the active portfolio/segment
+    total_energy_mwh = 0.0
+    total_carbon_t = 0.0
     
-    # If no portfolio items, use default registry from handler
-    if not active_buildings:
-        active_buildings = [{"name": k, **v} for k, v in handler.building_registry.items()]
-
-    # ── KPI Cards ────────────────────────────────────────────────────────────
-    # Calculate aggregate savings for the first default scenario vs baseline
-    scenario_name = default_scenarios[1] if len(default_scenarios) > 1 else "Baseline (No Intervention)"
-    scenario_cfg = SCENARIOS.get(scenario_name)
+    # Use the first available scenario for "potential" savings display, or baseline
+    # For a real dashboard, we might sum up the 'Baseline' vs 'Selected Scenario'
+    # Here we show Baseline totals for the current segment assets
     
-    total_energy_saved = 0.0
-    total_carbon_saved = 0.0
-    total_cost_saved = 0.0
+    active_buildings = handler.building_registry
     
-    for b in active_buildings:
-        try:
-            res = calculate_thermal_load(b, scenario_cfg, weather)
-            total_energy_saved += res.get("energy_saving_mwh", 0)
-            total_carbon_saved += res.get("carbon_saving_t", 0)
-            total_cost_saved += res.get("annual_saving_gbp", 0)
-        except Exception:
-            pass
-
-    k1, k2, k3, k4 = st.columns(4)
-    with k1:
-        render_card("Energy Saved", f"{total_energy_saved:,.0f}", "MWh/yr", "accent-teal")
-    with k2:
-        render_card("Carbon Saved", f"{total_carbon_saved:,.1f}", "tCO₂e/yr", "accent-gold")
-    with k3:
-        render_card("Cost Saved", f"£{total_cost_saved:,.0f}", "per year", "accent-green")
-    with k4:
-        render_card("Active Assets", str(len(active_buildings)), "Buildings", "accent-navy")
-
-    # ── 3D Map ───────────────────────────────────────────────────────────────
-    st.markdown("### 🗺️ Campus Digital Twin")
-    # Convert list of dicts to dict of dicts for the map renderer
-    buildings_map = {b["name"]: b for b in active_buildings}
-    render_campus_3d_map(default_scenarios, weather)
-
-    # ── Thermal Load Chart ───────────────────────────────────────────────────
-    st.markdown("### ⚡ Thermal Load Analysis")
+    # Simple aggregation for KPIs based on registry (simulating portfolio view)
+    for b_name, b_data in active_buildings.items():
+        total_energy_mwh += b_data.get("baseline_energy_mwh", 0)
     
-    if not active_buildings:
-        st.info("No active buildings to analyse.")
-        return
+    total_carbon_t = total_energy_mwh * CI_ELECTRICITY
+    total_cost_k = (total_energy_mwh * 1000 * ELEC_COST_PER_KWH) / 1000
 
-    # Prepare data for chart
-    chart_data = []
-    for b in active_buildings:
-        for s_name in default_scenarios:
-            s_cfg = SCENARIOS.get(s_name)
-            if not s_cfg: continue
-            try:
-                res = calculate_thermal_load(b, s_cfg, weather)
-                chart_data.append({
-                    "Building": b["name"],
-                    "Scenario": s_name,
-                    "Energy (MWh)": res["scenario_energy_mwh"]
-                })
-            except Exception:
-                pass
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        render_card("Portfolio Energy", f"{total_energy_mwh:,.0f}", "MWh/yr", "accent-teal")
+    with c2:
+        render_card("Carbon Footprint", f"{total_carbon_t:,.1f}", "tCO₂e/yr", "accent-gold")
+    with c3:
+        render_card("Est. Energy Cost", f"£{total_cost_k:,.0f}k", "per annum", "accent-navy")
+    with c4:
+        render_card("Active Assets", f"{len(active_buildings)}", "Buildings", "accent-green")
+
+    # 2. Weather & Map Context
+    st.markdown("---")
+    col_map, col_wx = st.columns([3, 1])
     
-    if chart_data:
-        df_chart = pd.DataFrame(chart_data)
-        fig = go.Figure()
-        for s_name in default_scenarios:
-            subset = df_chart[df_chart["Scenario"] == s_name]
-            fig.add_trace(go.Bar(
-                x=subset["Building"],
-                y=subset["Energy (MWh)"],
-                name=s_name
-            ))
+    with col_wx:
+        st.subheader("Live Conditions")
+        st.markdown(f"""
+        <div class="wx-widget">
+            <div class="wx-temp">{weather.get('temperature_c', '--')}°C</div>
+            <div class="wx-desc">{weather.get('condition', 'Unknown')}</div>
+            <div class="wx-row">💨 Wind: {weather.get('wind_speed_mph', '--')} mph</div>
+            <div class="wx-row">💧 Humidity: {weather.get('humidity_pct', '--')}%</div>
+            <div class="wx-row">📍 {weather.get('location_name', 'Unknown')}</div>
+        </div>
+        """, unsafe_allow_html=True)
         
-        fig.update_layout(barmode='group', yaxis_title="Annual Energy (MWh)")
-        st.plotly_chart(fig, use_container_width=True)
+        st.caption(f"Source: {weather.get('source', 'Unknown')}")
 
-    # ── Portfolio Summary ────────────────────────────────────────────────────
-    st.markdown("### 📋 Portfolio Summary")
-    if active_buildings:
-        summary_rows = []
-        for b in active_buildings:
-            summary_rows.append({
-                "Name": b["name"],
-                "Type": b.get("building_type", "Unknown"),
-                "Area (m²)": b.get("floor_area_m2"),
-                "Built": b.get("built_year"),
-                "EPC": b.get("epc_band", "-")
+    with col_map:
+        # Render the 3D map with scenario selector
+        # We pass the handler's scenario whitelist
+        render_campus_3d_map(handler.scenario_whitelist, weather)
+
+    # 3. Portfolio Table
+    st.subheader("Asset Performance Summary")
+    
+    if not active_buildings:
+        st.info("No buildings in this segment registry.")
+    else:
+        rows = []
+        for b_name, b_data in active_buildings.items():
+            rows.append({
+                "Building": b_name,
+                "Type": b_data.get("building_type", "Unknown"),
+                "Area (m²)": f"{b_data.get('floor_area_m2', 0):,}",
+                "Baseline (MWh)": f"{b_data.get('baseline_energy_mwh', 0):,.0f}",
+                "Built": b_data.get("built_year", "-")
             })
-        st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, hide_index=True)
+        
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+    # 4. Comparative Analysis (Thermal Load)
+    st.subheader("Thermal Load Analysis")
+    st.caption("Physics-based simulation of heating demand under current weather conditions.")
+    
+    # Compare Baseline vs First Upgrade for all buildings
+    baseline_sc = SCENARIOS.get("Baseline (No Intervention)")
+    upgrade_sc_name = handler.scenario_whitelist[1] if len(handler.scenario_whitelist) > 1 else handler.scenario_whitelist[0]
+    upgrade_sc = SCENARIOS.get(upgrade_sc_name)
+
+    if baseline_sc and upgrade_sc:
+        fig = go.Figure()
+        b_names = list(active_buildings.keys())
+        
+        # Calculate for each building
+        base_vals = [calculate_thermal_load(active_buildings[b], baseline_sc, weather).get("scenario_energy_mwh", 0) for b in b_names]
+        upg_vals = [calculate_thermal_load(active_buildings[b], upgrade_sc, weather).get("scenario_energy_mwh", 0) for b in b_names]
+
+        fig.add_trace(go.Bar(name="Baseline", x=b_names, y=base_vals, marker_color="#5A7A90"))
+        fig.add_trace(go.Bar(name=upgrade_sc_name, x=b_names, y=upg_vals, marker_color="#00C2A8"))
+        
+        fig.update_layout(barmode='group', height=350, margin=dict(t=20, b=20), 
+                          paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                          font=dict(color='#CBD8E6'))
+        st.plotly_chart(fig, use_container_width=True)

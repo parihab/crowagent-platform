@@ -1,3 +1,9 @@
+import importlib
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.segments.base import SegmentHandler
+
 SEGMENT_LABELS = {
     "university_he": "🏛️ University / Higher Education",
     "smb_landlord": "🏢 Commercial Landlord",
@@ -7,10 +13,18 @@ SEGMENT_LABELS = {
 
 SEGMENT_IDS = list(SEGMENT_LABELS.keys())
 
-def get_segment_handler(segment_id):
-    class Handler:
-        def __init__(self):
-            self.building_registry = {}
-            self.scenario_whitelist = []
-            self.compliance_checks = []
-    return Handler()
+_HANDLER_MAP = {
+    "university_he": ("app.segments.university_he", "UniversityHEHandler"),
+    "smb_landlord": ("app.segments.commercial_landlord", "CommercialLandlordHandler"),
+    "smb_industrial": ("app.segments.smb_industrial", "SMBIndustrialHandler"),
+    "individual_selfbuild": ("app.segments.individual_selfbuild", "IndividualSelfBuildHandler"),
+}
+
+def get_segment_handler(segment_id: str) -> "SegmentHandler":
+    if segment_id not in _HANDLER_MAP:
+        raise ValueError(f"Unknown segment ID: {segment_id}")
+    
+    module_name, class_name = _HANDLER_MAP[segment_id]
+    module = importlib.import_module(module_name)
+    handler_class = getattr(module, class_name)
+    return handler_class()
