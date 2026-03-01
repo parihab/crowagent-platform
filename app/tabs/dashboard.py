@@ -18,6 +18,7 @@ import streamlit as st
 import app.branding as branding
 import core.physics as physics
 from config.scenarios import SCENARIOS
+from app.components.portfolio_modal import render_portfolio_modal
 
 
 def render(handler, weather: dict, portfolio: list[dict]) -> None:
@@ -29,6 +30,17 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
         weather: Current weather data dictionary.
         portfolio: Full list of portfolio assets (will be filtered by segment).
     """
+    # 0. Modal Trigger & Logic
+    if st.session_state.get("show_portfolio_modal"):
+        render_portfolio_modal()
+
+    # Header Row with Portfolio Trigger
+    h_col1, h_col2 = st.columns([4, 1])
+    with h_col2:
+        if st.button(f"📂 Manage Portfolio ({len(portfolio)})", key="btn_dash_manage_port", use_container_width=True):
+            st.session_state.show_portfolio_modal = True
+            st.rerun()
+
     # 1. Filter portfolio for this segment
     segment_portfolio = [p for p in portfolio if p.get("segment") == handler.segment_id]
 
