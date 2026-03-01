@@ -13,7 +13,8 @@
 
 import json
 import requests
-from typing import Any
+import time
+from typing import Any, Generator
 
 import config.constants as constants
 import core.physics as physics
@@ -26,18 +27,20 @@ MAX_OUTPUT_TOKENS    = 2000
 MAX_AGENT_LOOPS      = 10
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SYSTEM PROMPT
-# The agent's identity, knowledge, and behavioural rules
+# DYNAMIC SYSTEM PROMPT
 # ─────────────────────────────────────────────────────────────────────────────
-SYSTEM_PROMPT = f"""You are the CrowAgent™ AI Advisor — an expert sustainability \
+SYSTEM_PROMPT_TEMPLATE = """You are the CrowAgent™ AI Advisor — an expert sustainability \
 engineer embedded inside the CrowAgent™ Platform, a physics-informed campus \
 thermal intelligence system.
 
 YOUR ROLE:
-You help university estate managers make evidence-based, cost-effective \
+You help {segment_label}s make evidence-based, cost-effective \
 sustainability investment decisions. You reason about buildings, run \
 physics simulations using your tools, and translate technical outputs \
 into clear, actionable recommendations.
+
+CONTEXT:
+{segment_context}
 
 YOUR TOOLS — use them proactively, do not just answer from memory:
 • run_scenario: Run the PINN thermal model for one building + one intervention
@@ -47,11 +50,11 @@ YOUR TOOLS — use them proactively, do not just answer from memory:
 • rank_all_scenarios: Rank every intervention for a building by a chosen metric
 
 PHYSICS CONSTANTS (cite these in your answers):
-• Carbon intensity: {constants.CI_ELECTRICITY} kgCO₂e/kWh (BEIS 2023)
-• UK HE electricity cost: £{constants.DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH}/kWh (HESA 2022-23)
-• Heating set-point: {constants.HEATING_SETPOINT_C}°C (UK Building Regulations Part L)
-• Heating season: {constants.HEATING_HOURS_PER_YEAR} hours/yr (CIBSE Guide A)
-• Solar irradiance (Reading): {constants.SOLAR_IRRADIANCE_KWH_M2_YEAR} kWh/m²/yr (PVGIS)
+• Carbon intensity: {ci_elec} kgCO₂e/kWh (BEIS 2023)
+• UK HE electricity cost: £{tariff}/kWh (HESA 2022-23)
+• Heating set-point: {setpoint}°C (UK Building Regulations Part L)
+• Heating season: {hours} hours/yr (CIBSE Guide A)
+• Solar irradiance (Reading): {solar} kWh/m²/yr (PVGIS)
 
 BEHAVIOUR RULES:
 1. ALWAYS use tools to get real numbers — never invent figures
@@ -62,7 +65,6 @@ BEHAVIOUR RULES:
 6. If a question is outside your scope (not about campus energy/sustainability),
    politely say so in one sentence
 
-
 MANDATORY DISCLAIMER — include a brief version in EVERY response:
 Always end recommendations with one of these phrases (adapt as appropriate):
 "⚠️ These figures are indicative only. Verify with a qualified energy surveyor before investment."
@@ -71,12 +73,30 @@ OR
 
 ACCURACY LIMITATIONS you must be aware of:
 1. The physics model uses simplified steady-state assumptions — real buildings are more complex
-2. Energy prices may change — financial figures assume constant £{constants.DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH}/kWh
+2. Energy prices may change — financial figures assume constant £{tariff}/kWh
 3. Installation costs are typical ranges — actual quotes may vary significantly
 4. You are an AI and can make mistakes — never present results as definitive
 5. This platform is a working prototype — results are indicative only
 """
 
+SEGMENT_CONTEXTS = {
+    "university_he": {
+        "label": "University Estate Manager",
+        "context": "Focus on campus-wide decarbonisation, SECR reporting, student experience, and long-term estate strategy."
+    },
+    "smb_landlord": {
+        "label": "Commercial Landlord",
+        "context": "Focus on MEES compliance (Minimum Energy Efficiency Standards), EPC ratings, tenant retention, and ROI."
+    },
+    "smb_industrial": {
+        "label": "Industrial Site Manager",
+        "context": "Focus on Scope 1 & 2 emissions reduction, operational efficiency, grid constraints, and SECR carbon baselining."
+    },
+    "individual_selfbuild": {
+        "label": "Self-Build Homeowner",
+        "context": "Focus on Part L compliance, Future Homes Standard, thermal comfort, heat pumps, and grant eligibility."
+    }
+}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TOOL SCHEMAS — sent to Gemini so it knows what tools exist and how to call them
@@ -452,6 +472,7 @@ def _call_gemini(api_key: str, messages: list, use_tools: bool = True) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 # AGENTIC LOOP
 # Think → Call tools → Observe results → Think again → Final answer
+# Yields status updates for UI transparency.
 # ─────────────────────────────────────────────────────────────────────────────
 def run_agent_turn(
     user_message: str,
@@ -460,28 +481,32 @@ def run_agent_turn(
     building_registry: dict,
     scenario_registry: dict,
     tariff: float = constants.DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH,
-) -> dict:
+    segment: str = "university_he",
+) -> Generator[dict, None, None]:
     """
     Run the full agentic loop for one user turn.
-    Compliant with Architecture Freeze Task 013 signature.
-
-    Returns:
-        {
-          "answer": str,           # final text response
-          "tool_calls": list,      # list of {name, args, result} dicts
-          "error": str | None,     # error message if something failed
-          "loops": int,            # how many iterations the agent took
-        }
+    Yields events:
+      {"type": "status", "msg": "..."}
+      {"type": "tool_start", "name": "..."}
+      {"type": "tool_end", "name": "..."}
+      {"type": "final", "response": {...}}
     """
+    # 1. Build Dynamic System Prompt
+    seg_info = SEGMENT_CONTEXTS.get(segment, SEGMENT_CONTEXTS["university_he"])
+    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
+        segment_label=seg_info["label"],
+        segment_context=seg_info["context"],
+        ci_elec=constants.CI_ELECTRICITY,
+        tariff=tariff,
+        setpoint=constants.HEATING_SETPOINT_C,
+        hours=constants.HEATING_HOURS_PER_YEAR,
+        solar=constants.SOLAR_IRRADIANCE_KWH_M2_YEAR,
+    )
+
     # Build the working message list for this turn
     # Include conversation history + new user message
     messages = list(history)
 
-    # Inject current dashboard context if provided
-    # Note: Freeze signature doesn't include current_context, but logic might need it.
-    # We will assume context is embedded in user_message or handled by caller.
-    # For strict compliance, we remove the explicit param from signature.
-    
     # Inject available buildings context to help the agent know valid tool arguments
     b_names = list(building_registry.keys())
     b_list = ", ".join(f"'{name}'" for name in b_names)
@@ -494,30 +519,40 @@ def run_agent_turn(
 
     tool_calls_log = []
     loops = 0
+    
+    yield {"type": "status", "msg": "Analyzing request..."}
 
     while loops < MAX_AGENT_LOOPS:
         loops += 1
-        response = _call_gemini(gemini_key, messages, use_tools=True)
+        response = _call_gemini(gemini_key, messages, system_prompt, use_tools=True)
 
         # Handle API error
         if "error" in response:
-            return {
-                "answer": None,
-                "tool_calls": tool_calls_log,
-                "error": response["error"],
-                "loops": loops,
-                "updated_history": messages,
+            yield {
+                "type": "final",
+                "response": {
+                    "answer": None,
+                    "tool_calls": tool_calls_log,
+                    "error": response["error"],
+                    "loops": loops,
+                    "updated_history": messages,
+                }
             }
+            return
 
         candidates = response.get("candidates", [])
         if not candidates:
-            return {
-                "answer": "I couldn't generate a response. Please try again.",
-                "tool_calls": tool_calls_log,
-                "error": "No candidates in Gemini response",
-                "loops": loops,
-                "updated_history": messages,
+            yield {
+                "type": "final",
+                "response": {
+                    "answer": "I couldn't generate a response. Please try again.",
+                    "tool_calls": tool_calls_log,
+                    "error": "No candidates in Gemini response",
+                    "loops": loops,
+                    "updated_history": messages,
+                }
             }
+            return
 
         content = candidates[0].get("content", {})
         parts   = content.get("parts", [])
@@ -538,10 +573,15 @@ def run_agent_turn(
                 name = fc["name"]
                 fargs = fc.get("args", {})
 
+                yield {"type": "tool_start", "name": name}
+
                 # Execute the tool
                 result = execute_tool(
                     name, fargs, building_registry, scenario_registry, tariff
                 )
+                
+                yield {"type": "tool_end", "name": name}
+                
                 tool_calls_log.append({
                     "name": name,
                     "args": fargs,
