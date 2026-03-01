@@ -1,70 +1,65 @@
-"""
-🤖 AI Advisor Tab Renderer
-==========================
-Renders the enterprise-grade conversational interface for the AI Advisor.
-Includes:
-- Segment-specific starter questions
-- Live tool execution status
-- Markdown-rich chat bubbles
-- Robust error handling
-"""
-from __future__ import annotations
+# ═══════════════════════════════════════════════════════════════════════════════
+# CrowAgent™ Platform — AI Advisor Tab
+# © 2026 Aparajita Parihar. All rights reserved.
+#
+# Independent research project. Not affiliated with any institution.
+# Not licensed for commercial use without written permission of the author.
+# Trademark rights reserved pending UK IPO registration — Class 42.
+# ═══════════════════════════════════════════════════════════════════════════════
 
 import streamlit as st
-import core.agent as agent
-import app.branding as branding
-from config.scenarios import SCENARIOS
+
+try:
+    from app.branding import COLOURS, FONTS
+except ImportError:
+    COLOURS: dict = {}
+    FONTS: dict = {}
+
+from core.agent import run_agent_turn
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SEGMENT-SPECIFIC STARTER QUESTIONS
+# STARTER PROMPTS — segment-specific suggested queries
 # ─────────────────────────────────────────────────────────────────────────────
-SEGMENT_STARTER_QUESTIONS = {
+STARTER_PROMPTS = {
     "university_he": [
-        "Which campus building yields the best ROI for a deep retrofit?",
-        "How can we reduce Scope 1 & 2 emissions by 20% by 2030?",
-        "Compare the payback period of solar PV across all buildings.",
-        "What is the carbon impact of upgrading the Science Block glazing?"
+        "What is the cheapest intervention to bring my campus to MEES Band C?",
+        "Analyse my portfolio's compliance gap for SECR reporting.",
+        "Which renewable energy scenario offers the fastest payback?",
     ],
     "smb_landlord": [
-        "What is the cheapest way to bring my portfolio up to MEES Band C?",
-        "Which property has the worst EPC rating and how do I fix it?",
-        "Calculate the ROI of installing heat pumps in Unit 1.",
-        "Does a fabric upgrade make financial sense for the Office Block?"
+        "Which properties are most at risk of failing MEES 2028 compliance?",
+        "What retrofit investment delivers the best rental yield uplift?",
+        "Summarise my portfolio EPC rating distribution and compliance timeline.",
     ],
     "smb_industrial": [
-        "How can I reduce Scope 1 emissions in my warehouse?",
-        "What is the payback period for a solar roof installation?",
-        "Compare LED lighting vs heating upgrades for carbon reduction.",
-        "Estimate the energy savings of improving wall insulation."
+        "What is my estimated SECR Scope 1 and Scope 2 carbon footprint?",
+        "Which energy efficiency measure has the shortest payback?",
+        "Model a solar PV installation across my industrial estate.",
     ],
     "individual_selfbuild": [
-        "Does a heat pump meet the Future Homes Standard for my property?",
-        "What is the most cost-effective way to improve my EPC band?",
-        "How much will triple glazing save on my annual energy bill?",
-        "Is a green roof a viable option for my detached house?"
-    ]
+        "What upgrades do I need to meet Part L 2021 for my self-build?",
+        "Compare fabric-first vs renewables for my Net Zero pathway.",
+        "What is the estimated ROI on ASHP versus gas boiler replacement?",
+    ],
 }
 
-def render(handler, weather: dict, portfolio: list[dict]) -> None:
-    """
-    Renders the AI Advisor tab content.
 
-    Args:
-        handler: The active SegmentHandler instance.
-        weather: Current weather data dictionary.
-        portfolio: Full list of portfolio assets.
-    """
-    # 1. Header & Disclaimer
-    st.markdown("# 🤖 CrowAgent™ AI Advisor")
+def render() -> None:
+    """Renders the AI Advisor tab."""
+
+    # ── BLOCK 1: PAGE HEADER ──────────────────────────────────────────────────
+    st.markdown("## 🤖 CrowAgent™ AI Advisor")
     st.markdown(
-        "Physics-grounded agentic AI that runs real thermal "
-        "simulations, compares scenarios and gives evidence-based "
-        "Net Zero investment recommendations."
+        "Physics-grounded agentic AI that runs real thermal simulations, "
+        "compares scenarios and gives evidence-based Net Zero investment "
+        "recommendations."
     )
     st.caption(
         "Powered by Google Gemini · Physics-informed reasoning "
         "· © 2026 Aparajita Parihar"
     )
+
+    # ── BLOCK 2: DISCLAIMER ───────────────────────────────────────────────────
     st.warning(
         "⚠️ AI Accuracy Disclaimer. The AI Advisor generates responses "
         "based on physics tool outputs and large language model reasoning. "
@@ -77,112 +72,115 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
         icon=None,
     )
 
-    # 2. Check API Key
+    # ── BLOCK 3: BRANCHING GATE ───────────────────────────────────────────────
     api_key = st.session_state.get("gemini_key", "").strip()
 
     if not api_key:
-        # --- LOCKED STATE ---
+        # ── BLOCK 4: LOCKED STATE ─────────────────────────────────────────────
         with st.container(border=True):
             st.markdown("### 🔑 Activate AI Advisor with a free Gemini API key")
             st.markdown("""
-            1. Visit [aistudio.google.com](https://aistudio.google.com)
-            2. Sign in with any Google account
-            3. Click **Get API key** → **Create API key**
-            4. Paste it into **API Keys** in the sidebar
-            """)
+1. Visit [aistudio.google.com](https://aistudio.google.com)
+2. Sign in with any Google account
+3. Click **Get API key** → **Create API key**
+4. Paste it into **API Keys** in the sidebar
+""")
             st.caption("Free tier · 1,500 requests/day · No credit card required")
             st.caption("CrowAgent™ Platform")
         return
 
-    # 3. Initialize Chat History
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = []
-    if "agent_history" not in st.session_state:
-        st.session_state.agent_history = []
-    
-    # 4. Render Chat History
-    for msg in st.session_state.chat_history:
-        role = msg["role"]
-        content = msg["content"]
-        
-        with st.chat_message(role):
-            css_class = "ca-user" if role == "user" else "ca-ai"
-            st.markdown(
-                f'<div class="{css_class}" style="border:none; background:transparent; padding:0;">{content}</div>', 
-                unsafe_allow_html=True
-            )
+    # ── BLOCK 5: ACTIVE CHAT STATE ────────────────────────────────────────────
 
-    # 5. Starter Questions (Only if history is empty)
-    if not st.session_state.chat_history:
-        st.markdown("---")
-        st.markdown("**Suggested Questions:**")
-        
-        questions = SEGMENT_STARTER_QUESTIONS.get(
-            handler.segment_id, 
-            SEGMENT_STARTER_QUESTIONS["university_he"]
-        )
-        
-        cols = st.columns(2)
-        for i, q in enumerate(questions):
-            if cols[i % 2].button(q, key=f"starter_{i}", use_container_width=True):
-                _handle_user_input(q, handler, portfolio, api_key)
+    # 5a. SESSION INIT
+    st.session_state.setdefault("ai_chat_history", [])
+    segment = st.session_state.get("user_segment", "university_he")
+    portfolio = st.session_state.get("portfolio", [])
+
+    # 5b. WELCOME BANNER
+    st.info(
+        "Welcome to your AI Advisor. I am connected to your active "
+        "property portfolio and ready to run thermal load simulations, "
+        "analyze ROI, and check regulatory compliance."
+    )
+
+    # 5c. STARTER PROMPTS (only shown when chat history is empty)
+    if len(st.session_state.ai_chat_history) == 0:
+        prompts = STARTER_PROMPTS.get(segment, STARTER_PROMPTS["university_he"])
+        st.markdown("**Suggested Queries for your Portfolio:**")
+        for prompt in prompts:
+            if st.button(
+                prompt,
+                key=f"starter_{prompt[:30]}",
+                use_container_width=True,
+            ):
+                st.session_state.ai_chat_history.append(
+                    {"role": "user", "content": prompt}
+                )
                 st.rerun()
 
-    # 6. Chat Input
-    if prompt := st.chat_input("Ask about your portfolio, scenarios, or regulations..."):
-        _handle_user_input(prompt, handler, portfolio, api_key)
-        st.rerun()
+    # 5d. CHAT HISTORY DISPLAY
+    for msg in st.session_state.ai_chat_history:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
 
-
-def _handle_user_input(user_text: str, handler, portfolio: list[dict], api_key: str) -> None:
-    """Process user input, run the agent loop, and update UI."""
-    st.session_state.chat_history.append({"role": "user", "content": user_text})
-    
-    # Filter portfolio for this segment
-    segment_portfolio = [p for p in portfolio if p.get("segment") == handler.segment_id]
-    building_registry = {b["name"]: b for b in segment_portfolio}
-    
-    with st.chat_message("assistant"):
-        response_placeholder = st.empty()
-        status_container = st.status("🧠 AI Advisor is thinking...", expanded=True)
-        
-        try:
-            stream = agent.run_agent_turn(
-                user_message=user_text,
-                history=st.session_state.agent_history,
-                gemini_key=api_key,
-                building_registry=building_registry,
-                scenario_registry=SCENARIOS,
-                tariff=st.session_state.get("energy_tariff_gbp_per_kwh", 0.28),
-                segment=handler.segment_id
-            )
-            
-            final_response = None
-            for event in stream:
-                if event["type"] == "status":
-                    status_container.update(label=event["msg"], state="running")
-                elif event["type"] == "tool_start":
-                    status_container.write(f"🛠️ **Executing Tool:** `{event['name']}`")
-                elif event["type"] == "tool_end":
-                    status_container.write(f"✅ **Tool Complete:** `{event['name']}`")
-                elif event["type"] == "final":
-                    final_response = event["response"]
-                    status_container.update(label="Analysis Complete", state="complete", expanded=False)
-            
-            if final_response:
-                st.session_state.agent_history = final_response["updated_history"]
-                if final_response.get("error"):
-                    error_msg = f"**Error:** {final_response['error']}"
-                    st.error(error_msg)
-                    st.session_state.chat_history.append({"role": "assistant", "content": error_msg})
-                else:
-                    answer = final_response["answer"]
-                    response_placeholder.markdown(
-                        f'<div class="ca-ai" style="border:none; background:transparent; padding:0;">{answer}</div>', 
-                        unsafe_allow_html=True
+    # 5e. PENDING RESPONSE HANDLER
+    history = st.session_state.ai_chat_history
+    if history and history[-1]["role"] == "user":
+        with st.status("⚙️ Analysing your portfolio...", expanded=True) as status:
+            try:
+                response = run_agent_turn(
+                    user_message=history[-1]["content"],
+                    segment=segment,
+                    portfolio=portfolio,
+                    api_key=api_key,
+                    status_widget=status,
+                )
+                status.update(
+                    label="✅ Analysis complete",
+                    state="complete",
+                    expanded=False,
+                )
+                st.session_state.ai_chat_history.append(
+                    {"role": "assistant", "content": response}
+                )
+                st.rerun()
+            except Exception as e:
+                err = str(e).lower()
+                if "429" in err:
+                    msg = (
+                        "Gemini API rate limit reached. "
+                        "Please wait 60 seconds and try again."
                     )
-                    st.session_state.chat_history.append({"role": "assistant", "content": answer})
-            
-        except Exception as e:
-            status_container.update(label="System Error", state="error")
-            st.error(f"An unexpected error occurred: {str(e)}")
+                elif "401" in err or "invalid" in err or "api key" in err:
+                    msg = (
+                        "Invalid API key detected. "
+                        "Please verify your key in Settings."
+                    )
+                elif "timeout" in err:
+                    msg = (
+                        "Request timed out. "
+                        "Please check your connection and retry."
+                    )
+                else:
+                    msg = (
+                        "AI Advisor encountered an unexpected error. "
+                        "Please retry in a moment."
+                    )
+                status.update(
+                    label="❌ Error occurred",
+                    state="error",
+                    expanded=False,
+                )
+                st.warning(msg)
+                st.session_state.ai_chat_history.pop()
+                # ↑ remove unanswered user message to prevent infinite retry loop
+
+    # 5f. CHAT INPUT
+    user_input = st.chat_input(
+        "Ask about your portfolio, energy expenses, or compliance..."
+    )
+    if user_input:
+        st.session_state.ai_chat_history.append(
+            {"role": "user", "content": user_input}
+        )
+        st.rerun()
