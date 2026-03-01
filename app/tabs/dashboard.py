@@ -199,6 +199,23 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
     # ── BLOCK 5: PORTFOLIO MANAGEMENT SECTION ─────────────────────────────────
     from app.components.portfolio_manager import render_portfolio_section
 
+    # Hotfix for KeyError: 'address' in portfolio_manager.py
+    # Ensure search results have the 'address' key expected by the renderer
+    if "portfolio_search_results" in st.session_state:
+        results = st.session_state.portfolio_search_results
+        if results and isinstance(results, list) and len(results) > 0:
+            first = results[0]
+            # Ensure items are dicts and have 'address' key
+            if isinstance(first, dict) and "address" not in first:
+                # If we have display_name (Nominatim style), map it to address
+                if "display_name" in first:
+                    for r in results:
+                        if isinstance(r, dict):
+                            r["address"] = r.get("display_name", "Unknown")
+                else:
+                    # Unknown format - clear to avoid crash
+                    st.session_state.portfolio_search_results = []
+
     branding.render_html(
         '<div class="portfolio-section-hdr">'
         "📋 Asset Portfolio Management</div>"
