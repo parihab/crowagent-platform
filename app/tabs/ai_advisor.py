@@ -78,6 +78,8 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
     # 3. Initialize Chat History
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
+    if "agent_history" not in st.session_state:
+        st.session_state.agent_history = []
     
     # 4. Render Chat History
     for msg in st.session_state.chat_history:

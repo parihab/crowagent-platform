@@ -651,19 +651,3 @@ def run_agent_turn(
         "loops": loops,
         "updated_history": messages,
     }
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# SUGGESTED STARTER QUESTIONS
-# Shown in the UI when conversation is empty
-# ─────────────────────────────────────────────────────────────────────────────
-STARTER_QUESTIONS = [
-    "Which building should we upgrade first if we have £100,000?",
-    "What's the fastest payback intervention across all buildings?",
-    "How much CO₂ would a green roof save on the Science Block?",
-    "Compare solar glass across all three buildings",
-    "What's the cheapest way to reach a 30% carbon reduction?",
-    "Explain the physics behind the insulation upgrade calculation",
-    "Which single intervention gives the best cost per tonne of CO₂?",
-    "If energy prices rise to £0.40/kWh, does that change the best option?",
-]
