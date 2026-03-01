@@ -55,19 +55,8 @@ def render_sidebar() -> Tuple[Optional[str], Dict[str, Any], str]:
 
         st.markdown("---")
 
-        # Scenarios
-        _render_scenario_selector(segment)
-
-        st.markdown("---")
-
-        # Portfolio is now managed in the Dashboard page
-        # Show compact read-only summary only
-        _render_portfolio_summary_compact()
-
-        st.markdown("---")
-
-        # Weather
-        weather_data = _render_weather_widget()
+        # Weather fetched silently; display lives in the Dashboard tab
+        weather_data = _fetch_weather_silently()
 
         st.markdown("---")
 
@@ -195,6 +184,33 @@ def _render_scenario_selector(segment: str):
         if st.checkbox(label, value=is_checked, key=f"chk_sc_{sc_id}"):
             selected.append(sc_id)
     st.session_state.selected_scenario_names = selected
+
+
+def _fetch_weather_silently() -> Dict[str, Any]:
+    """Fetch weather for the current session location without rendering any UI.
+
+    Called from render_sidebar() so that _current_weather is always populated
+    for every page.  The weather card and provider selector live in the Dashboard.
+    """
+    lat = st.session_state.get("wx_lat", 51.45)
+    lon = st.session_state.get("wx_lon", -0.97)
+    loc_name = st.session_state.get("wx_location_name", "Reading (Default)")
+    provider = st.session_state.get("weather_provider", "open_meteo")
+    try:
+        return weather_service.get_weather(
+            lat, lon, loc_name, provider,
+            met_key=st.session_state.get("met_office_key"),
+            owm_key=st.session_state.get("openweathermap_key"),
+        )
+    except Exception:
+        return {
+            "temperature_c": 10.0,
+            "condition": "Fallback",
+            "description": "Fallback",
+            "location_name": loc_name,
+            "wind_speed_mph": 0,
+            "humidity_pct": 0,
+        }
 
 
 def _render_weather_widget() -> Dict[str, Any]:
