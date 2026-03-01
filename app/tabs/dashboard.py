@@ -140,9 +140,9 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
             if "height_m" not in building:
                 building["height_m"] = 3.5
             r = physics.calculate_thermal_load(building, s_data, weather, tariff)
-            totals["annual_energy_mwh"] += r["annual_energy_mwh"]
-            totals["carbon_saving_tco2"] += r["carbon_saving_tco2"]
-            totals["cost_saving_gbp"] += r["cost_saving_gbp"]
+            totals["annual_energy_mwh"] += r["scenario_energy_mwh"]
+            totals["carbon_saving_tco2"] += r["carbon_saving_t"]
+            totals["cost_saving_gbp"] += r["annual_saving_gbp"]
             totals["energy_saving_mwh"] += r["energy_saving_mwh"]
             totals["install_cost_gbp"] += s_data.get("install_cost_gbp", 0.0)
 
