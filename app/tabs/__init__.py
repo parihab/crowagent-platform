@@ -1,1 +1,1 @@
-# Tab package
+"""Tab renderers package."""

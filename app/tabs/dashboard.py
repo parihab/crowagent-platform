@@ -1,117 +1,206 @@
-import html as html_mod
-import streamlit as st
+"""
+📊 Dashboard Tab Renderer
+=========================
+Renders the main dashboard view for all segments.
+Includes:
+- KPI Cards (Energy, Carbon, Cost, Payback)
+- 3D Digital Twin Map
+- Live Weather Widget
+- Thermal Load Analysis Chart
+- Portfolio Asset Table
+"""
+from __future__ import annotations
+
 import pandas as pd
 import plotly.graph_objects as go
+import streamlit as st
+
 import app.branding as branding
-from app.branding import render_card
-from app.visualization_3d import render_campus_3d_map
-from core.physics import calculate_thermal_load
+import core.physics as physics
 from config.scenarios import SCENARIOS
-from config.constants import CI_ELECTRICITY, ELEC_COST_PER_KWH
+
 
 def render(handler, weather: dict, portfolio: list[dict]) -> None:
     """
-    Render the main Dashboard tab.
+    Renders the dashboard tab content.
+
+    Args:
+        handler: The active SegmentHandler instance.
+        weather: Current weather data dictionary.
+        portfolio: Full list of portfolio assets (will be filtered by segment).
     """
-    if not portfolio:
-        st.info("Portfolio is empty. Add a building in the sidebar to begin.")
+    # 1. Filter portfolio for this segment
+    segment_portfolio = [p for p in portfolio if p.get("segment") == handler.segment_id]
+
+    if not segment_portfolio:
+        st.info("Portfolio is empty. Add a building in the sidebar to begin analysis.")
         return
 
-    # 1. KPI Cards
-    # Calculate aggregate metrics for the active portfolio/segment
-    total_energy_mwh = 0.0
-    total_carbon_t = 0.0
-    
-    # Use the first available scenario for "potential" savings display, or baseline
-    # For a real dashboard, we might sum up the 'Baseline' vs 'Selected Scenario'
-    # Here we show Baseline totals for the current segment assets
-    
-    active_buildings = handler.building_registry
-    
-    # Simple aggregation for KPIs based on registry (simulating portfolio view)
-    for b_name, b_data in active_buildings.items():
-        total_energy_mwh += b_data.get("baseline_energy_mwh", 0)
-    
-    total_carbon_t = total_energy_mwh * CI_ELECTRICITY
-    total_cost_k = (total_energy_mwh * 1000 * ELEC_COST_PER_KWH) / 1000
+    # 2. Resolve active scenarios
+    selected_names = st.session_state.get("selected_scenario_names", [])
+    if not selected_names:
+        selected_names = handler.default_scenarios
 
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        render_card("Portfolio Energy", f"{total_energy_mwh:,.0f}", "MWh/yr", "accent-teal")
-    with c2:
-        render_card("Carbon Footprint", f"{total_carbon_t:,.1f}", "tCO₂e/yr", "accent-gold")
-    with c3:
-        render_card("Est. Energy Cost", f"£{total_cost_k:,.0f}k", "per annum", "accent-navy")
-    with c4:
-        render_card("Active Assets", f"{len(active_buildings)}", "Buildings", "accent-green")
+    # Ensure Baseline is present for comparison
+    if "Baseline (No Intervention)" not in selected_names:
+        selected_names = ["Baseline (No Intervention)"] + selected_names
 
-    # 2. Weather & Map Context
-    st.markdown("---")
-    col_map, col_wx = st.columns([3, 1])
-    
-    with col_wx:
-        st.subheader("Live Conditions")
-        _temp = html_mod.escape(str(weather.get('temperature_c', '--')))
-        _cond = html_mod.escape(str(weather.get('condition', 'Unknown')))
-        _wind = html_mod.escape(str(weather.get('wind_speed_mph', '--')))
-        _hum  = html_mod.escape(str(weather.get('humidity_pct', '--')))
-        _loc  = html_mod.escape(str(weather.get('location_name', 'Unknown')))
-        branding.render_html(f"""
-        <div class="wx-widget">
-            <div class="wx-temp">{_temp}°C</div>
-            <div class="wx-desc">{_cond}</div>
-            <div class="wx-row">💨 Wind: {_wind} mph</div>
-            <div class="wx-row">💧 Humidity: {_hum}%</div>
-            <div class="wx-row">📍 {_loc}</div>
-        </div>
-        """)
+    # 3. Calculate results
+    tariff = st.session_state.get("energy_tariff_gbp_per_kwh", 0.28)
+    scenario_totals = {}
 
-        st.caption(f"Source: {weather.get('source', 'Unknown')}")
+    for s_name in selected_names:
+        if s_name not in SCENARIOS:
+            continue
 
-    with col_map:
-        # Render the 3D map with scenario selector
-        # We pass the handler's scenario whitelist
-        render_campus_3d_map(handler.scenario_whitelist, weather)
+        s_data = SCENARIOS[s_name]
+        totals = {
+            "annual_energy_mwh": 0.0,
+            "carbon_saving_tco2": 0.0,
+            "cost_saving_gbp": 0.0,
+            "install_cost_gbp": 0.0,
+            "energy_saving_mwh": 0.0,
+        }
 
-    # 3. Portfolio Table
-    st.subheader("Asset Performance Summary")
-    
-    if not active_buildings:
-        st.info("No buildings in this segment registry.")
+        for building in segment_portfolio:
+            r = physics.calculate_thermal_load(building, s_data, weather, tariff)
+            totals["annual_energy_mwh"] += r["annual_energy_mwh"]
+            totals["carbon_saving_tco2"] += r["carbon_saving_tco2"]
+            totals["cost_saving_gbp"] += r["cost_saving_gbp"]
+            totals["energy_saving_mwh"] += r["energy_saving_mwh"]
+            totals["install_cost_gbp"] += s_data.get("install_cost_gbp", 0.0)
+
+        scenario_totals[s_name] = totals
+
+    # 4. Determine "Best" scenario for KPIs (max energy saving)
+    comparison_scenarios = [s for s in selected_names if s != "Baseline (No Intervention)"]
+    if comparison_scenarios:
+        best_scenario = max(comparison_scenarios, key=lambda s: scenario_totals[s]["energy_saving_mwh"])
+        kpi_data = scenario_totals[best_scenario]
     else:
-        rows = []
-        for b_name, b_data in active_buildings.items():
-            rows.append({
-                "Building": b_name,
-                "Type": b_data.get("building_type", "Unknown"),
-                "Area (m²)": f"{b_data.get('floor_area_m2', 0):,}",
-                "Baseline (MWh)": f"{b_data.get('baseline_energy_mwh', 0):,.0f}",
-                "Built": b_data.get("built_year", "-")
+        kpi_data = scenario_totals.get("Baseline (No Intervention)", {})
+
+    # 5. Render KPIs
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        branding.render_card(
+            label="Energy Saved",
+            value=f"{kpi_data.get('energy_saving_mwh', 0):,.1f}",
+            subtext="MWh / year",
+            accent_class="accent-teal",
+        )
+    with col2:
+        branding.render_card(
+            label="Carbon Abated",
+            value=f"{kpi_data.get('carbon_saving_tco2', 0):,.1f}",
+            subtext="tCO₂e / year",
+            accent_class="accent-green",
+        )
+    with col3:
+        branding.render_card(
+            label="Cost Saved",
+            value=f"£{kpi_data.get('cost_saving_gbp', 0):,.0f}",
+            subtext="per year",
+            accent_class="accent-gold",
+        )
+    with col4:
+        total_install = kpi_data.get("install_cost_gbp", 0)
+        total_save = kpi_data.get("cost_saving_gbp", 0)
+        payback_str = f"{(total_install / total_save):.1f}" if total_save > 0 else "-"
+        branding.render_card(
+            label="Est. Payback",
+            value=payback_str,
+            subtext="Years",
+            accent_class="accent-navy",
+        )
+
+    st.markdown("---")
+
+    # 6. Render 3D Map & Weather
+    c_map, c_wx = st.columns([2, 1])
+
+    with c_map:
+        st.markdown('<div class="sec-hdr">Campus / Portfolio Digital Twin</div>', unsafe_allow_html=True)
+        from app.visualization_3d import render_3d_building
+        render_3d_building(segment_portfolio)
+
+    with c_wx:
+        st.markdown('<div class="sec-hdr">Live Conditions</div>', unsafe_allow_html=True)
+        temp = weather.get("temperature_c", 0)
+        desc = weather.get("description", "Unknown").title()
+        loc = weather.get("location_name", "Unknown Location")
+
+        st.markdown(
+            f"""
+            <div class="wx-widget">
+                <div style="display:flex; justify-content:space-between; align-items:start;">
+                    <div>
+                        <div class="wx-desc">{desc}</div>
+                        <div class="wx-temp">{temp:.1f}°C</div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="color:#8FBCCE; font-size:1.5rem;">☁️</div>
+                    </div>
+                </div>
+                <div class="wx-row">📍 {loc}</div>
+                <div class="wx-row">💨 Wind: {weather.get('wind_speed_mph', 0)} mph</div>
+                <div class="wx-row">💧 Humidity: {weather.get('humidity_pct', 0)}%</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # 7. Render Thermal Load Chart
+    st.markdown('<div class="sec-hdr">Thermal Load Analysis</div>', unsafe_allow_html=True)
+
+    chart_data = []
+    for s_name in selected_names:
+        if s_name in scenario_totals:
+            chart_data.append({
+                "Scenario": s_name,
+                "Energy (MWh)": scenario_totals[s_name]["annual_energy_mwh"]
             })
-        
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
-    # 4. Comparative Analysis (Thermal Load)
-    st.subheader("Thermal Load Analysis")
-    st.caption("Physics-based simulation of heating demand under current weather conditions.")
-    
-    # Compare Baseline vs First Upgrade for all buildings
-    baseline_sc = SCENARIOS.get("Baseline (No Intervention)")
-    upgrade_sc_name = handler.scenario_whitelist[1] if len(handler.scenario_whitelist) > 1 else handler.scenario_whitelist[0]
-    upgrade_sc = SCENARIOS.get(upgrade_sc_name)
-
-    if baseline_sc and upgrade_sc:
+    if chart_data:
+        df_chart = pd.DataFrame(chart_data)
         fig = go.Figure()
-        b_names = list(active_buildings.keys())
-        
-        # Calculate for each building
-        base_vals = [calculate_thermal_load(active_buildings[b], baseline_sc, weather).get("scenario_energy_mwh", 0) for b in b_names]
-        upg_vals = [calculate_thermal_load(active_buildings[b], upgrade_sc, weather).get("scenario_energy_mwh", 0) for b in b_names]
+        fig.add_trace(go.Bar(
+            x=df_chart["Scenario"],
+            y=df_chart["Energy (MWh)"],
+            marker_color='#00C2A8',
+            text=df_chart["Energy (MWh)"].apply(lambda x: f"{x:.1f}"),
+            textposition='auto'
+        ))
+        fig.update_layout(
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            margin=dict(t=20, b=40, l=40, r=20),
+            height=350,
+            yaxis_title="Annual Energy (MWh)",
+            font=dict(family="Nunito Sans")
+        )
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
-        fig.add_trace(go.Bar(name="Baseline", x=b_names, y=base_vals, marker_color="#5A7A90"))
-        fig.add_trace(go.Bar(name=upgrade_sc_name, x=b_names, y=upg_vals, marker_color="#00C2A8"))
-        
-        fig.update_layout(barmode='group', height=350, margin=dict(t=20, b=20), 
-                          paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                          font=dict(color='#CBD8E6'))
-        st.plotly_chart(fig, use_container_width=True)
+    # 8. Portfolio Table
+    st.markdown('<div class="sec-hdr">Portfolio Assets</div>', unsafe_allow_html=True)
+
+    table_rows = []
+    for b in segment_portfolio:
+        table_rows.append({
+            "Building Name": b.get("name", "Unknown"),
+            "Postcode": b.get("postcode", "-"),
+            "Floor Area (m²)": b.get("floor_area_m2", 0),
+            "Baseline Energy (MWh)": b.get("baseline_energy_mwh", 0),
+            "EPC Band": b.get("epc_band", "N/A"),
+        })
+
+    st.dataframe(
+        pd.DataFrame(table_rows),
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Floor Area (m²)": st.column_config.NumberColumn(format="%.0f"),
+            "Baseline Energy (MWh)": st.column_config.NumberColumn(format="%.1f"),
+        },
+    )
