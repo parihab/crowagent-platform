@@ -163,7 +163,15 @@ def _calculate_thermal_load_impl(
         outside_temp_c=temp,
     )
 
-    scale = b["baseline_energy_mwh"] / baseline_modelled_mwh if baseline_modelled_mwh > 0 else 1.0
+    # Handle missing or zero baseline energy by falling back to modelled baseline
+    known_baseline_mwh = float(b.get("baseline_energy_mwh", 0.0))
+
+    if known_baseline_mwh > 0:
+        scale = known_baseline_mwh / baseline_modelled_mwh if baseline_modelled_mwh > 0 else 1.0
+    else:
+        scale = 1.0
+        known_baseline_mwh = baseline_modelled_mwh
+
     adjusted_mwh = max(0.0, scenario_modelled_mwh * scale)
 
     # Detect baseline scenario (no changes) and preserve declared baseline energy
@@ -178,31 +186,29 @@ def _calculate_thermal_load_impl(
     )
 
     if is_baseline:
-        adjusted_mwh = b["baseline_energy_mwh"]
+        adjusted_mwh = known_baseline_mwh
         renewable_mwh = 0.0
         final_mwh = adjusted_mwh
     else:
         renewable_mwh = s.get("renewable_kwh", 0) / 1_000.0
         final_mwh = max(0.0, adjusted_mwh - renewable_mwh)
 
-    baseline_carbon = (b["baseline_energy_mwh"] * 1000.0 * carbon_intensity_kg_per_kwh) / 1000.0
+    baseline_carbon = (known_baseline_mwh * 1000.0 * carbon_intensity_kg_per_kwh) / 1000.0
     scenario_carbon = (final_mwh * 1000.0 * carbon_intensity_kg_per_kwh) / 1000.0
 
-    annual_saving = (b["baseline_energy_mwh"] - final_mwh) * 1000.0 * tariff_gbp_per_kwh
+    annual_saving = (known_baseline_mwh - final_mwh) * 1000.0 * tariff_gbp_per_kwh
     install_cost = float(s["install_cost_gbp"])
     payback = (install_cost / annual_saving) if annual_saving > 0.0 else None
 
     cpt = round(install_cost / max(baseline_carbon - scenario_carbon, 0.01), 1) \
           if install_cost > 0 else None
 
-    baseline_mwh = b.get("baseline_energy_mwh", 0.0)
-
     return {
-        "baseline_energy_mwh": round(b["baseline_energy_mwh"], 1),
+        "baseline_energy_mwh": round(known_baseline_mwh, 1),
         "scenario_energy_mwh": round(final_mwh, 1),
-        "energy_saving_mwh":   round(baseline_mwh - final_mwh, 1),
-        "energy_saving_pct":   round((baseline_mwh - final_mwh)
-                                     / (baseline_mwh if baseline_mwh > 0 else 1.0) * 100.0, 1),
+        "energy_saving_mwh":   round(known_baseline_mwh - final_mwh, 1),
+        "energy_saving_pct":   round((known_baseline_mwh - final_mwh)
+                                     / (known_baseline_mwh if known_baseline_mwh > 0 else 1.0) * 100.0, 1),
         "baseline_carbon_t":   round(baseline_carbon, 1),
         "scenario_carbon_t":   round(scenario_carbon, 1),
         "carbon_saving_t":     round(baseline_carbon - scenario_carbon, 1),

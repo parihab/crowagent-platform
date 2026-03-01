@@ -258,13 +258,11 @@ function detectLocation() {
 """
 
 
-def render_geo_detect() -> any:
+def render_geo_detect() -> None:
     """Embed the browser geolocation button as a Streamlit HTML component.
 
-    The HTML/JS snippet will call ``Streamlit.setComponentValue`` with a
-    dictionary containing ``lat``/``lon`` once the browser has successfully
-    obtained a position.  The return value from ``components.html`` is
-    propagated back to the caller, allowing the main app to react without
-    relying solely on query parameters.
+    The HTML/JS snippet attempts to update the parent window URL with
+    ``?geo_lat=...&geo_lon=...`` query parameters, causing a Streamlit
+    rerun. It does not return the coordinates directly to Python.
     """
-    return components.html(_GEO_HTML, height=68)
+    components.html(_GEO_HTML, height=68)

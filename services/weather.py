@@ -330,7 +330,7 @@ def get_weather(
     valid BYOK key will still be used first when ``enable_fallback`` is True.
 
     Caching: each underlying fetch function is decorated with
-    ``st.cache_data`` (TTL=%d seconds) to limit rate‑limit exposure.
+    ``st.cache_data`` (TTL=3600 seconds) to limit rate‑limit exposure.
 
     Parameters
     ----------
@@ -343,7 +343,7 @@ def get_weather(
     enable_fallback     : Fall back to next provider or Open-Meteo on failure
     manual_temp_c       : Manual temperature when all APIs unavailable
     force_refresh       : Clear caches and fetch immediately
-    """% (CACHE_TTL_SECONDS,)
+    """
     if force_refresh:
         _fetch_open_meteo.clear()
         _fetch_met_office.clear()

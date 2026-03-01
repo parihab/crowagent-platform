@@ -120,6 +120,8 @@ def fetch_epc_data(
     if len(normalized.replace(" ", "")) < 5:
         raise ValueError("Invalid postcode format.")
 
+    strict_no_records = os.getenv(EPC_STRICT_NO_RECORDS_ENV, "").strip().lower() in {"1", "true", "yes"}
+
     final_base_url = (base_url or os.getenv(EPC_API_URL_ENV, "https://epc.opendatacommunities.org/api/v1")).rstrip("/")
     final_api_key = api_key or os.getenv(EPC_API_KEY_ENV, "")
     if not final_api_key:
@@ -177,7 +179,6 @@ def fetch_epc_data(
     if had_transport_error and not strict_no_records:
         return _stub("EPC API request failed; using deterministic estimate.")
 
-    strict_no_records = os.getenv(EPC_STRICT_NO_RECORDS_ENV, "").strip().lower() in {"1", "true", "yes"}
     if strict_no_records:
         raise EPCFetchError(f"No EPC records found for postcode: {postcode}")
     return _stub(f"No EPC records found for postcode: {postcode}; using deterministic estimate.")
