@@ -14,10 +14,11 @@
 import json
 import requests
 import time
-from typing import Any, Generator
+from typing import Any
 
 import config.constants as constants
 import core.physics as physics
+from config.scenarios import SCENARIOS
 
 # ─────────────────────────────────────────────────────────────────────────────
 # API & MODEL CONSTANTS
@@ -29,74 +30,58 @@ MAX_AGENT_LOOPS      = 10
 # ─────────────────────────────────────────────────────────────────────────────
 # DYNAMIC SYSTEM PROMPT
 # ─────────────────────────────────────────────────────────────────────────────
-SYSTEM_PROMPT_TEMPLATE = """You are the CrowAgent™ AI Advisor — an expert sustainability \
-engineer embedded inside the CrowAgent™ Platform, a physics-informed campus \
-thermal intelligence system.
-
-YOUR ROLE:
-You help {segment_label}s make evidence-based, cost-effective \
-sustainability investment decisions. You reason about buildings, run \
-physics simulations using your tools, and translate technical outputs \
-into clear, actionable recommendations.
-
-CONTEXT:
-{segment_context}
-
-YOUR TOOLS — use them proactively, do not just answer from memory:
-• run_scenario: Run the PINN thermal model for one building + one intervention
-• compare_all_buildings: Run all buildings through one scenario simultaneously
-• find_best_for_budget: Exhaustively find the highest-ROI intervention within a budget
-• get_building_info: Retrieve full specifications for a building
-• rank_all_scenarios: Rank every intervention for a building by a chosen metric
-
-PHYSICS CONSTANTS (cite these in your answers):
-• Carbon intensity: {ci_elec} kgCO₂e/kWh (BEIS 2023)
-• UK HE electricity cost: £{tariff}/kWh (HESA 2022-23)
-• Heating set-point: {setpoint}°C (UK Building Regulations Part L)
-• Heating season: {hours} hours/yr (CIBSE Guide A)
-• Solar irradiance (Reading): {solar} kWh/m²/yr (PVGIS)
-
-BEHAVIOUR RULES:
-1. ALWAYS use tools to get real numbers — never invent figures
-2. When asked about multiple buildings or scenarios, call the tool for each one
-3. Cite the data source for every number you quote
-4. Give a specific recommendation, not a list of options
-5. Keep answers concise — 3–5 sentences maximum unless asked for detail
-6. If a question is outside your scope (not about campus energy/sustainability),
-   politely say so in one sentence
-
-MANDATORY DISCLAIMER — include a brief version in EVERY response:
-Always end recommendations with one of these phrases (adapt as appropriate):
-"⚠️ These figures are indicative only. Verify with a qualified energy surveyor before investment."
-OR
-"⚠️ Model outputs based on simplified physics — commission a site survey before proceeding."
-
-ACCURACY LIMITATIONS you must be aware of:
-1. The physics model uses simplified steady-state assumptions — real buildings are more complex
-2. Energy prices may change — financial figures assume constant £{tariff}/kWh
-3. Installation costs are typical ranges — actual quotes may vary significantly
-4. You are an AI and can make mistakes — never present results as definitive
-5. This platform is a working prototype — results are indicative only
-"""
-
-SEGMENT_CONTEXTS = {
-    "university_he": {
-        "label": "University Estate Manager",
-        "context": "Focus on campus-wide decarbonisation, SECR reporting, student experience, and long-term estate strategy."
-    },
-    "smb_landlord": {
-        "label": "Commercial Landlord",
-        "context": "Focus on MEES compliance (Minimum Energy Efficiency Standards), EPC ratings, tenant retention, and ROI."
-    },
-    "smb_industrial": {
-        "label": "Industrial Site Manager",
-        "context": "Focus on Scope 1 & 2 emissions reduction, operational efficiency, grid constraints, and SECR carbon baselining."
-    },
-    "individual_selfbuild": {
-        "label": "Self-Build Homeowner",
-        "context": "Focus on Part L compliance, Future Homes Standard, thermal comfort, heat pumps, and grant eligibility."
-    }
+REGULATORY_CONTEXT = {
+    "university_he": (
+        "SECR (Streamlined Energy & Carbon Reporting), "
+        "MEES (Minimum Energy Efficiency Standards), "
+        "Display Energy Certificates (DECs)"
+    ),
+    "smb_landlord": (
+        "MEES 2025 and 2028 compliance thresholds, "
+        "EPC Band C targets, Domestic Minimum Standard"
+    ),
+    "smb_industrial": (
+        "SECR Scope 1 and Scope 2 carbon reporting, "
+        "ISO 50001 energy management framework"
+    ),
+    "individual_selfbuild": (
+        "Part L 2021 (Conservation of Fuel and Power), "
+        "SAP/BREDEM energy modelling, Future Homes Standard"
+    ),
 }
+
+
+def build_system_prompt(segment: str, portfolio: list) -> str:
+    reg_context = REGULATORY_CONTEXT.get(
+        segment, REGULATORY_CONTEXT["university_he"]
+    )
+    portfolio_lines = []
+    for b in portfolio:
+        name   = b.get("name", "Unknown")
+        btype  = b.get("type", "Unknown")
+        area   = b.get("floor_area_m2", "N/A")
+        energy = b.get("baseline_energy_mwh", "N/A")
+        portfolio_lines.append(
+            f"  - {name} | Type: {btype} | "
+            f"Area: {area} m² | Baseline: {energy} MWh/yr"
+        )
+    portfolio_block = (
+        "\n".join(portfolio_lines)
+        if portfolio_lines
+        else "  No assets currently loaded."
+    )
+    return (
+        f"You are CrowAgent™ AI Advisor, a physics-informed sustainability "
+        f"decision intelligence assistant for UK built-environment stakeholders.\n\n"
+        f"Active segment: {segment}\n"
+        f"Applicable regulatory frameworks: {reg_context}\n\n"
+        f"Active portfolio:\n{portfolio_block}\n\n"
+        f"Instructions:\n"
+        f"- Always cite physics tool outputs when making energy claims.\n"
+        f"- Never fabricate energy figures, costs, or compliance statuses.\n"
+        f"- All outputs are indicative only. Recommend professional verification.\n"
+        f"- When tools are available, run them. Do not estimate what can be computed."
+    )
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TOOL SCHEMAS — sent to Gemini so it knows what tools exist and how to call them
@@ -414,13 +399,18 @@ def execute_tool(
 # ─────────────────────────────────────────────────────────────────────────────
 # GEMINI API CALL
 # ─────────────────────────────────────────────────────────────────────────────
-def _call_gemini(api_key: str, messages: list, use_tools: bool = True) -> dict:
+def _call_gemini(
+    api_key: str,
+    messages: list,
+    system_prompt: str,
+    use_tools: bool = True,
+) -> dict:
     """
     Single Gemini API call. Returns the raw response dict.
     messages format: [{"role": "user"|"model", "parts": [...]}]
     """
     payload: dict = {
-        "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "system_instruction": {"parts": [{"text": system_prompt}]},
         "contents": messages,
         "generationConfig": {
             "maxOutputTokens": MAX_OUTPUT_TOKENS,
@@ -476,46 +466,26 @@ def _call_gemini(api_key: str, messages: list, use_tools: bool = True) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 def run_agent_turn(
     user_message: str,
-    history: list,
-    gemini_key: str,
-    building_registry: dict,
-    scenario_registry: dict,
-    tariff: float = constants.DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH,
-    segment: str = "university_he",
-) -> Generator[dict, None, None]:
+    segment: str,
+    portfolio: list,
+    api_key: str,
+    status_widget=None,
+) -> str:
     """
     Run the full agentic loop for one user turn.
-    Yields events:
-      {"type": "status", "msg": "..."}
-      {"type": "tool_start", "name": "..."}
-      {"type": "tool_end", "name": "..."}
-      {"type": "final", "response": {...}}
+    Returns the AI's final text response as a string.
+    Raises RuntimeError on unrecoverable API errors.
     """
-    # 1. Build Dynamic System Prompt
-    seg_info = SEGMENT_CONTEXTS.get(segment, SEGMENT_CONTEXTS["university_he"])
-    
-    # Generate portfolio summary for context
-    portfolio_summary = []
-    for b_name, b_data in building_registry.items():
-        desc = b_data.get("description", "No description")
-        area = b_data.get("floor_area_m2", "N/A")
-        portfolio_summary.append(f"- {b_name}: {area}m², {desc}")
-    portfolio_context_str = "\n".join(portfolio_summary) if portfolio_summary else "No active buildings in portfolio."
+    # Build context-aware system prompt from segment and portfolio
+    system_prompt = build_system_prompt(segment, portfolio)
 
-    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
-        segment_label=seg_info["label"],
-        segment_context=seg_info["context"],
-        portfolio_context=portfolio_context_str,
-        ci_elec=constants.CI_ELECTRICITY,
-        tariff=tariff,
-        setpoint=constants.HEATING_SETPOINT_C,
-        hours=constants.HEATING_HOURS_PER_YEAR,
-        solar=constants.SOLAR_IRRADIANCE_KWH_M2_YEAR,
-    )
+    # Convert portfolio list to building registry dict for tool execution
+    building_registry = {b["name"]: b for b in portfolio}
+    scenario_registry = SCENARIOS
+    tariff = constants.DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH
 
-    # Build the working message list for this turn
-    # Include conversation history + new user message
-    messages = list(history)
+    # Build initial message list for this turn
+    messages: list = []
 
     # Inject available buildings context to help the agent know valid tool arguments
     b_names = list(building_registry.keys())
@@ -529,40 +499,21 @@ def run_agent_turn(
 
     tool_calls_log = []
     loops = 0
-    
-    yield {"type": "status", "msg": "Analyzing request..."}
+
+    if status_widget:
+        status_widget.update(label="⚙️ Connecting to Gemini API...")
 
     while loops < MAX_AGENT_LOOPS:
         loops += 1
-        response = _call_gemini(gemini_key, messages, system_prompt, use_tools=True)
+        response = _call_gemini(api_key, messages, system_prompt, use_tools=True)
 
         # Handle API error
         if "error" in response:
-            yield {
-                "type": "final",
-                "response": {
-                    "answer": None,
-                    "tool_calls": tool_calls_log,
-                    "error": response["error"],
-                    "loops": loops,
-                    "updated_history": messages,
-                }
-            }
-            return
+            raise RuntimeError(response["error"])
 
         candidates = response.get("candidates", [])
         if not candidates:
-            yield {
-                "type": "final",
-                "response": {
-                    "answer": "I couldn't generate a response. Please try again.",
-                    "tool_calls": tool_calls_log,
-                    "error": "No candidates in Gemini response",
-                    "loops": loops,
-                    "updated_history": messages,
-                }
-            }
-            return
+            raise RuntimeError("No candidates in Gemini response")
 
         content = candidates[0].get("content", {})
         parts   = content.get("parts", [])
@@ -576,22 +527,21 @@ def run_agent_turn(
             # Add model's message (containing function calls) to history
             messages.append({"role": "model", "parts": parts})
 
+            if status_widget:
+                status_widget.update(label="🔬 Running thermal simulation...")
+
             # Execute each function call and collect results
             function_results = []
             for fc_part in function_calls:
-                fc   = fc_part["functionCall"]
-                name = fc["name"]
+                fc    = fc_part["functionCall"]
+                name  = fc["name"]
                 fargs = fc.get("args", {})
-
-                yield {"type": "tool_start", "name": name}
 
                 # Execute the tool
                 result = execute_tool(
                     name, fargs, building_registry, scenario_registry, tariff
                 )
-                
-                yield {"type": "tool_end", "name": name}
-                
+
                 tool_calls_log.append({
                     "name": name,
                     "args": fargs,
@@ -617,47 +567,30 @@ def run_agent_turn(
             final_text = " ".join(p["text"] for p in text_parts if p.get("text"))
             # Add model's final response to history
             messages.append({"role": "model", "parts": parts})
-            return {
-                "answer": final_text.strip(),
-                "tool_calls": tool_calls_log,
-                "error": None,
-                "loops": loops,
-                "updated_history": messages,
-            }
+
+            if status_widget:
+                status_widget.update(label="📝 Generating recommendation...")
+
+            return final_text.strip()
 
         else:
             # Unexpected response structure
-            return {
-                "answer": "I received an unexpected response. Please try again.",
-                "tool_calls": tool_calls_log,
-                "error": "No text or function_call in response parts",
-                "loops": loops,
-                "updated_history": messages,
-            }
+            return "I received an unexpected response. Please try again."
 
     # Hit max loops — ask Gemini to summarise what it found so far
+    if status_widget:
+        status_widget.update(label="📝 Generating recommendation...")
+
     messages.append({
         "role": "user",
         "parts": [{"text": "Please summarise your findings so far in 3 sentences."}]
     })
-    final_resp = _call_gemini(gemini_key, messages, use_tools=False)
+    final_resp = _call_gemini(api_key, messages, system_prompt, use_tools=False)
     summarisation_error = final_resp.get("error")
     if not summarisation_error:
         parts = final_resp.get("candidates", [{}])[0].get("content", {}).get("parts", [])
         text = " ".join(p.get("text", "") for p in parts)
-        return {
-            "answer": text.strip() or "Analysis complete — see tool results above.",
-            "tool_calls": tool_calls_log,
-            "error": None,
-            "loops": loops,
-            "updated_history": messages,
-        }
+        return text.strip() or "Analysis complete — see tool results above."
 
     # Summarisation itself failed — surface the error so the UI can display it
-    return {
-        "answer": "Reached maximum reasoning steps. See tool results above.",
-        "tool_calls": tool_calls_log,
-        "error": f"Max loops reached; summarisation also failed: {summarisation_error}",
-        "loops": loops,
-        "updated_history": messages,
-    }
+    return "Reached maximum reasoning steps. See tool results above."
