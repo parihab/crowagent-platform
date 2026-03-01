@@ -42,9 +42,6 @@ into clear, actionable recommendations.
 CONTEXT:
 {segment_context}
 
-PORTFOLIO CONTEXT (Active Buildings):
-{portfolio_context}
-
 YOUR TOOLS — use them proactively, do not just answer from memory:
 • run_scenario: Run the PINN thermal model for one building + one intervention
 • compare_all_buildings: Run all buildings through one scenario simultaneously
