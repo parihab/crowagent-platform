@@ -262,7 +262,8 @@ def _compute_all_buildings(
             continue
 
         payback = res.get("payback_years")
-        cost_k  = round(res["scenario_energy_mwh"] * 1000 * _ELEC_GBP_PER_KWH / 1000, 1)
+        tariff = st.session_state.get("energy_tariff_gbp_per_kwh", _ELEC_GBP_PER_KWH)
+        cost_k  = round(res["scenario_energy_mwh"] * 1000 * tariff / 1000, 1)
 
         rows.append({
             # Identity
@@ -850,7 +851,8 @@ def _render_building_info_panel(
         bl_energy = float(bdata.get("baseline_energy_mwh", 0))
         bl_carbon = round(bl_energy * 1000 * _CI / 1000, 1)
 
-    bl_cost_k = round(bl_energy * 1000 * _ELEC_GBP_PER_KWH / 1000, 1)
+    tariff = st.session_state.get("energy_tariff_gbp_per_kwh", _ELEC_GBP_PER_KWH)
+    bl_cost_k = round(bl_energy * 1000 * tariff / 1000, 1)
 
     k1, k2, k3, k4 = st.columns(4)
     for col, label, value, unit, colour in [
@@ -962,10 +964,11 @@ def _info_tab_seasonal(bdata: dict) -> None:
     import plotly.graph_objects as go
 
     baseline = float(bdata.get("baseline_energy_mwh", 100.0))
+    tariff   = st.session_state.get("energy_tariff_gbp_per_kwh", _ELEC_GBP_PER_KWH)
     months   = list(range(1, 13))
     energies = [round(_seasonal_energy_mwh(baseline, _MONTHLY_TEMPS[m]), 1) for m in months]
     carbons  = [round(e * 1000 * _CI / 1000, 1)               for e in energies]
-    costs    = [round(e * 1000 * _ELEC_GBP_PER_KWH / 1000, 2) for e in energies]
+    costs    = [round(e * 1000 * tariff / 1000, 2) for e in energies]
 
     fig = go.Figure()
     fig.add_trace(go.Bar(
@@ -1023,7 +1026,8 @@ def _info_tab_scenarios(
             continue
         try:
             res    = calculate_thermal_load(bdata, sc, weather)
-            cost_k = round(res["scenario_energy_mwh"] * 1000 * _ELEC_GBP_PER_KWH / 1000, 1)
+            tariff = st.session_state.get("energy_tariff_gbp_per_kwh", _ELEC_GBP_PER_KWH)
+            cost_k = round(res["scenario_energy_mwh"] * 1000 * tariff / 1000, 1)
             payback = res.get("payback_years")
             rows.append({
                 "Scenario":           sn.replace(" (No Intervention)", "")
