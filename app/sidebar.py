@@ -44,9 +44,6 @@ def render_sidebar() -> Tuple[Optional[str], Dict[str, Any], str]:
 
     # 2. Sidebar Content
     with st.sidebar:
-        # Branding
-        branding.render_sidebar_header()
-
         # Portfolio Summary
         _render_portfolio_summary_compact()
 
