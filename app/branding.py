@@ -287,12 +287,38 @@ div[data-testid="column"] button[aria-label="sidebar-toggle"] {
 .ent-footer {
   background: #071A2F;
   border-top: 2px solid #00C2A8;
-  padding: 16px 24px;
-  margin-top: 32px;
+  padding: 28px 24px;
+  margin-top: 48px;
   text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
+  color: #CBD8E6;
+}
+.footer-title {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #FFFFFF;
+  margin-bottom: 4px;
+}
+.footer-subtitle {
+  font-size: 1rem;
+  font-weight: 400;
+  color: #8AACBF;
+  margin-bottom: 20px;
+  letter-spacing: 0.5px;
+}
+.footer-disclaimer {
+  font-size: 0.8rem;
+  color: #8AACBF;
+  max-width: 600px;
+  line-height: 1.6;
+  margin-bottom: 20px;
+}
+.footer-links {
+  font-size: 0.8rem;
+  color: #5A7A90;
 }
 
 /* ── Validation Feedback ───────────────────────────────────────────────── */
@@ -327,9 +353,20 @@ div[data-testid="column"] button[aria-label="sidebar-toggle"] {
 .page-logo-bar {
   display: flex;
   align-items: center;
-  padding: 8px 0 14px 0;
-  border-bottom: 1px solid #E0EBF4;
-  margin-bottom: 18px;
+  gap: 12px;
+  background: #ffffff;
+  padding: 12px 20px;
+  border-radius: 8px;
+  border: 1px solid #E0EBF4;
+  box-shadow: 0 4px 12px rgba(7,26,47,0.05);
+  margin: -1rem 0 1.5rem 0; /* Pull up to overlap top padding */
+}
+.platform-name {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #071A2F;
+  line-height: 1;
 }
 
 /* ── Hide Streamlit Default Chrome ─────────────────────────────────────── */
@@ -533,10 +570,16 @@ def render_page_logo() -> None:
     logo_uri = get_logo_uri()
     if logo_uri:
         st.markdown(
-            f'<div class="page-logo-bar" role="banner">'
-            f'<img src="{logo_uri}" style="height:34px; opacity:0.92;" '
-            f'alt="CrowAgent™ Platform — Sustainability AI Decision Intelligence">'
-            f'</div>',
+            f"""
+            <div class="page-logo-bar" role="banner">
+                <img src="{logo_uri}" 
+                     style="height: 40px; 
+                            opacity: 0.95; 
+                            filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));"
+                     alt="CrowAgent™ Platform Logo">
+                <div class="platform-name">CrowAgent™</div>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
 
@@ -550,7 +593,7 @@ def render_footer() -> None:
     logo_uri = get_logo_uri()
     logo_img = (
         f'<img src="{logo_uri}" '
-        f'style="height:28px; margin-bottom:14px; opacity:0.85;" '
+        f'style="height:32px; margin-bottom:16px; opacity:0.9;" '
         f'alt="CrowAgent™">'
         if logo_uri
         else ""
@@ -559,40 +602,22 @@ def render_footer() -> None:
         f"""
         <div class="ent-footer" role="contentinfo">
             {logo_img}
-            <div style="color:#CBD8E6; font-size:0.9rem; font-weight:600;
-                        margin-bottom:10px; letter-spacing:0.5px;">
-                CrowAgent™ Sustainability AI Decision Intelligence Platform
-                v2.0.0 &nbsp;·&nbsp; Working Prototype
+            <div class="footer-title">CrowAgent™</div>
+            <div class="footer-subtitle">
+                Sustainability AI Decision Intelligence Platform
             </div>
-            <div style="color:#8AACBF; font-size:0.85rem; margin-bottom:16px;
-                        max-width:700px; line-height:1.6;">
+            <div class="footer-disclaimer">
                 ⚠️ <strong>Results Are Indicative Only.</strong> This platform
-                uses simplified physics models calibrated against published UK
-                higher education sector averages. Outputs should not be used as
-                the sole basis for capital investment decisions. Consult a
-                qualified energy surveyor before committing to any retrofit
-                programme. Greenfield University is a fictional institution used
-                for demonstration purposes. All data is illustrative.
+                is a working prototype and uses simplified physics models.
+                Outputs should not be used as the sole basis for capital investment
+                decisions. Always consult a qualified energy surveyor.
             </div>
-            <div style="color:#9ABDD0; font-size:0.8rem; margin-bottom:8px;">
+            <div class="footer-links">
                 © 2026 CrowAgent™. All rights reserved.
-                &nbsp;·&nbsp; Developed by Aparajita Parihar
-                &nbsp;·&nbsp; Independent research project
-                &nbsp;·&nbsp; CrowAgent™ is an unregistered trademark
-                (UK IPO Class 42, registration pending)
-                &nbsp;·&nbsp; Not licensed for commercial use without written permission
-            </div>
-            <div style="color:#8AACBF; font-size:0.72rem; font-family:monospace;
-                        letter-spacing:-0.2px;">
-                Physics: Raissi et al. (2019) J. Comp. Physics &nbsp;·&nbsp;
-                <a href="https://doi.org/10.1016/j.jcp.2018.10.045"
-                   target="_blank"
-                   style="color:#8AACBF; text-decoration:none;">
-                   doi:10.1016/j.jcp.2018.10.045
-                </a>
-                &nbsp;·&nbsp; Weather: Open-Meteo API + Met Office DataPoint
-                &nbsp;·&nbsp; Carbon: BEIS 2023 &nbsp;·&nbsp; Costs: HESA 2022-23
-                &nbsp;·&nbsp; AI: Google Gemini 1.5 Pro
+                &nbsp;·&nbsp;
+                CrowAgent™ is an unregistered trademark.
+                &nbsp;·&nbsp;
+                Not licensed for commercial use.
             </div>
         </div>
         """,
