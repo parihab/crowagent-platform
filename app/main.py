@@ -38,6 +38,7 @@ import app.sidebar as sidebar
 import app.tabs.dashboard as tab_dashboard
 import app.tabs.financial as tab_financial
 import app.tabs.compliance_hub as tab_compliance
+import app.tabs.settings as tab_settings
 import app.tabs.ai_advisor as tab_ai_advisor
 import core.about as about_page
 from app.segments import SEGMENT_IDS, get_segment_handler
@@ -53,62 +54,6 @@ _COMPLIANCE_TITLES: dict[str, str] = {
     "smb_industrial":       "SECR Carbon",
     "individual_selfbuild": "Part L & FHS",
 }
-
-
-# ── Sidebar visibility CSS ───────────────────────────────────────────────────
-
-def _inject_sidebar_css() -> None:
-    """Hides the sidebar via CSS when sidebar_visible is False.
-
-    When the sidebar is display:none Streamlit's flexbox layout naturally
-    reclaims that space for the main content column.  The native hamburger
-    button in Streamlit's top chrome is also hidden so it does not re-appear
-    as a confusing orphan control.
-    """
-    if not st.session_state.get("sidebar_visible", True):
-        branding.render_html(
-            "<style>"
-            "[data-testid='stSidebar'],"
-            "[data-testid='stSidebarCollapsedControl']"
-            "{ display: none !important; }"
-            "</style>"
-        )
-
-
-# ── Logo + sidebar toggle bar ────────────────────────────────────────────────
-
-def _render_logo_and_toggle() -> None:
-    """Renders the CrowAgent™ logo on the left and the sidebar toggle on the right.
-
-    Replaces the old branding.render_page_logo() call.  The toggle uses a
-    fixed widget key (`_sbt`) which is safe because st.navigation with
-    callable-based pages only ever executes ONE page wrapper per script run.
-    """
-    logo_uri = branding.get_logo_uri()
-    visible = st.session_state.get("sidebar_visible", True)
-
-    col_logo, col_btn = st.columns([11, 1])
-
-    with col_logo:
-        if logo_uri:
-            branding.render_html(
-                '<div class="page-logo-bar" role="banner">'
-                f'<img src="{logo_uri}" style="height:34px; opacity:0.92;" '
-                'alt="CrowAgent™ Platform — Sustainability AI Decision Intelligence">'
-                "</div>"
-            )
-
-    with col_btn:
-        icon = "✕" if visible else "☰"
-        tip = "Hide sidebar controls" if visible else "Show sidebar controls"
-        if st.button(
-            icon,
-            key="_sbt",
-            help=tip,
-            use_container_width=True,
-        ):
-            st.session_state.sidebar_visible = not visible
-            st.rerun()
 
 
 # ── Shared page setup ────────────────────────────────────────────────────────
@@ -151,13 +96,11 @@ def _page_setup() -> None:
 
     Order matters:
       1. inject_branding() — CSS must arrive before any rendered element.
-      2. _inject_sidebar_css() — conditional hide rule (no-op when visible).
-      3. _render_logo_and_toggle() — logo bar + toggle button.
-      4. _render_page_nav() — 6-button horizontal navigation row.
+      2. render_page_logo() — logo bar.
+      3. _render_page_nav() — 6-button horizontal navigation row.
     """
     branding.inject_branding()
-    _inject_sidebar_css()
-    _render_logo_and_toggle()
+    branding.render_page_logo()
     _render_page_nav()
 
 
@@ -227,7 +170,7 @@ def _page_settings() -> None:
     """⚙️ Settings."""
     _page_setup()
     _, weather, _ = _get_page_context()
-    sidebar.render_settings_tab(weather)
+    tab_settings.render(weather)
     branding.render_footer()
 
 
@@ -262,20 +205,15 @@ def run() -> None:
     # 5. URL query-param bootstrap
     _resolve_query_params()
 
-    # 6. Segment gate ─────────────────────────────────────────────────────────
-    # render_sidebar() shows the full-screen 4-card onboarding when no segment
-    # is selected and returns (None, {}, "").  We must not build st.navigation
-    # in that state, so we return early here.
-    if not st.session_state.get("user_segment"):
-        sidebar.render_sidebar()
+    # 6. Segment gate & Context Fetching
+    _segment, _weather, _location = sidebar.get_sidebar_context()
+    if not _segment:
         return
 
-    # 7. Sidebar controls (segment label, scenarios, portfolio, weather)
-    _segment, _weather, _location = sidebar.render_sidebar()
     st.session_state["_current_weather"] = _weather
 
-    # 8. Route to active page — _page_setup() inside each wrapper handles
-    # CSS injection, logo bar, sidebar CSS, and the nav button row.
+    # 7. Route to active page — _page_setup() inside each wrapper handles
+    # CSS injection, logo bar, and the nav button row.
     _ROUTE = {
         "dashboard":  _page_dashboard,
         "financial":  _page_financial,

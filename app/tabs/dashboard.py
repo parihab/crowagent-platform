@@ -123,6 +123,7 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
         '<h2 style="font-family:Rajdhani,sans-serif; '
         'color:#071A2F; margin-bottom:4px;">📊 Portfolio Dashboard</h2>'
     )
+    st.caption("⚙️ Configure API keys and settings in the **Settings** tab.")
     
     # --- Profile Switcher UI ---
     with st.container(border=True):
