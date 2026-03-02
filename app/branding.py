@@ -46,20 +46,31 @@ CROWAGENT_CSS = """
 /* ── Global Typography ─────────────────────────────────────────────────── */
 html, body, [class*="css"] {
   font-family: 'Nunito Sans', sans-serif !important;
-  font-size: 15px;
+  font-size: 16px;
+  line-height: 1.5;
 }
 h1 {
   font-family: 'Rajdhani', sans-serif !important;
-  font-size: 2rem !important;
+  font-size: 2.5rem !important;
+  line-height: 1.2 !important;
   letter-spacing: 0.5px !important;
 }
 h2 {
   font-family: 'Rajdhani', sans-serif !important;
-  font-size: 1.5rem !important;
+  font-size: 2rem !important;
+  line-height: 1.3 !important;
   letter-spacing: 0.3px;
 }
-h3, h4 {
+h3 {
   font-family: 'Rajdhani', sans-serif !important;
+  font-size: 1.5rem !important;
+  line-height: 1.3 !important;
+  letter-spacing: 0.3px;
+}
+h4 {
+  font-family: 'Rajdhani', sans-serif !important;
+  font-size: 1.25rem !important;
+  line-height: 1.4 !important;
   letter-spacing: 0.3px;
 }
 
@@ -258,7 +269,8 @@ div[data-testid="column"] button[aria-label="sidebar-toggle"] {
 .sec-hdr    { font-family:'Rajdhani',sans-serif; font-size:0.92rem; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:#00C2A8; border-bottom:1px solid rgba(0,194,168,.2); padding-bottom:6px; margin-bottom:14px; margin-top:8px; }
 .chart-card { background:#ffffff; border-radius:8px; border:1px solid #E0EBF4; padding:18px 18px 10px; box-shadow:0 2px 8px rgba(7,26,47,.04); margin-bottom:16px; }
 .chart-title   { font-family:'Rajdhani',sans-serif; font-size:0.88rem; font-weight:700; color:#071A2F; margin-bottom:4px; text-transform:uppercase; }
-.chart-caption { font-size:0.74rem; color:#8AACBF; margin-top:4px; font-style:italic; }
+/* chart-caption: was #8AACBF on white (contrast ~2.4:1 — WCAG fail). Fixed to #4A6A80 (contrast ~5.7:1). */
+.chart-caption { font-size:0.74rem; color:#4A6A80; margin-top:4px; font-style:italic; }
 
 /* ── Disclaimer Boxes ──────────────────────────────────────────────────── */
 .disc-prototype { background:rgba(240,180,41,.07); border:1px solid rgba(240,180,41,.3); border-left:4px solid #F0B429; padding:10px 16px; font-size:0.82rem; color:#6A5010; margin:10px 0; border-radius:0 6px 6px 0; }
@@ -411,6 +423,27 @@ div[data-testid="stStatusWidget"] { visibility: hidden; }
     rgba(0,194,168,0.4) 0%, rgba(0,194,168,0.05) 100%);
   margin: 24px 0;
 }
+
+/* ── Page H2 Heading (replaces repeated inline heading styles) ──────────── */
+/* Ensures consistent heading hierarchy across Dashboard and Compliance Hub. */
+.page-h2 {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 2rem;
+  font-weight: 700;
+  color: #071A2F;
+  line-height: 1.3;
+  margin-bottom: 4px;
+}
+
+/* ── Sub-section Label (replaces repeated inline micro-label styles) ─────── */
+/* Used in Compliance Hub panels as small uppercase section delimiters.       */
+/* Previous inline: font-size:0.82rem; color:#5A7A90 on white — passes 4.5:1 */
+.subsec-label {
+  font-size: 0.82rem;
+  color: #5A7A90;
+  margin: 8px 0 4px;
+  font-weight: 600;
+}
 """
 
 logger = logging.getLogger(__name__)
@@ -525,7 +558,7 @@ def render_footer() -> None:
                 CrowAgent™ Sustainability AI Decision Intelligence Platform
                 v2.0.0 &nbsp;·&nbsp; Working Prototype
             </div>
-            <div style="color:#8AACBF; font-size:0.8rem; margin-bottom:16px;
+            <div style="color:#8AACBF; font-size:0.85rem; margin-bottom:16px;
                         max-width:700px; line-height:1.6;">
                 ⚠️ <strong>Results Are Indicative Only.</strong> This platform
                 uses simplified physics models calibrated against published UK
@@ -535,19 +568,20 @@ def render_footer() -> None:
                 programme. Greenfield University is a fictional institution used
                 for demonstration purposes. All data is illustrative.
             </div>
-            <div style="color:#5A7A90; font-size:0.75rem; margin-bottom:8px;">
-                © 2026 Aparajita Parihar &nbsp;·&nbsp; All rights reserved
-                &nbsp;·&nbsp; Independent research project &nbsp;·&nbsp;
-                CrowAgent™ is an unregistered trademark (UK IPO Class 42,
-                registration pending) &nbsp;·&nbsp; Not licensed for commercial
-                use without written permission
+            <div style="color:#9ABDD0; font-size:0.8rem; margin-bottom:8px;">
+                © 2026 CrowAgent™. All rights reserved.
+                &nbsp;·&nbsp; Developed by Aparajita Parihar
+                &nbsp;·&nbsp; Independent research project
+                &nbsp;·&nbsp; CrowAgent™ is an unregistered trademark
+                (UK IPO Class 42, registration pending)
+                &nbsp;·&nbsp; Not licensed for commercial use without written permission
             </div>
-            <div style="color:#3A5268; font-size:0.7rem; font-family:monospace;
+            <div style="color:#8AACBF; font-size:0.72rem; font-family:monospace;
                         letter-spacing:-0.2px;">
                 Physics: Raissi et al. (2019) J. Comp. Physics &nbsp;·&nbsp;
                 <a href="https://doi.org/10.1016/j.jcp.2018.10.045"
                    target="_blank"
-                   style="color:#3A5268; text-decoration:none;">
+                   style="color:#8AACBF; text-decoration:none;">
                    doi:10.1016/j.jcp.2018.10.045
                 </a>
                 &nbsp;·&nbsp; Weather: Open-Meteo API + Met Office DataPoint
