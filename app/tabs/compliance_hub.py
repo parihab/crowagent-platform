@@ -12,6 +12,7 @@ NOTE: Underlying carbon math, scope definitions, and baseline compliance logic
 """
 from __future__ import annotations
 
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -38,13 +39,14 @@ def render(handler, portfolio: list[dict]) -> None:
     if "secr" in checks:
         _panel_secr_tcfd(buildings)
 
-    # Panel B — MEES & EPC (coming in next update)
+    # Panel B — MEES & EPC
     if "epc_mees" in checks:
         _panel_mees_epc(buildings)
 
-    # Panel C — Part L 2021 & FHS (coming in next update)
+    # Panel C — Part L 2021 & FHS
     if "part_l" in checks or "fhs" in checks:
-        _panel_part_l_fhs_stub()
+        _panel_part_l_fhs(buildings, handler.segment_id, show_fhs="fhs" in checks)
+        branding.render_html('<div class="main-section-divider"></div>')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -148,57 +150,244 @@ def _panel_secr_tcfd(buildings: dict) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PANEL B — MEES & EPC  (redesign scheduled — next commit)
+# PANEL B — MEES & EPC
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _panel_mees_epc(buildings: dict) -> None:
-    """MEES & EPC Compliance Overview — to be redesigned in next commit."""
+    """MEES & EPC Compliance Overview — status banner + per-asset gap analysis."""
     branding.render_html(
         '<div class="sec-hdr">MEES &amp; EPC Compliance Overview</div>'
     )
-    st.info("Target: EPC Band C by 2028 (Private Rented Sector)")
 
+    # Pre-compute all building ratings for the portfolio-level banner
+    results: dict[str, dict] = {}
     for b_name, b_data in buildings.items():
-        with st.expander(f"{b_name}", expanded=True):
-            res = compliance.estimate_epc_rating(
-                floor_area_m2=b_data["floor_area_m2"],
-                annual_energy_kwh=b_data["baseline_energy_mwh"] * 1000,
-                u_wall=b_data["u_value_wall"],
-                u_roof=b_data["u_value_roof"],
-                u_glazing=b_data["u_value_glazing"],
-                glazing_ratio=b_data["glazing_ratio"],
+        results[b_name] = compliance.estimate_epc_rating(
+            floor_area_m2=b_data["floor_area_m2"],
+            annual_energy_kwh=b_data["baseline_energy_mwh"] * 1000,
+            u_wall=b_data["u_value_wall"],
+            u_roof=b_data["u_value_roof"],
+            u_glazing=b_data["u_value_glazing"],
+            glazing_ratio=b_data["glazing_ratio"],
+        )
+
+    below_target = [n for n, r in results.items() if not r["mees_2028_compliant"]]
+    n_fail = len(below_target)
+
+    # ── Section 1: Compliance Status Banner ──────────────────────────────────
+    with st.container(border=True):
+        if n_fail == 0:
+            branding.render_html(
+                '<div style="background:#071A2F;border:1px solid #00C2A8;border-radius:6px;'
+                'padding:12px;color:#00C2A8;font-weight:600;">'
+                "&#10004; Portfolio meets the 2028 MEES target — all assets rated Band C or above."
+                "</div>"
             )
-            c1, c2 = st.columns([1, 3])
-            with c1:
-                st.metric("Est. Rating", f"{res['sap_score']} ({res['epc_band']})")
-                st.caption(f"EUI: {res['eui_kwh_m2']} kWh/m\u00b2")
-            with c2:
-                if res["mees_2028_compliant"]:
+        else:
+            asset_word = "asset" if n_fail == 1 else "assets"
+            branding.render_html(
+                f'<div style="background:#2A1010;border:1px solid #E84C4C;border-radius:6px;'
+                f'padding:12px;">'
+                f'<div style="color:#F0B429;font-weight:600;margin-bottom:4px;">'
+                f"&#9888; {n_fail} {asset_word} below 2028 MEES target (Band C)</div>"
+                f'<div style="font-size:0.78rem;color:#CBD8E6;">'
+                f"Affected: {', '.join(below_target)}</div>"
+                f"</div>"
+            )
+
+    # ── Section 2: Asset Gap Analysis ────────────────────────────────────────
+    branding.render_html(
+        '<div style="font-size:0.82rem;color:#5A7A90;margin:8px 0 4px;">'
+        "Asset Gap Analysis</div>"
+    )
+
+    for b_name, res in results.items():
+        compliant = res["mees_2028_compliant"]
+        # Auto-expand non-compliant assets to draw attention
+        with st.expander(f"Asset: {b_name}", expanded=not compliant):
+            info_col, status_col = st.columns([1, 2])
+
+            with info_col:
+                st.metric("Est. EPC Band", f"Band {res['epc_band']}")
+                st.metric("SAP Score", str(res["sap_score"]))
+                st.caption(f"EUI: {res['eui_kwh_m2']} kWh/m\u00b2/yr")
+                st.caption("Target: Band C by 2028")
+
+            with status_col:
+                if compliant:
                     st.success(res["recommendation"])
                 else:
                     st.warning(res["recommendation"])
+
                     gap = compliance.mees_gap_analysis(res["sap_score"], "C")
-                    if gap["recommended_measures"]:
-                        st.markdown("**Recommended Upgrades:**")
-                        for m in gap["recommended_measures"]:
-                            st.markdown(f"- {m['name']} (Lift: +{m['sap_lift']} pts)")
+                    measures = gap.get("recommended_measures", [])
+
+                    if measures:
+                        branding.render_html(
+                            '<div style="font-size:0.78rem;color:#5A7A90;'
+                            'margin:6px 0 4px;">Recommended Upgrades</div>'
+                        )
+                        rows = [
+                            {
+                                "Measure": m["name"],
+                                "SAP Lift": f"+{m['sap_lift']} pts",
+                                "Est. Cost": (
+                                    f"£{m['cost_low']:,} – £{m['cost_high']:,}"
+                                ),
+                                "Regulation": m.get("regulation", "—"),
+                            }
+                            for m in measures
+                        ]
+                        st.dataframe(
+                            pd.DataFrame(rows),
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={
+                                "Measure": st.column_config.TextColumn(width="medium"),
+                                "SAP Lift": st.column_config.TextColumn(width="small"),
+                                "Est. Cost": st.column_config.TextColumn(width="medium"),
+                                "Regulation": st.column_config.TextColumn(width="large"),
+                            },
+                        )
+                        sap_gap = gap.get("sap_gap", 0)
+                        if sap_gap:
+                            st.caption(
+                                f"SAP gap to Band C: {sap_gap} pts — "
+                                f"{len(measures)} measure(s) recommended."
+                            )
 
     branding.render_html('<div class="main-section-divider"></div>')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PANEL C — Part L & FHS  (redesign scheduled — next commit)
+# PANEL C — Part L 2021 & FHS Readiness
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _panel_part_l_fhs_stub() -> None:
-    """Part L 2021 & FHS Readiness — to be redesigned in next commit."""
+    """Kept for import safety — delegates to the full implementation."""
+    pass  # render() calls _panel_part_l_fhs directly; stub retained for safety
+
+
+def _panel_part_l_fhs(buildings: dict, segment_id: str, show_fhs: bool) -> None:
+    """Part L 2021 & FHS Readiness Overview — fabric check + primary energy proxy."""
     branding.render_html(
         '<div class="sec-hdr">Part L 2021 &amp; FHS Readiness Overview</div>'
     )
-    st.info(
-        "Full Part L 2021 & FHS compliance panel is being redesigned. "
-        "The updated layout will include fabric U-value checks and Future Homes Standard "
-        "primary energy metrics.",
-        icon="ℹ️",
+
+    # Select the correct building_type string for the compliance engine
+    b_type = "individual_selfbuild" if segment_id == "individual_selfbuild" else "non-residential"
+
+    # Run compliance check for every building; collect results
+    checked: list[dict] = []
+    for b_name, b_data in buildings.items():
+        try:
+            res = compliance.part_l_compliance_check(
+                u_wall=b_data["u_value_wall"],
+                u_roof=b_data["u_value_roof"],
+                u_glazing=b_data["u_value_glazing"],
+                floor_area_m2=b_data["floor_area_m2"],
+                annual_energy_kwh=b_data["baseline_energy_mwh"] * 1000,
+                building_type=b_type,
+            )
+            checked.append({"name": b_name, **res})
+        except (ValueError, KeyError):
+            continue
+
+    if not checked:
+        st.warning("Insufficient building data for Part L compliance check.")
+        branding.render_html('<div class="main-section-divider"></div>')
+        return
+
+    any_fabric_fail = any(not c["part_l_2021_pass"] for c in checked)
+    any_fhs_fail    = any(not c["fhs_ready"] for c in checked)
+
+    # ── Section 1: Overall Status Banner ─────────────────────────────────────
+    with st.container(border=True):
+        if not any_fabric_fail and (not show_fhs or not any_fhs_fail):
+            branding.render_html(
+                '<div style="background:#071A2F;border:1px solid #00C2A8;border-radius:6px;'
+                'padding:12px;color:#00C2A8;font-weight:600;">'
+                "&#10004; Part L 2021 Fabric Targets Met across portfolio."
+                + (" Future Homes Standard proxy threshold satisfied." if show_fhs else "")
+                + "</div>"
+            )
+        else:
+            lines = []
+            if any_fabric_fail:
+                lines.append("&#9888; One or more assets do not meet Part L 2021 U-value targets.")
+            if show_fhs and any_fhs_fail:
+                lines.append("&#9888; Primary energy exceeds the FHS proxy threshold on one or more assets.")
+            branding.render_html(
+                '<div style="background:#2A1010;border:1px solid #E84C4C;border-radius:6px;'
+                'padding:12px;color:#F0B429;font-weight:600;">'
+                + "<br>".join(lines)
+                + "</div>"
+            )
+
+    # ── Section 2: Per-building fabric check + FHS proxy ─────────────────────
+    branding.render_html(
+        '<div style="font-size:0.82rem;color:#5A7A90;margin:8px 0 4px;">'
+        "Fabric U-Value Check</div>"
     )
-    branding.render_html('<div class="main-section-divider"></div>')
+
+    for c in checked:
+        b_pass = c["part_l_2021_pass"]
+        with st.expander(f"Asset: {c['name']}", expanded=not b_pass):
+
+            # Verdict sub-banner
+            if b_pass:
+                st.success(f"Part L 2021 — {c['regs_label']}: PASS")
+            else:
+                st.error(f"Part L 2021 — {c['regs_label']}: FAIL")
+
+            # Fabric U-value table
+            fabric_rows = [
+                {
+                    "Element":          item["element"],
+                    "Proposed (W/m²K)": item["proposed_u"],
+                    "Target (W/m²K)":   item["target_u"],
+                    "Gap (W/m²K)":      item["gap"] if not item["pass"] else 0.0,
+                    "Status":           "Pass" if item["pass"] else "Fail",
+                }
+                for item in c["compliance_items"]
+            ]
+            st.dataframe(
+                pd.DataFrame(fabric_rows),
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Element":          st.column_config.TextColumn(width="medium"),
+                    "Proposed (W/m²K)": st.column_config.NumberColumn(format="%.2f"),
+                    "Target (W/m²K)":   st.column_config.NumberColumn(format="%.2f"),
+                    "Gap (W/m²K)":      st.column_config.NumberColumn(format="%.3f"),
+                    "Status": st.column_config.TextColumn(width="small"),
+                },
+            )
+
+            # Improvement actions (if any)
+            if c["improvement_actions"]:
+                with st.expander("Improvement Actions", expanded=False):
+                    for action in c["improvement_actions"]:
+                        st.markdown(f"- {action}")
+
+            # FHS Proxy section
+            if show_fhs or True:   # always show primary energy — useful for all segments
+                fhs_label = "FHS Proxy" if show_fhs else "Primary Energy (Indicative)"
+                branding.render_html(
+                    f'<div style="font-size:0.78rem;color:#5A7A90;margin:8px 0 4px;">'
+                    f"Future Homes Standard — {fhs_label}</div>"
+                )
+                fhs_col1, fhs_col2 = st.columns(2)
+                delta_val = c["primary_energy_est"] - c["fhs_threshold"]
+                fhs_col1.metric(
+                    "Primary Energy Estimate",
+                    f"{c['primary_energy_est']:.1f} kWh/m\u00b2/yr",
+                    delta=f"{delta_val:+.1f} vs threshold",
+                    delta_color="inverse",
+                )
+                fhs_col2.metric(
+                    "FHS Threshold",
+                    f"{c['fhs_threshold']} kWh/m\u00b2/yr",
+                )
+                status_icon = "On Track" if c["fhs_ready"] else "Exceeds Threshold"
+                st.caption(f"FHS Status: {status_icon}")
