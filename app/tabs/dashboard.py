@@ -40,6 +40,7 @@ def switch_profile_dialog():
 
     # Use a dictionary to map segment IDs to their labels for the buttons
     other_segments = {
+        "university_he": "🏛️ University / HE",
         "smb_landlord": "🏢 Commercial Landlord",
         "smb_industrial": "🏭 SMB Industrial",
         "individual_selfbuild": "🏠 Individual Self-Build"
@@ -62,47 +63,57 @@ def switch_profile_dialog():
     st.markdown("---")
 
     # --- Action Buttons ---
-    col_report, col_continue, col_cancel = st.columns([1.6, 2.2, 1])
+    col_report, col_continue, col_cancel = st.columns([1.8, 2.2, 1])
 
-    def do_switch(segment_id):
+    def do_switch_and_close(segment_id):
         """Helper to perform the switch and clean up state."""
         switch_segment_with_defaults(segment_id)
-        del st.session_state.dialog_new_segment
+        if 'dialog_new_segment' in st.session_state:
+            del st.session_state.dialog_new_segment
+        st.session_state.show_switch_profile_dialog = False
+        # No st.rerun() here as Streamlit handles it after on_click
+
+    def cancel_and_close():
+        if 'dialog_new_segment' in st.session_state:
+            del st.session_state.dialog_new_segment
+        st.session_state.show_switch_profile_dialog = False
         st.rerun()
 
-    # Button 1: Continue by Report (Download then switch)
+    # Button 1: Download & Switch
     with col_report:
-        try:
-            report_bytes = generate_portfolio_report(
-                segment=st.session_state.user_segment,
-                portfolio=st.session_state.get("portfolio", []),
-                scenario_results={},
-                compliance_results={},
-            )
-            ext = "pdf" if report_bytes.startswith(b"%PDF") else "html"
-            st.download_button(
-                label="📄 Continue by Report",
-                data=report_bytes,
-                file_name=f"CrowAgent_Report_{st.session_state.user_segment}.{ext}",
-                mime=f"application/{ext}",
-                use_container_width=True,
-                disabled=not new_segment,
-                on_click=do_switch,
-                args=(new_segment,)
-            )
-        except Exception as e:
-            st.button("📄 Continue by Report", disabled=True, use_container_width=True, help=f"Report generation failed: {e}")
+        if new_segment:
+            try:
+                report_bytes = generate_portfolio_report(
+                    segment=st.session_state.user_segment,
+                    portfolio=st.session_state.get("portfolio", []),
+                    scenario_results={},
+                    compliance_results={},
+                )
+                ext = "pdf" if report_bytes.startswith(b"%PDF") else "html"
+                st.download_button(
+                    label="📄 Download & Switch",
+                    data=report_bytes,
+                    file_name=f"CrowAgent_Report_{st.session_state.user_segment}.{ext}",
+                    mime=f"application/{ext}",
+                    use_container_width=True,
+                    on_click=do_switch_and_close,
+                    args=(new_segment,)
+                )
+            except Exception as e:
+                st.button("📄 Download & Switch", disabled=True, use_container_width=True, help=f"Report generation failed: {e}")
+        else:
+            st.button("📄 Download & Switch", disabled=True, use_container_width=True)
 
-    # Button 2: Continue Without Downloading
+    # Button 2: Switch Without Downloading
     with col_continue:
-        if st.button("Continue Without Downloading", use_container_width=True, disabled=not new_segment):
-            do_switch(new_segment)
+        if st.button("Switch Without Downloading", use_container_width=True, disabled=not new_segment):
+            do_switch_and_close(new_segment)
+            st.rerun()
 
     # Button 3: Cancel
     with col_cancel:
         if st.button("Cancel", use_container_width=True, type="secondary"):
-            del st.session_state.dialog_new_segment
-            st.rerun()
+            cancel_and_close()
 
 
 def render(handler, weather: dict, portfolio: list[dict]) -> None:
@@ -114,6 +125,10 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
         weather: Current weather data dictionary.
         portfolio: Full list of portfolio assets (will be filtered by segment).
     """
+    # ── DIALOG HANDLER ───────────────────────────────────────────────────────
+    if st.session_state.get("show_switch_profile_dialog"):
+        switch_profile_dialog()
+
     # ── BLOCK 1: PAGE TITLE & SWITCHER ───────────────────────────────────────
     selected_names = st.session_state.get("selected_scenario_names", [])
     if not selected_names:
@@ -129,10 +144,8 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
         c1, c2 = st.columns([3, 1.2])
         c1.markdown(f"Current Profile: **{handler.display_label}**")
         if c2.button("🔁 Switch Profile", use_container_width=True):
-            # Clear any leftover state from a previous dialog run
-            if 'dialog_new_segment' in st.session_state:
-                del st.session_state.dialog_new_segment
-            switch_profile_dialog()
+            st.session_state.show_switch_profile_dialog = True
+            st.rerun()
 
     # 1. Filter portfolio for this segment
     segment_portfolio = [p for p in portfolio if p.get("segment") == handler.segment_id]
