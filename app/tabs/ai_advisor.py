@@ -56,7 +56,7 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
     )
     st.caption(
         "Powered by Google Gemini · Physics-informed reasoning "
-        "· © 2026 Aparajita Parihar"
+        "· © 2026 CrowAgent™"
     )
 
     # ── BLOCK 2: DISCLAIMER ───────────────────────────────────────────────────

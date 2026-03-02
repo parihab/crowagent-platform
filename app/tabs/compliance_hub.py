@@ -29,8 +29,7 @@ def render(handler, portfolio: list[dict]) -> None:
         return
 
     branding.render_html(
-        f'<h2 style="font-family:Rajdhani,sans-serif;color:#071A2F;margin-bottom:4px;">'
-        f"Compliance Hub — {handler.display_label}</h2>"
+        f'<h2 class="page-h2">Compliance Hub — {handler.display_label}</h2>'
     )
 
     checks = handler.compliance_checks
@@ -86,7 +85,7 @@ def _panel_secr_tcfd(buildings: dict) -> None:
             )
 
     branding.render_html(
-        '<div style="font-size:0.82rem;color:#5A7A90;margin:8px 0 4px;">Emissions Summary</div>'
+        '<div class="subsec-label">Emissions Summary</div>'
     )
 
     # ── Section 2: KPI Columns ───────────────────────────────────────────────
@@ -101,7 +100,7 @@ def _panel_secr_tcfd(buildings: dict) -> None:
 
     # ── Section 3: Carbon Breakdown Chart ────────────────────────────────────
     branding.render_html(
-        '<div style="font-size:0.82rem;color:#5A7A90;margin:8px 0 4px;">Carbon Breakdown</div>'
+        '<div class="subsec-label">Carbon Breakdown</div>'
     )
     with st.container(border=True):
         fig = go.Figure(go.Bar(
@@ -124,8 +123,7 @@ def _panel_secr_tcfd(buildings: dict) -> None:
 
     # ── Section 4: TCFD Framework Alignment ──────────────────────────────────
     branding.render_html(
-        '<div style="font-size:0.82rem;color:#5A7A90;margin:8px 0 4px;">'
-        "TCFD Framework Alignment</div>"
+        '<div class="subsec-label">TCFD Framework Alignment</div>'
     )
     with st.container(border=True):
         st.markdown(
@@ -197,8 +195,7 @@ def _panel_mees_epc(buildings: dict) -> None:
 
     # ── Section 2: Asset Gap Analysis ────────────────────────────────────────
     branding.render_html(
-        '<div style="font-size:0.82rem;color:#5A7A90;margin:8px 0 4px;">'
-        "Asset Gap Analysis</div>"
+        '<div class="subsec-label">Asset Gap Analysis</div>'
     )
 
     for b_name, res in results.items():
@@ -326,8 +323,7 @@ def _panel_part_l_fhs(buildings: dict, segment_id: str, show_fhs: bool) -> None:
 
     # ── Section 2: Per-building fabric check + FHS proxy ─────────────────────
     branding.render_html(
-        '<div style="font-size:0.82rem;color:#5A7A90;margin:8px 0 4px;">'
-        "Fabric U-Value Check</div>"
+        '<div class="subsec-label">Fabric U-Value Check</div>'
     )
 
     for c in checked:
