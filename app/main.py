@@ -3,16 +3,10 @@ CrowAgent™ Platform — Main Application Orchestrator
 =====================================================
 Navigation architecture: in-content horizontal button bar
   • After segment selection, run() renders:
-      logo+toggle → nav bar (6 page buttons) → active page content → footer
+      logo → nav bar (6 page buttons) → active page content → footer
   • Navigation is driven by `_current_page` in session state; each button
     sets the key and calls st.rerun() — no st.navigation / URL routing needed.
-  • Sidebar is reserved exclusively for operational controls (segment,
-    scenarios, portfolio, weather).
-
-Sidebar toggle:
-  • `sidebar_visible` session-state key (bool, default True).
-  • When False: CSS `display:none` on stSidebar — content area expands.
-  • `initial_sidebar_state: "auto"` auto-collapses on mobile viewports.
+  • The sidebar panel is permanently hidden; all controls live in-page.
 """
 from __future__ import annotations
 
@@ -56,6 +50,27 @@ _COMPLIANCE_TITLES: dict[str, str] = {
 }
 
 
+<<<<<<< HEAD
+=======
+# ── Logo bar ─────────────────────────────────────────────────────────────────
+
+def _render_logo_and_toggle() -> None:
+    """Renders the CrowAgent™ logo banner at the top of every page.
+
+    The sidebar is permanently hidden (CSS in branding.py), so no toggle
+    button is needed.  Function name retained to avoid changing call sites.
+    """
+    logo_uri = branding.get_logo_uri()
+    if logo_uri:
+        branding.render_html(
+            '<div class="page-logo-bar" role="banner">'
+            f'<img src="{logo_uri}" style="height:34px; opacity:0.92;" '
+            'alt="CrowAgent™ Platform — Sustainability AI Decision Intelligence">'
+            "</div>"
+        )
+
+
+>>>>>>> 6359a2ea6dd935da968a73ae4616240bd7ff9c1f
 # ── Shared page setup ────────────────────────────────────────────────────────
 
 def _render_page_nav() -> None:
@@ -96,11 +111,19 @@ def _page_setup() -> None:
 
     Order matters:
       1. inject_branding() — CSS must arrive before any rendered element.
+<<<<<<< HEAD
       2. render_page_logo() — logo bar.
       3. _render_page_nav() — 6-button horizontal navigation row.
     """
     branding.inject_branding()
     branding.render_page_logo()
+=======
+      2. _render_logo_and_toggle() — logo banner.
+      3. _render_page_nav() — 6-button horizontal navigation row.
+    """
+    branding.inject_branding()
+    _render_logo_and_toggle()
+>>>>>>> 6359a2ea6dd935da968a73ae4616240bd7ff9c1f
     _render_page_nav()
 
 
@@ -210,10 +233,19 @@ def run() -> None:
     if not _segment:
         return
 
+<<<<<<< HEAD
     st.session_state["_current_weather"] = _weather
 
     # 7. Route to active page — _page_setup() inside each wrapper handles
     # CSS injection, logo bar, and the nav button row.
+=======
+    # 7. Fetch weather silently and store for all page renderers
+    _segment, _weather, _location = sidebar.render_sidebar()
+    st.session_state["_current_weather"] = _weather
+
+    # 8. Route to active page — _page_setup() inside each wrapper handles
+    # CSS injection, the logo bar, and the nav button row.
+>>>>>>> 6359a2ea6dd935da968a73ae4616240bd7ff9c1f
     _ROUTE = {
         "dashboard":  _page_dashboard,
         "financial":  _page_financial,

@@ -120,8 +120,7 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
         selected_names = handler.default_scenarios
 
     branding.render_html(
-        '<h2 style="font-family:Rajdhani,sans-serif; '
-        'color:#071A2F; margin-bottom:4px;">📊 Portfolio Dashboard</h2>'
+        '<h2 class="page-h2">📊 Portfolio Dashboard</h2>'
     )
     st.caption("⚙️ Configure API keys and settings in the **Settings** tab.")
     
@@ -287,8 +286,8 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
     <div style="font-size:1.9rem;font-weight:700;color:#F0F4F8;">{_w_temp}°C</div>
     <div style="font-size:0.76rem;color:#CBD8E6;text-align:right;">{_w_desc}</div>
   </div>
-  <div style="font-size:0.69rem;color:#5A7A90;margin-bottom:6px;">📍 {_w_loc}</div>
-  <div style="font-size:0.7rem;color:#5A7A90;display:flex;gap:10px;">
+  <div style="font-size:0.75rem;color:#8AACBF;margin-bottom:6px;">📍 {_w_loc}</div>
+  <div style="font-size:0.75rem;color:#8AACBF;display:flex;gap:10px;">
     <span>💨 {_w_wind} mph</span><span>💧 {_w_hum}%</span>
   </div>
 </div>
