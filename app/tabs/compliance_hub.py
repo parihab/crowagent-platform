@@ -12,6 +12,7 @@ NOTE: Underlying carbon math, scope definitions, and baseline compliance logic
 """
 from __future__ import annotations
 
+import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -148,40 +149,111 @@ def _panel_secr_tcfd(buildings: dict) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PANEL B — MEES & EPC  (redesign scheduled — next commit)
+# PANEL B — MEES & EPC
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _panel_mees_epc(buildings: dict) -> None:
-    """MEES & EPC Compliance Overview — to be redesigned in next commit."""
+    """MEES & EPC Compliance Overview — status banner + per-asset gap analysis."""
     branding.render_html(
         '<div class="sec-hdr">MEES &amp; EPC Compliance Overview</div>'
     )
-    st.info("Target: EPC Band C by 2028 (Private Rented Sector)")
 
+    # Pre-compute all building ratings for the portfolio-level banner
+    results: dict[str, dict] = {}
     for b_name, b_data in buildings.items():
-        with st.expander(f"{b_name}", expanded=True):
-            res = compliance.estimate_epc_rating(
-                floor_area_m2=b_data["floor_area_m2"],
-                annual_energy_kwh=b_data["baseline_energy_mwh"] * 1000,
-                u_wall=b_data["u_value_wall"],
-                u_roof=b_data["u_value_roof"],
-                u_glazing=b_data["u_value_glazing"],
-                glazing_ratio=b_data["glazing_ratio"],
+        results[b_name] = compliance.estimate_epc_rating(
+            floor_area_m2=b_data["floor_area_m2"],
+            annual_energy_kwh=b_data["baseline_energy_mwh"] * 1000,
+            u_wall=b_data["u_value_wall"],
+            u_roof=b_data["u_value_roof"],
+            u_glazing=b_data["u_value_glazing"],
+            glazing_ratio=b_data["glazing_ratio"],
+        )
+
+    below_target = [n for n, r in results.items() if not r["mees_2028_compliant"]]
+    n_fail = len(below_target)
+
+    # ── Section 1: Compliance Status Banner ──────────────────────────────────
+    with st.container(border=True):
+        if n_fail == 0:
+            branding.render_html(
+                '<div style="background:#071A2F;border:1px solid #00C2A8;border-radius:6px;'
+                'padding:12px;color:#00C2A8;font-weight:600;">'
+                "&#10004; Portfolio meets the 2028 MEES target — all assets rated Band C or above."
+                "</div>"
             )
-            c1, c2 = st.columns([1, 3])
-            with c1:
-                st.metric("Est. Rating", f"{res['sap_score']} ({res['epc_band']})")
-                st.caption(f"EUI: {res['eui_kwh_m2']} kWh/m\u00b2")
-            with c2:
-                if res["mees_2028_compliant"]:
+        else:
+            asset_word = "asset" if n_fail == 1 else "assets"
+            branding.render_html(
+                f'<div style="background:#2A1010;border:1px solid #E84C4C;border-radius:6px;'
+                f'padding:12px;">'
+                f'<div style="color:#F0B429;font-weight:600;margin-bottom:4px;">'
+                f"&#9888; {n_fail} {asset_word} below 2028 MEES target (Band C)</div>"
+                f'<div style="font-size:0.78rem;color:#CBD8E6;">'
+                f"Affected: {', '.join(below_target)}</div>"
+                f"</div>"
+            )
+
+    # ── Section 2: Asset Gap Analysis ────────────────────────────────────────
+    branding.render_html(
+        '<div style="font-size:0.82rem;color:#5A7A90;margin:8px 0 4px;">'
+        "Asset Gap Analysis</div>"
+    )
+
+    for b_name, res in results.items():
+        compliant = res["mees_2028_compliant"]
+        # Auto-expand non-compliant assets to draw attention
+        with st.expander(f"Asset: {b_name}", expanded=not compliant):
+            info_col, status_col = st.columns([1, 2])
+
+            with info_col:
+                st.metric("Est. EPC Band", f"Band {res['epc_band']}")
+                st.metric("SAP Score", str(res["sap_score"]))
+                st.caption(f"EUI: {res['eui_kwh_m2']} kWh/m\u00b2/yr")
+                st.caption("Target: Band C by 2028")
+
+            with status_col:
+                if compliant:
                     st.success(res["recommendation"])
                 else:
                     st.warning(res["recommendation"])
+
                     gap = compliance.mees_gap_analysis(res["sap_score"], "C")
-                    if gap["recommended_measures"]:
-                        st.markdown("**Recommended Upgrades:**")
-                        for m in gap["recommended_measures"]:
-                            st.markdown(f"- {m['name']} (Lift: +{m['sap_lift']} pts)")
+                    measures = gap.get("recommended_measures", [])
+
+                    if measures:
+                        branding.render_html(
+                            '<div style="font-size:0.78rem;color:#5A7A90;'
+                            'margin:6px 0 4px;">Recommended Upgrades</div>'
+                        )
+                        rows = [
+                            {
+                                "Measure": m["name"],
+                                "SAP Lift": f"+{m['sap_lift']} pts",
+                                "Est. Cost": (
+                                    f"£{m['cost_low']:,} – £{m['cost_high']:,}"
+                                ),
+                                "Regulation": m.get("regulation", "—"),
+                            }
+                            for m in measures
+                        ]
+                        st.dataframe(
+                            pd.DataFrame(rows),
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={
+                                "Measure": st.column_config.TextColumn(width="medium"),
+                                "SAP Lift": st.column_config.TextColumn(width="small"),
+                                "Est. Cost": st.column_config.TextColumn(width="medium"),
+                                "Regulation": st.column_config.TextColumn(width="large"),
+                            },
+                        )
+                        sap_gap = gap.get("sap_gap", 0)
+                        if sap_gap:
+                            st.caption(
+                                f"SAP gap to Band C: {sap_gap} pts — "
+                                f"{len(measures)} measure(s) recommended."
+                            )
 
     branding.render_html('<div class="main-section-divider"></div>')
 
