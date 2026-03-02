@@ -32,28 +32,19 @@ logger = logging.getLogger(__name__)
 
 def render_sidebar() -> Tuple[Optional[str], Dict[str, Any], str]:
     """
-    Renders the full sidebar and returns the current context.
+    Returns current segment context and silently fetches weather.
+    The sidebar panel is not used — all controls live in-page.
     Returns: (segment_id, weather_dict, location_name)
     """
-    # 1. Segment Gate (Full Screen if no segment selected)
+    # Segment Gate (full-screen 4-card selector when no segment is chosen)
     if not st.session_state.get("user_segment"):
         _render_segment_gate()
         return None, {}, ""
 
     segment = st.session_state.user_segment
 
-    # 2. Sidebar Content
-    with st.sidebar:
-        # Portfolio Summary
-        _render_portfolio_summary_compact()
-
-        # Weather fetched silently; display lives in the Dashboard tab
-        weather_data = _fetch_weather_silently()
-
-        st.markdown("---")
-        
-        # Navigation hint
-        st.info("⚙️ Configure API keys and settings in the **Settings** tab.")
+    # Weather is fetched silently; the weather card renders in the Dashboard tab
+    weather_data = _fetch_weather_silently()
 
     return segment, weather_data, weather_data.get("location_name", "Unknown")
 

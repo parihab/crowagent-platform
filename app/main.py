@@ -3,16 +3,10 @@ CrowAgent™ Platform — Main Application Orchestrator
 =====================================================
 Navigation architecture: in-content horizontal button bar
   • After segment selection, run() renders:
-      logo+toggle → nav bar (6 page buttons) → active page content → footer
+      logo → nav bar (6 page buttons) → active page content → footer
   • Navigation is driven by `_current_page` in session state; each button
     sets the key and calls st.rerun() — no st.navigation / URL routing needed.
-  • Sidebar is reserved exclusively for operational controls (segment,
-    scenarios, portfolio, weather).
-
-Sidebar toggle:
-  • `sidebar_visible` session-state key (bool, default True).
-  • When False: CSS `display:none` on stSidebar — content area expands.
-  • `initial_sidebar_state: "auto"` auto-collapses on mobile viewports.
+  • The sidebar panel is permanently hidden; all controls live in-page.
 """
 from __future__ import annotations
 
@@ -55,60 +49,22 @@ _COMPLIANCE_TITLES: dict[str, str] = {
 }
 
 
-# ── Sidebar visibility CSS ───────────────────────────────────────────────────
-
-def _inject_sidebar_css() -> None:
-    """Hides the sidebar via CSS when sidebar_visible is False.
-
-    When the sidebar is display:none Streamlit's flexbox layout naturally
-    reclaims that space for the main content column.  The native hamburger
-    button in Streamlit's top chrome is also hidden so it does not re-appear
-    as a confusing orphan control.
-    """
-    if not st.session_state.get("sidebar_visible", True):
-        branding.render_html(
-            "<style>"
-            "[data-testid='stSidebar'],"
-            "[data-testid='stSidebarCollapsedControl']"
-            "{ display: none !important; }"
-            "</style>"
-        )
-
-
-# ── Logo + sidebar toggle bar ────────────────────────────────────────────────
+# ── Logo bar ─────────────────────────────────────────────────────────────────
 
 def _render_logo_and_toggle() -> None:
-    """Renders the CrowAgent™ logo on the left and the sidebar toggle on the right.
+    """Renders the CrowAgent™ logo banner at the top of every page.
 
-    Replaces the old branding.render_page_logo() call.  The toggle uses a
-    fixed widget key (`_sbt`) which is safe because st.navigation with
-    callable-based pages only ever executes ONE page wrapper per script run.
+    The sidebar is permanently hidden (CSS in branding.py), so no toggle
+    button is needed.  Function name retained to avoid changing call sites.
     """
     logo_uri = branding.get_logo_uri()
-    visible = st.session_state.get("sidebar_visible", True)
-
-    col_logo, col_btn = st.columns([11, 1])
-
-    with col_logo:
-        if logo_uri:
-            branding.render_html(
-                '<div class="page-logo-bar" role="banner">'
-                f'<img src="{logo_uri}" style="height:34px; opacity:0.92;" '
-                'alt="CrowAgent™ Platform — Sustainability AI Decision Intelligence">'
-                "</div>"
-            )
-
-    with col_btn:
-        icon = "✕" if visible else "☰"
-        tip = "Hide sidebar controls" if visible else "Show sidebar controls"
-        if st.button(
-            icon,
-            key="_sbt",
-            help=tip,
-            use_container_width=True,
-        ):
-            st.session_state.sidebar_visible = not visible
-            st.rerun()
+    if logo_uri:
+        branding.render_html(
+            '<div class="page-logo-bar" role="banner">'
+            f'<img src="{logo_uri}" style="height:34px; opacity:0.92;" '
+            'alt="CrowAgent™ Platform — Sustainability AI Decision Intelligence">'
+            "</div>"
+        )
 
 
 # ── Shared page setup ────────────────────────────────────────────────────────
@@ -151,12 +107,10 @@ def _page_setup() -> None:
 
     Order matters:
       1. inject_branding() — CSS must arrive before any rendered element.
-      2. _inject_sidebar_css() — conditional hide rule (no-op when visible).
-      3. _render_logo_and_toggle() — logo bar + toggle button.
-      4. _render_page_nav() — 6-button horizontal navigation row.
+      2. _render_logo_and_toggle() — logo banner.
+      3. _render_page_nav() — 6-button horizontal navigation row.
     """
     branding.inject_branding()
-    _inject_sidebar_css()
     _render_logo_and_toggle()
     _render_page_nav()
 
@@ -270,12 +224,12 @@ def run() -> None:
         sidebar.render_sidebar()
         return
 
-    # 7. Sidebar controls (segment label, scenarios, portfolio, weather)
+    # 7. Fetch weather silently and store for all page renderers
     _segment, _weather, _location = sidebar.render_sidebar()
     st.session_state["_current_weather"] = _weather
 
     # 8. Route to active page — _page_setup() inside each wrapper handles
-    # CSS injection, logo bar, sidebar CSS, and the nav button row.
+    # CSS injection, the logo bar, and the nav button row.
     _ROUTE = {
         "dashboard":  _page_dashboard,
         "financial":  _page_financial,

@@ -77,6 +77,12 @@ h4 {
 /* ── App Background ────────────────────────────────────────────────────── */
 [data-testid="stAppViewContainer"] > .main { background: #F0F4F8; }
 
+/* ── Sidebar permanently hidden — all controls live in-page ────────────── */
+[data-testid="stSidebar"],
+[data-testid="stSidebarCollapsedControl"] {
+  display: none !important;
+}
+
 /* BUG-FIX #1 — Restore top padding so content does not render under the
    sticky header, which was intercepting pointer events on the tab / nav bar. */
 .block-container {
@@ -600,7 +606,7 @@ PAGE_CONFIG = {
     "page_title": "CrowAgent™ Platform",
     "page_icon": get_icon_uri() or "🌿",
     "layout": "wide",
-    "initial_sidebar_state": "auto",
+    "initial_sidebar_state": "collapsed",
     "menu_items": {
         "Get Help": "mailto:crowagent.platform@gmail.com",
         "Report a bug": "https://github.com/WonderApri/crowagent-platform/issues",
