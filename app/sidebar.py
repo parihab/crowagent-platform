@@ -50,8 +50,12 @@ def get_sidebar_context() -> Tuple[Optional[str], Dict[str, Any], str]:
 
 def _render_segment_gate():
     """Renders the 4-card segment selection screen."""
-    branding.render_html("""
+    logo_uri = branding.get_logo_uri()
+    logo_html = f'<img src="{logo_uri}" style="height: 50px; margin-bottom: 20px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));">' if logo_uri else ""
+
+    branding.render_html(f"""
     <div style='text-align: center; padding: 2rem 0 3rem 0;'>
+        {logo_html}
         <h1 style='margin-bottom: 0.5rem;'>Welcome to CrowAgent&#x2122;</h1>
         <p style='font-size: 1.1rem; color: #8AACBF; max-width: 600px; margin: 0 auto;'>
             Select your user profile to configure the platform&#x27;s physics engine and compliance tools for your specific needs.
