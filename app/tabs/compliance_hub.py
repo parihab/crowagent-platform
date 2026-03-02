@@ -39,13 +39,14 @@ def render(handler, portfolio: list[dict]) -> None:
     if "secr" in checks:
         _panel_secr_tcfd(buildings)
 
-    # Panel B — MEES & EPC (coming in next update)
+    # Panel B — MEES & EPC
     if "epc_mees" in checks:
         _panel_mees_epc(buildings)
 
-    # Panel C — Part L 2021 & FHS (coming in next update)
+    # Panel C — Part L 2021 & FHS
     if "part_l" in checks or "fhs" in checks:
-        _panel_part_l_fhs_stub()
+        _panel_part_l_fhs(buildings, handler.segment_id, show_fhs="fhs" in checks)
+        branding.render_html('<div class="main-section-divider"></div>')
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -259,18 +260,134 @@ def _panel_mees_epc(buildings: dict) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PANEL C — Part L & FHS  (redesign scheduled — next commit)
+# PANEL C — Part L 2021 & FHS Readiness
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _panel_part_l_fhs_stub() -> None:
-    """Part L 2021 & FHS Readiness — to be redesigned in next commit."""
+    """Kept for import safety — delegates to the full implementation."""
+    pass  # render() calls _panel_part_l_fhs directly; stub retained for safety
+
+
+def _panel_part_l_fhs(buildings: dict, segment_id: str, show_fhs: bool) -> None:
+    """Part L 2021 & FHS Readiness Overview — fabric check + primary energy proxy."""
     branding.render_html(
         '<div class="sec-hdr">Part L 2021 &amp; FHS Readiness Overview</div>'
     )
-    st.info(
-        "Full Part L 2021 & FHS compliance panel is being redesigned. "
-        "The updated layout will include fabric U-value checks and Future Homes Standard "
-        "primary energy metrics.",
-        icon="ℹ️",
+
+    # Select the correct building_type string for the compliance engine
+    b_type = "individual_selfbuild" if segment_id == "individual_selfbuild" else "non-residential"
+
+    # Run compliance check for every building; collect results
+    checked: list[dict] = []
+    for b_name, b_data in buildings.items():
+        try:
+            res = compliance.part_l_compliance_check(
+                u_wall=b_data["u_value_wall"],
+                u_roof=b_data["u_value_roof"],
+                u_glazing=b_data["u_value_glazing"],
+                floor_area_m2=b_data["floor_area_m2"],
+                annual_energy_kwh=b_data["baseline_energy_mwh"] * 1000,
+                building_type=b_type,
+            )
+            checked.append({"name": b_name, **res})
+        except (ValueError, KeyError):
+            continue
+
+    if not checked:
+        st.warning("Insufficient building data for Part L compliance check.")
+        branding.render_html('<div class="main-section-divider"></div>')
+        return
+
+    any_fabric_fail = any(not c["part_l_2021_pass"] for c in checked)
+    any_fhs_fail    = any(not c["fhs_ready"] for c in checked)
+
+    # ── Section 1: Overall Status Banner ─────────────────────────────────────
+    with st.container(border=True):
+        if not any_fabric_fail and (not show_fhs or not any_fhs_fail):
+            branding.render_html(
+                '<div style="background:#071A2F;border:1px solid #00C2A8;border-radius:6px;'
+                'padding:12px;color:#00C2A8;font-weight:600;">'
+                "&#10004; Part L 2021 Fabric Targets Met across portfolio."
+                + (" Future Homes Standard proxy threshold satisfied." if show_fhs else "")
+                + "</div>"
+            )
+        else:
+            lines = []
+            if any_fabric_fail:
+                lines.append("&#9888; One or more assets do not meet Part L 2021 U-value targets.")
+            if show_fhs and any_fhs_fail:
+                lines.append("&#9888; Primary energy exceeds the FHS proxy threshold on one or more assets.")
+            branding.render_html(
+                '<div style="background:#2A1010;border:1px solid #E84C4C;border-radius:6px;'
+                'padding:12px;color:#F0B429;font-weight:600;">'
+                + "<br>".join(lines)
+                + "</div>"
+            )
+
+    # ── Section 2: Per-building fabric check + FHS proxy ─────────────────────
+    branding.render_html(
+        '<div style="font-size:0.82rem;color:#5A7A90;margin:8px 0 4px;">'
+        "Fabric U-Value Check</div>"
     )
-    branding.render_html('<div class="main-section-divider"></div>')
+
+    for c in checked:
+        b_pass = c["part_l_2021_pass"]
+        with st.expander(f"Asset: {c['name']}", expanded=not b_pass):
+
+            # Verdict sub-banner
+            if b_pass:
+                st.success(f"Part L 2021 — {c['regs_label']}: PASS")
+            else:
+                st.error(f"Part L 2021 — {c['regs_label']}: FAIL")
+
+            # Fabric U-value table
+            fabric_rows = [
+                {
+                    "Element":          item["element"],
+                    "Proposed (W/m²K)": item["proposed_u"],
+                    "Target (W/m²K)":   item["target_u"],
+                    "Gap (W/m²K)":      item["gap"] if not item["pass"] else 0.0,
+                    "Status":           "Pass" if item["pass"] else "Fail",
+                }
+                for item in c["compliance_items"]
+            ]
+            st.dataframe(
+                pd.DataFrame(fabric_rows),
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Element":          st.column_config.TextColumn(width="medium"),
+                    "Proposed (W/m²K)": st.column_config.NumberColumn(format="%.2f"),
+                    "Target (W/m²K)":   st.column_config.NumberColumn(format="%.2f"),
+                    "Gap (W/m²K)":      st.column_config.NumberColumn(format="%.3f"),
+                    "Status": st.column_config.TextColumn(width="small"),
+                },
+            )
+
+            # Improvement actions (if any)
+            if c["improvement_actions"]:
+                with st.expander("Improvement Actions", expanded=False):
+                    for action in c["improvement_actions"]:
+                        st.markdown(f"- {action}")
+
+            # FHS Proxy section
+            if show_fhs or True:   # always show primary energy — useful for all segments
+                fhs_label = "FHS Proxy" if show_fhs else "Primary Energy (Indicative)"
+                branding.render_html(
+                    f'<div style="font-size:0.78rem;color:#5A7A90;margin:8px 0 4px;">'
+                    f"Future Homes Standard — {fhs_label}</div>"
+                )
+                fhs_col1, fhs_col2 = st.columns(2)
+                delta_val = c["primary_energy_est"] - c["fhs_threshold"]
+                fhs_col1.metric(
+                    "Primary Energy Estimate",
+                    f"{c['primary_energy_est']:.1f} kWh/m\u00b2/yr",
+                    delta=f"{delta_val:+.1f} vs threshold",
+                    delta_color="inverse",
+                )
+                fhs_col2.metric(
+                    "FHS Threshold",
+                    f"{c['fhs_threshold']} kWh/m\u00b2/yr",
+                )
+                status_icon = "On Track" if c["fhs_ready"] else "Exceeds Threshold"
+                st.caption(f"FHS Status: {status_icon}")
