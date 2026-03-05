@@ -419,7 +419,7 @@ def _call_gemini(
     use_tools: bool = True,
 ) -> dict:
     """
-    Single Gemini API call. Returns the raw response dict.
+    Single Gemini API call with schema fallbacks for API-version differences.
     messages format: [{"role": "user"|"model", "parts": [...]}]
     """
     payload: dict = {
@@ -443,7 +443,7 @@ def _call_gemini(
         print("CRITICAL: API key is missing or not a string.")
         print("--- END DEBUG ---")
         return {"error": "Gemini API key is missing."}
-    
+
     clean_api_key = api_key.strip()
     if len(clean_api_key) != 39:
         print("--- GEMINI API DEBUG ---")
@@ -456,46 +456,100 @@ def _call_gemini(
         print(f"Key prefix: '{clean_api_key[:4]}'")
         print("--- END DEBUG ---")
 
-    try:
-        resp = requests.post(GEMINI_URL, timeout=30,
-            headers={"Content-Type": "application/json", "x-goog-api-key": clean_api_key},
-            json=payload,
-        )
-    except requests.exceptions.Timeout:
-        return {"error": "Gemini API request timed out (30 s). Check your connection and retry."}
-    except requests.exceptions.ConnectionError:
-        return {"error": "Could not connect to Gemini API. Check your internet connection."}
-    except requests.exceptions.RequestException as exc:
-        return {"error": f"Gemini API request failed: {exc}"}
+    # Preferred payload (Generative Language API, snake_case)
+    payload_snake: dict = {
+        "system_instruction": {"parts": [{"text": system_prompt}]},
+        "contents": messages,
+        "generationConfig": {
+            "maxOutputTokens": MAX_OUTPUT_TOKENS,
+            "temperature": 0.2,
+            "topP": 0.8,
+        },
+    }
+    if use_tools:
+        payload_snake["tools"] = [{"function_declarations": AGENT_TOOLS}]
+        payload_snake["tool_config"] = {
+            "function_calling_config": {"mode": "AUTO"}
+        }
 
-    if resp.status_code != 200:
-        # Aggressive debug logging on failure
-        print("\n--- GEMINI API DEBUG ---")
-        print(f"URL: {GEMINI_URL}")
-        print(f"Status Code: {resp.status_code}")
-        print(f"Raw Response Text: {resp.text}")
-        print("--- END DEBUG ---\n")
+    # Alternate payload (camelCase variants seen in some SDK/docs)
+    payload_camel: dict = {
+        "systemInstruction": {"parts": [{"text": system_prompt}]},
+        "contents": messages,
+        "generationConfig": {
+            "maxOutputTokens": MAX_OUTPUT_TOKENS,
+            "temperature": 0.2,
+            "topP": 0.8,
+        },
+    }
+    if use_tools:
+        payload_camel["tools"] = [{"functionDeclarations": AGENT_TOOLS}]
+        payload_camel["toolConfig"] = {
+            "functionCallingConfig": {"mode": "AUTO"}
+        }
 
-        error_msg = "Unknown error"
+    # Final fallback: no top-level system/tool fields at all.
+    # We inject the system prompt into the first user message to avoid schema mismatches.
+    merged_messages = list(messages)
+    if merged_messages and merged_messages[0].get("role") == "user":
+        first_parts = merged_messages[0].get("parts", [])
+        first_text = first_parts[0].get("text", "") if first_parts else ""
+        merged_messages[0] = {
+            "role": "user",
+            "parts": [{"text": f"[SYSTEM INSTRUCTIONS]\n{system_prompt}\n\n[USER MESSAGE]\n{first_text}"}],
+        }
+    payload_minimal = {
+        "contents": merged_messages,
+        "generationConfig": {
+            "maxOutputTokens": MAX_OUTPUT_TOKENS,
+            "temperature": 0.2,
+            "topP": 0.8,
+        },
+    }
+
+    attempts = [payload_snake, payload_camel, payload_minimal]
+    last_error = None
+
+    for idx, payload in enumerate(attempts, start=1):
+        try:
+            resp = requests.post(
+                GEMINI_URL,
+                timeout=30,
+                headers={"Content-Type": "application/json", "x-goog-api-key": clean_api_key},
+                json=payload,
+            )
+        except requests.exceptions.Timeout:
+            last_error = "Gemini API request timed out (30 s). Check your connection and retry."
+            continue
+        except requests.exceptions.ConnectionError:
+            last_error = "Could not connect to Gemini API. Check your internet connection."
+            continue
+        except requests.exceptions.RequestException as exc:
+            last_error = f"Gemini API request failed: {exc}"
+            continue
+
+        if resp.status_code == 200:
+            return resp.json()
+
+        # parse error and decide whether retry next schema variant
         try:
             error_data = resp.json()
-            error_msg = error_data.get('error', {}).get('message', resp.text[:200])
+            error_msg = error_data.get("error", {}).get("message", resp.text[:200])
         except Exception:
             error_msg = resp.text[:200]
-        
-        # Enhanced error messages for common issues
-        if "404" in str(resp.status_code) or "not found" in error_msg.lower():
-            error_msg = (
-                f"Model not available. Please ensure your API key is valid and the model name is correct. "
-                f"Error: {error_msg}"
-            )
-        elif "401" in str(resp.status_code) or "unauthorized" in error_msg.lower():
-            error_msg = f"Invalid API key. Please check and try again. Full error: {error_msg}"
-        elif "403" in str(resp.status_code) or "permission" in error_msg.lower():
-            error_msg = f"API key doesn't have permission. Check your Google Cloud Console. Full error: {error_msg}"
-        
-        return {"error": f"Gemini API error {resp.status_code}: {error_msg}"}
-    return resp.json()
+
+        last_error = f"Gemini API error {resp.status_code}: {error_msg}"
+        lower = error_msg.lower()
+        schema_mismatch = (
+            "unknown name" in lower
+            or "cannot find field" in lower
+            or "invalid json payload" in lower
+        )
+
+        if not schema_mismatch or idx == len(attempts):
+            break
+
+    return {"error": last_error or "Gemini API request failed."}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
