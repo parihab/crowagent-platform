@@ -12,6 +12,7 @@ import core.agent as agent_service
 import app.branding as branding
 from app.segments import SEGMENT_LABELS
 from config.scenarios import SEGMENT_SCENARIOS, SCENARIOS
+from app.portfolio_utils import init_portfolio_entry
 
 # Utils
 try:

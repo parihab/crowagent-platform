@@ -30,15 +30,18 @@ import app.session as session
 st.set_page_config(**branding.PAGE_CONFIG)
 
 # ── Remaining imports (after set_page_config) ────────────────────────────────
-import app.sidebar as sidebar
 import app.tabs.dashboard as tab_dashboard
 import app.tabs.financial as tab_financial
 import app.tabs.compliance_hub as tab_compliance
 import app.tabs.settings as tab_settings
 import app.tabs.ai_advisor as tab_ai_advisor
 import core.about as about_page
-from app.segments import SEGMENT_IDS, get_segment_handler
+import services.weather as weather_service
+from app.segments import SEGMENT_IDS, SEGMENT_LABELS, get_segment_handler
 from app.session import ensure_portfolio_defaults
+from config.scenarios import SCENARIOS
+from app.segments.university_he import BUILDINGS
+from core.physics import calculate_thermal_load
 
 # Re-export for any legacy caller that does `from app.main import _card`
 _card = branding.render_card
@@ -177,6 +180,55 @@ def _page_about() -> None:
     branding.render_footer()
 
 
+
+def _render_segment_gate() -> None:
+    """In-page segment selector (no sidebar dependency)."""
+    branding.render_page_logo()
+    st.markdown("## Welcome to CrowAgent™")
+    st.caption("Select your profile to configure portfolio defaults and compliance context.")
+
+    descriptions = {
+        "university_he": "Campus estate management, SECR and decarbonisation planning.",
+        "smb_landlord": "Commercial landlord compliance, MEES and EPC uplift strategy.",
+        "smb_industrial": "Industrial energy optimisation, carbon baseline and retrofit planning.",
+        "individual_selfbuild": "Part L/FHS guidance for self-build and home retrofit pathways.",
+    }
+
+    cols = st.columns(2)
+    items = list(SEGMENT_LABELS.items())
+    for idx, (seg_id, label) in enumerate(items):
+        with cols[idx % 2]:
+            with st.container(border=True):
+                st.markdown(f"### {label}")
+                st.caption(descriptions.get(seg_id, ""))
+                if st.button("Select Profile", key=f"seg_{seg_id}", use_container_width=True, type="primary"):
+                    st.session_state["user_segment"] = seg_id
+                    st.session_state["portfolio"] = []
+                    st.rerun()
+
+
+def _fetch_weather_silently() -> dict:
+    """Populate weather context used by pages without sidebar."""
+    lat = st.session_state.get("wx_lat", 51.45)
+    lon = st.session_state.get("wx_lon", -0.97)
+    loc_name = st.session_state.get("wx_location_name", "Reading (Default)")
+    provider = st.session_state.get("weather_provider", "open_meteo")
+    try:
+        return weather_service.get_weather(
+            lat, lon, loc_name, provider,
+            met_office_key=st.session_state.get("met_office_key"),
+            openweathermap_key=st.session_state.get("openweathermap_key"),
+        )
+    except Exception:
+        return {
+            "temperature_c": 10.0,
+            "condition": "Fallback",
+            "description": "Fallback",
+            "location_name": loc_name,
+            "wind_speed_mph": 0,
+            "humidity_pct": 0,
+        }
+
 # ── Main orchestrator ────────────────────────────────────────────────────────
 
 def run() -> None:
@@ -201,12 +253,13 @@ def run() -> None:
     # 5. URL query-param bootstrap
     _resolve_query_params()
 
-    # 6. Segment gate & Context Fetching
-    _segment, _weather, _location = sidebar.get_sidebar_context()
+    # 6. Segment gate & context fetching (no sidebar dependency)
+    _segment = st.session_state.get("user_segment")
     if not _segment:
+        _render_segment_gate()
         return
 
-    st.session_state["_current_weather"] = _weather
+    st.session_state["_current_weather"] = _fetch_weather_silently()
 
     # 7. Route to active page — _page_setup() inside each wrapper handles
     # CSS injection, logo bar, and the nav button row.

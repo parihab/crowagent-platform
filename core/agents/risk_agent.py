@@ -1,4 +1,4 @@
-"""Compatibility shim for deprecated tab risk agent module."""
+"""Compatibility wrapper for legacy import path."""
 
 from core.risk_agent import RiskAgent
 
