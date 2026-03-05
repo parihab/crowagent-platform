@@ -1,4 +1,4 @@
-"""Compatibility shim for deprecated tab retrofit agent module."""
+"""Compatibility wrapper for legacy import path."""
 
 from core.retrofit_agent import RetrofitAgent
 

@@ -103,10 +103,12 @@ The application looks for secrets (GEMINI_KEY, MET_OFFICE_KEY) in
 `.streamlit/secrets.toml` or, as a fallback, in `.env` loaded via
 `python-dotenv`. Use `.env.example` as a template.
 
-`.streamlit/secrets.toml` or, as a fallback, in `.env` loaded via
-`python-dotenv`. Use `.env.example` as a template.
-
 ---
+
+
+## Module Compatibility
+
+To maintain backwards compatibility with older integrations, the repository now includes import shims for legacy paths such as `core.agents.*`, `orchestrator`, `financial_agent`, `location`, and `visualization_3d`. New development should prefer the canonical modules under `core/`, `app/`, and `services/`.
 
 ## Data Sources & Citations
 

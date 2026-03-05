@@ -7,7 +7,7 @@ Handles postcode search, asset addition, and portfolio management.
 import streamlit as st
 from app.utils import _extract_uk_postcode
 from services.epc import fetch_epc_data
-from app.sidebar import init_portfolio_entry
+from app.portfolio_utils import init_portfolio_entry
 
 @st.dialog("📂 Manage Portfolio")
 def render_portfolio_modal():

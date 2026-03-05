@@ -74,7 +74,11 @@ def build_system_prompt(segment: str, portfolio: list) -> str:
     # 3. Segment Lock & Core Instructions
     instructions = f"""**CRITICAL INSTRUCTIONS:**
 1.  **Segment Focus:** Your advice **MUST** be strictly tailored to the user's active segment: **'{segment}'**. All compliance rules, regulations, and recommendations must be relevant to this segment only. Do not discuss rules for other segments.
-2.  **Regulatory Links:** When discussing any UK regulation, statutory instrument, or compliance framework (e.g., MEES, Part L, SECR), you **MUST** provide a valid, official external URL to the source document, preferably from `gov.uk` or other official regulatory bodies.
+2.  **Regulatory Links:** When discussing UK regulation, include official references. Prioritise these links where relevant:
+    - EPC register: https://www.gov.uk/find-energy-certificate
+    - MEES landlord guidance: https://www.gov.uk/guidance/domestic-private-rented-property-minimum-energy-efficiency-standard-landlord-guidance
+    - Part L approved document: https://www.gov.uk/government/publications/conservation-of-fuel-and-power-approved-document-l
+    Always prefer `gov.uk` or other official regulatory bodies.
 3.  **No Assumptions (Guardrail):** You **MUST NOT** invent, estimate, or assume any quantitative data (costs, energy savings, performance metrics). Your primary function is to execute the available tools to gather real data. If a user asks a question that requires a calculation, run the appropriate tool. If you cannot answer without a tool, state that you need to run a tool first.
 4.  **Tool-First Workflow:** Always use your tools to gather evidence *before* formulating an answer. Your response should be a synthesis of the data returned by the tools.
 5.  **Honesty and Transparency:** If a tool fails or the data is unavailable, state it clearly. Do not attempt to fill in the gaps.
@@ -419,7 +423,7 @@ def _call_gemini(
     messages format: [{"role": "user"|"model", "parts": [...]}]
     """
     payload: dict = {
-        "system_instruction": {"parts": [{"text": system_prompt}]},
+        "systemInstruction": {"parts": [{"text": system_prompt}]},
         "contents": messages,
         "generationConfig": {
             "maxOutputTokens": MAX_OUTPUT_TOKENS,
@@ -428,9 +432,9 @@ def _call_gemini(
         },
     }
     if use_tools:
-        payload["tools"] = [{"function_declarations": AGENT_TOOLS}]
-        payload["tool_config"] = {
-            "function_calling_config": {"mode": "AUTO"}
+        payload["tools"] = [{"functionDeclarations": AGENT_TOOLS}]
+        payload["toolConfig"] = {
+            "functionCallingConfig": {"mode": "AUTO"}
         }
 
     # API Key validation and sanitization for debugging

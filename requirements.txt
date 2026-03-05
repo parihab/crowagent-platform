@@ -13,3 +13,6 @@ overpy>=0.6
 #   Open-Meteo    : https://open-meteo.com         (no key, default)
 #   OpenWeatherMap: https://openweathermap.org/api  (free tier, 1k req/day)
 #   Met Office    : https://metoffice.gov.uk/services/data/datapoint (UK, free)
+
+# Optional report export dependency used by services/report_generator.py
+fpdf2>=2.7.0
