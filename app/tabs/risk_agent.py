@@ -1,13 +1,3 @@
 """
-Risk Analysis Agent
-Evaluates climate risk and EPC exposure.
+MOVED: This logic has been moved to core/agents/risk_agent.py
 """
-class RiskAgent:
-    def analyze(self, portfolio: dict) -> dict:
-        # Minimal deterministic implementation
-        return {
-            "risk_score": "low",
-            "factors": ["compliance", "flood_risk"],
-            "details": "Automated risk assessment complete.",
-            "epc_exposure": "Managed"
-        }

@@ -1,4 +1,4 @@
 """
 MOVED: This logic has been moved to core/agents/orchestrator.py
-This file is deprecated and should be deleted.
+This file is deprecated.
 """
