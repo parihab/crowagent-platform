@@ -39,6 +39,9 @@ import app.tabs.ai_advisor as tab_ai_advisor
 import core.about as about_page
 from app.segments import SEGMENT_IDS, get_segment_handler
 from app.session import ensure_portfolio_defaults
+from config.scenarios import SCENARIOS
+from app.segments.university_he import BUILDINGS
+from core.physics import calculate_thermal_load
 
 # Re-export for any legacy caller that does `from app.main import _card`
 _card = branding.render_card
