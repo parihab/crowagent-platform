@@ -18,6 +18,7 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 
 from __future__ import annotations
+import logging
 import streamlit as st
 import requests
 from datetime import datetime, timezone
@@ -26,6 +27,9 @@ from typing import Optional
 
 class WeatherFetchError(RuntimeError):
     """Raised when all weather providers fail and manual fallback is unavailable."""
+
+
+logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -365,10 +369,10 @@ def get_weather(
         if prov == "met_office":
             try:
                 return _fetch_met_office(met_office_key, met_office_location, location_name)
-            except (requests.RequestException, KeyError, ValueError, TypeError) as exc:
+            except (requests.RequestException, RuntimeError, KeyError, ValueError, TypeError) as exc:
                 if enable_fallback:
-                    st.warning(
-                        f"Met Office unavailable ({type(exc).__name__}). Falling back."
+                    logger.warning(
+                        "Met Office unavailable (%s). Falling back.", type(exc).__name__
                     )
                     continue
                 else:
@@ -376,10 +380,10 @@ def get_weather(
         elif prov == "openweathermap":
             try:
                 return _fetch_openweathermap(openweathermap_key, lat, lon, location_name)
-            except (requests.RequestException, KeyError, ValueError, TypeError) as exc:
+            except (requests.RequestException, RuntimeError, KeyError, ValueError, TypeError) as exc:
                 if enable_fallback:
-                    st.warning(
-                        f"OpenWeatherMap unavailable ({type(exc).__name__}). Falling back."
+                    logger.warning(
+                        "OpenWeatherMap unavailable (%s). Falling back.", type(exc).__name__
                     )
                     continue
                 else:
@@ -387,9 +391,9 @@ def get_weather(
         else:  # open_meteo
             try:
                 return _fetch_open_meteo(lat, lon, location_name)
-            except (requests.RequestException, KeyError, ValueError, TypeError) as exc:
-                st.warning(
-                    f"Open-Meteo unavailable ({type(exc).__name__}). Using manual override."
+            except (requests.RequestException, RuntimeError, KeyError, ValueError, TypeError) as exc:
+                logger.warning(
+                    "Open-Meteo unavailable (%s). Using manual override.", type(exc).__name__
                 )
                 break # drop to manual
 

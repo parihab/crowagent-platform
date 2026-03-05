@@ -1,4 +1,4 @@
-"""Compatibility shim for legacy `import app.orchestrator` callers."""
+"""Compatibility wrapper for legacy import path."""
 
 from core.orchestrator import ESGOrchestrator
 
