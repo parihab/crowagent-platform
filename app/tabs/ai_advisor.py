@@ -22,7 +22,7 @@ except ImportError:
         return True, ""
 
 from core.agent import run_agent_turn
-from core.agents.orchestrator import ESGOrchestrator
+from core.orchestrator import ESGOrchestrator
 
 logger = logging.getLogger(__name__)
 

@@ -1,3 +1,5 @@
-"""
-MOVED: This logic has been moved to core/agents/finance_agent.py
-"""
+"""Compatibility shim for legacy `import finance_agent` callers."""
+
+from core.finance_agent import FinancialAgent
+
+__all__ = ["FinancialAgent"]

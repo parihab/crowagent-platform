@@ -1,4 +1,4 @@
-"""Compatibility shim for deprecated tab financial agent module."""
+"""Compatibility wrapper for legacy import path."""
 
 from core.finance_agent import FinancialAgent
 

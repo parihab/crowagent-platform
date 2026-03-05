@@ -121,13 +121,14 @@ def _band_from_sap(sap: float) -> tuple[str, str]:
 
 
 def estimate_epc_rating(
-    floor_area_m2: float,
-    annual_energy_kwh: float,
-    u_wall: float,
-    u_roof: float,
-    u_glazing: float,
+    floor_area_m2: float | None = None,
+    annual_energy_kwh: float | None = None,
+    u_wall: float = PART_L_2021_ND_U_WALL,
+    u_roof: float = PART_L_2021_ND_U_ROOF,
+    u_glazing: float = PART_L_2021_ND_U_GLAZING,
     glazing_ratio: float = 0.30,
     building_type: str = "commercial",
+    building: dict | None = None,
 ) -> dict:
     """
     Estimate an indicative EPC rating based on energy intensity and fabric U-values.
@@ -149,6 +150,12 @@ def estimate_epc_rating(
 
     DISCLAIMER: Indicative only. Not a formal SAP/SBEM assessment.
     """
+    # Backward-compatible object input
+    if building is not None:
+        floor_area_m2 = building.get("floor_area_m2", floor_area_m2)
+        if annual_energy_kwh is None:
+            annual_energy_kwh = building.get("baseline_energy_mwh", 0.0) * 1000.0
+
     # Input validation
     ok, msg = validate_floor_area(floor_area_m2)
     if not ok:
@@ -235,6 +242,8 @@ def estimate_epc_rating(
         "sap_score":           round(sap_score, 1),
         "epc_band":            band,
         "epc_colour":          colour,
+        "band":                band,
+        "color":               colour,
         "eui_kwh_m2":          round(eui, 1),
         "mees_compliant_now":  mees_compliant_now,
         "mees_2028_compliant": mees_2028_compliant,
@@ -620,3 +629,60 @@ SEGMENT_META: dict[str, dict] = {
         "compliance_tool": "secr",
     },
 }
+
+
+# Backward-compatible aliases used by legacy tests/callers
+def secr_carbon_baseline(
+    building: dict | None = None,
+    elec_kwh: float = 0.0,
+    gas_kwh: float = 0.0,
+    oil_kwh: float = 0.0,
+    lpg_kwh: float = 0.0,
+    fleet_miles: float = 0.0,
+) -> dict:
+    """Compatibility wrapper for legacy SECR naming."""
+    floor_area_m2 = (building or {}).get("floor_area_m2") or None
+    return calculate_carbon_baseline(
+        elec_kwh=elec_kwh,
+        gas_kwh=gas_kwh,
+        oil_kwh=oil_kwh,
+        lpg_kwh=lpg_kwh,
+        fleet_miles=fleet_miles,
+        floor_area_m2=floor_area_m2,
+    )
+
+
+def part_l_check(
+    building: dict,
+    fabric: dict | None = None,
+    scenario_energy_kwh: float | None = None,
+    u_wall: float | None = None,
+    u_roof: float | None = None,
+    u_glazing: float | None = None,
+    annual_energy_kwh: float | None = None,
+    building_type: str | None = None,
+) -> dict:
+    """Compatibility wrapper for legacy Part L function naming."""
+    fabric = fabric or {}
+    floor_area_m2 = building.get("floor_area_m2")
+    if annual_energy_kwh is None:
+        annual_energy_kwh = scenario_energy_kwh
+    if annual_energy_kwh is None:
+        annual_energy_kwh = building.get("baseline_energy_mwh", 0.0) * 1000.0
+    if u_wall is None:
+        u_wall = fabric.get("u_wall")
+    if u_roof is None:
+        u_roof = fabric.get("u_roof")
+    if u_glazing is None:
+        u_glazing = fabric.get("u_glazing")
+    if building_type is None:
+        building_type = building.get("building_type", "residential")
+
+    return part_l_compliance_check(
+        u_wall=u_wall,
+        u_roof=u_roof,
+        u_glazing=u_glazing,
+        floor_area_m2=floor_area_m2,
+        annual_energy_kwh=annual_energy_kwh,
+        building_type=building_type,
+    )

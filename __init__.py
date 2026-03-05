@@ -1,3 +1,3 @@
-from .orchestrator import ESGOrchestrator
+from core.orchestrator import ESGOrchestrator
 
 __all__ = ["ESGOrchestrator"]
