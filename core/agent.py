@@ -447,13 +447,13 @@ def _call_gemini(
         # Enhanced error messages for common issues
         if "404" in str(resp.status_code) or "not found" in error_msg.lower():
             error_msg = (
-                f"Model not available. Please ensure your API key is valid. "
+                f"Model not available. Please ensure your API key is valid and the model name is correct. "
                 f"Error: {error_msg}"
             )
         elif "401" in str(resp.status_code) or "unauthorized" in error_msg.lower():
-            error_msg = "Invalid API key. Please check and try again."
+            error_msg = f"Invalid API key. Please check and try again. Full error: {error_msg}"
         elif "403" in str(resp.status_code) or "permission" in error_msg.lower():
-            error_msg = "API key doesn't have permission. Check your Google Cloud Console."
+            error_msg = f"API key doesn't have permission. Check your Google Cloud Console. Full error: {error_msg}"
         
         return {"error": f"Gemini API error {resp.status_code}: {error_msg}"}
     return resp.json()

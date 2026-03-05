@@ -174,7 +174,7 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
                 st.warning(msg)
                 st.session_state.ai_chat_history.pop()
                 # ↑ remove unanswered user message to prevent infinite retry loop
-
+    
     # 5f. CHAT INPUT
     user_input = st.chat_input(
         "Ask about your portfolio, energy expenses, or compliance..."
