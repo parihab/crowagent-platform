@@ -245,10 +245,10 @@ div[data-testid="column"] button[aria-label="sidebar-toggle"] {
 
 /* ── KPI Cards ─────────────────────────────────────────────────────────── */
 .kpi-card {
-  background: #ffffff;
+  background: #041B3A;
   border-radius: 10px;
   padding: 20px 22px 16px;
-  border: 1px solid #E0EBF4;
+  border: 1px solid #0E365C;
   border-top: 4px solid #00C2A8;
   box-shadow: 0 4px 16px rgba(7,26,47,.08);
   height: 100%;
@@ -354,10 +354,10 @@ div[data-testid="column"] button[aria-label="sidebar-toggle"] {
   display: flex;
   align-items: center;
   gap: 12px;
-  background: #ffffff;
+  background: #041B3A;
   padding: 12px 20px;
   border-radius: 8px;
-  border: 1px solid #E0EBF4;
+  border: 1px solid #0E365C;
   box-shadow: 0 4px 12px rgba(7,26,47,0.05);
   margin: -1rem 0 1.5rem 0; /* Pull up to overlap top padding */
 }
@@ -365,7 +365,7 @@ div[data-testid="column"] button[aria-label="sidebar-toggle"] {
   font-family: 'Rajdhani', sans-serif;
   font-size: 1.5rem;
   font-weight: 700;
-  color: #071A2F;
+  color: #EAF2FF;
   line-height: 1;
 }
 
@@ -573,9 +573,11 @@ def render_page_logo() -> None:
             f"""
             <div class="page-logo-bar" role="banner">
                 <img src="{logo_uri}" 
-                     style="height: 56px; 
-                            opacity: 0.98; 
-                            filter: drop-shadow(0 1px 2px rgba(0,0,0,0.12));"
+                     style="height: 40px; 
+                            max-width: 100%;
+                            object-fit: contain;
+                            opacity: 0.95; 
+                            filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));"
                      alt="CrowAgent™ Platform Logo">
                 <div class="platform-name">CrowAgent™</div>
             </div>
@@ -593,7 +595,7 @@ def render_footer() -> None:
     logo_uri = get_logo_uri()
     logo_img = (
         f'<img src="{logo_uri}" '
-        f'style="height:44px; margin-bottom:16px; opacity:0.95;" '
+        f'style="height:32px; max-width:100%; object-fit:contain; margin-bottom:16px; opacity:0.9;" '
         f'alt="CrowAgent™">'
         if logo_uri
         else ""
