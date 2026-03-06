@@ -56,6 +56,17 @@ STARTER_PROMPTS = {
 def render(handler, weather: dict, portfolio: list[dict]) -> None:
     """Renders the AI Advisor tab."""
 
+    # Segment reset guard: if user segment changed, clear advisor histories immediately.
+    current_segment = st.session_state.get("user_segment", "university_he")
+    if "last_advisor_segment" not in st.session_state:
+        st.session_state["last_advisor_segment"] = current_segment
+    if st.session_state["last_advisor_segment"] != current_segment:
+        st.session_state["ai_chat_history"] = []
+        st.session_state["agent_history"] = []
+        st.session_state["chat_history"] = []
+        st.session_state.setdefault("ai_chat_history_by_segment", {})[current_segment] = []
+        st.session_state["last_advisor_segment"] = current_segment
+
     # Legacy/session compatibility keys must exist even in locked mode
     if "ai_chat_history" not in st.session_state:
         st.session_state["ai_chat_history"] = st.session_state.get("chat_history", [])
@@ -89,16 +100,6 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
         icon=None,
     )
 
-    # Segment-aware reset must run before the API-key gate so tests and UI stay consistent
-    current_segment = st.session_state.get("user_segment", "university_he")
-    if "last_segment" not in st.session_state:
-        st.session_state["last_segment"] = current_segment
-    if st.session_state["last_segment"] != current_segment:
-        st.session_state["ai_chat_history"] = []
-        st.session_state["chat_history"] = []
-        st.session_state["ai_chat_history_by_segment"][current_segment] = []
-        st.session_state["last_segment"] = current_segment
-
     # ── BLOCK 3: PRIMARY GATE ─────────────────────────────────────────────────
     # The AI advisor is locked until a valid Gemini API key is activated in settings.
     # Check both the activation flag and raw key presence to prevent lockout
@@ -129,22 +130,10 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
     if "ai_chat_history_by_segment" not in st.session_state:
         st.session_state["ai_chat_history_by_segment"] = {}
 
-    # Session Isolation: Initialize tracking variables
-    if "last_segment" not in st.session_state:
-        st.session_state["last_segment"] = st.session_state.get("user_segment", None)
-
     api_key = st.session_state.get("gemini_key", "")
     segment = st.session_state.get("user_segment", "university_he")
     segment_name = st.session_state.get("current_segment_name", "University / Higher Education")
     portfolio = st.session_state.get("portfolio", [])
-
-    # Session Isolation: Check for segment change and reset if needed
-    if segment != st.session_state["last_segment"]:
-        logger.info(f"Segment changed from {st.session_state['last_segment']} to {segment}. Resetting advisor chat.")
-        st.session_state["chat_history"] = []
-        st.session_state["ai_chat_history"] = []
-        st.session_state["ai_chat_history_by_segment"][segment] = []
-        st.session_state["last_segment"] = segment
 
     # Keep legacy and current keys synchronized
     st.session_state["ai_chat_history"] = st.session_state["chat_history"]
