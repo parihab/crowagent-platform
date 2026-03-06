@@ -58,14 +58,17 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
 
     # Segment reset guard: if user segment changed, clear advisor histories immediately.
     current_segment = st.session_state.get("user_segment", "university_he")
-    if "last_advisor_segment" not in st.session_state:
-        st.session_state["last_advisor_segment"] = current_segment
-    if st.session_state["last_advisor_segment"] != current_segment:
+    last_segment = st.session_state.get(
+        "last_advisor_segment",
+        st.session_state.get("last_segment", current_segment),
+    )
+    if last_segment != current_segment:
         st.session_state["ai_chat_history"] = []
         st.session_state["agent_history"] = []
         st.session_state["chat_history"] = []
         st.session_state.setdefault("ai_chat_history_by_segment", {})[current_segment] = []
-        st.session_state["last_advisor_segment"] = current_segment
+    st.session_state["last_advisor_segment"] = current_segment
+    st.session_state["last_segment"] = current_segment
 
     # Legacy/session compatibility keys must exist even in locked mode
     if "ai_chat_history" not in st.session_state:
@@ -124,10 +127,22 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
 
     # 5a. Get required data from session state & handle segment resets
     current_segment = st.session_state.get("user_segment", "university_he")
-    last_segment = st.session_state.get("ai_advisor_last_segment")
+    last_segment = st.session_state.get(
+        "ai_advisor_last_segment",
+        st.session_state.get("last_segment"),
+    )
 
-    if "ai_chat_history_by_segment" not in st.session_state:
-        st.session_state["ai_chat_history_by_segment"] = {}
+    # If the segment changed since they last opened this tab, clear the chat memory
+    if last_segment is not None and current_segment != last_segment:
+        st.session_state["ai_chat_history"] = []
+        st.session_state["chat_history"] = []
+
+    st.session_state["ai_advisor_last_segment"] = current_segment
+    st.session_state["last_segment"] = current_segment
+
+    st.session_state.setdefault("ai_chat_history", [])
+    st.session_state.setdefault("chat_history", st.session_state["ai_chat_history"])
+    st.session_state.setdefault("ai_chat_history_by_segment", {})
 
     api_key = st.session_state.get("gemini_key", "")
     segment = current_segment
@@ -135,8 +150,8 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
     portfolio = st.session_state.get("portfolio", [])
 
     # Keep legacy and current keys synchronized
-    st.session_state["ai_chat_history"] = st.session_state["chat_history"]
-    st.session_state["ai_chat_history_by_segment"].setdefault(segment, st.session_state["chat_history"])
+    st.session_state["chat_history"] = st.session_state["ai_chat_history"]
+    st.session_state["ai_chat_history_by_segment"][segment] = st.session_state["chat_history"]
 
     # 5b. Define the two-column layout
     left_col, right_col = st.columns([1, 2.5], gap="large")
