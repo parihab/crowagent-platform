@@ -183,19 +183,7 @@ def _page_about() -> None:
 
 def _render_segment_gate() -> None:
     """In-page segment selector (no sidebar dependency)."""
-    logo_uri = branding.get_logo_uri()
-    if logo_uri:
-        st.markdown(
-            f"""
-            <div style="display:flex;justify-content:center;margin:-0.5rem 0 1rem 0;">
-                <img src="{logo_uri}"
-                     alt="CrowAgent™ Platform Logo"
-                     style="height:40px;max-width:100%;object-fit:contain;opacity:0.95;"
-                >
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    branding.render_page_logo()
     st.markdown("## Welcome to CrowAgent™")
     st.caption("Select your profile to configure portfolio defaults and compliance context.")
 
