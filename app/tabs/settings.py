@@ -1,6 +1,6 @@
 import streamlit as st
 from typing import Dict, Any
-from app.segments import get_segment_display_label
+from app.segments import SEGMENT_LABELS
 try:
     from app.utils import validate_gemini_key
 except ImportError:
@@ -18,7 +18,7 @@ def render(weather_data: Dict[str, Any]):
     with st.container(border=True):
         st.subheader("Environment Settings")
         c1, c2, c3 = st.columns(3)
-        c1.metric("Current Profile", get_segment_display_label(st.session_state.get("user_segment", "")) if st.session_state.get("user_segment") else "Unknown")
+        c1.metric("Current Profile", SEGMENT_LABELS.get(st.session_state.get("user_segment"), "Unknown"))
         c2.metric("Weather Provider", st.session_state.get("weather_provider", "Unknown"))
         c3.metric("Portfolio Size", len(st.session_state.get("portfolio", [])))
 

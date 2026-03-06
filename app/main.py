@@ -37,12 +37,7 @@ import app.tabs.settings as tab_settings
 import app.tabs.ai_advisor as tab_ai_advisor
 import core.about as about_page
 import services.weather as weather_service
-from app.segments import (
-    SEGMENT_ICONS,
-    SEGMENT_IDS,
-    SEGMENT_LABELS,
-    get_segment_handler,
-)
+from app.segments import SEGMENT_IDS, SEGMENT_LABELS, get_segment_handler
 from app.session import ensure_portfolio_defaults
 from config.scenarios import SCENARIOS
 from app.segments.university_he import BUILDINGS
@@ -204,15 +199,7 @@ def _render_segment_gate() -> None:
     for idx, (seg_id, label) in enumerate(items):
         with cols[idx % 2]:
             with st.container(border=True):
-                icon = SEGMENT_ICONS.get(seg_id, "📁")
-                branding.render_html(
-                    f"""
-                    <div class="segment-title-row">
-                      <span class="segment-icon-badge" aria-hidden="true">{icon}</span>
-                      <h3 class="segment-title">{label}</h3>
-                    </div>
-                    """
-                )
+                st.markdown(f"### {label}")
                 st.caption(descriptions.get(seg_id, ""))
                 if st.button("Select Profile", key=f"seg_{seg_id}", use_container_width=True, type="primary"):
                     st.session_state["user_segment"] = seg_id

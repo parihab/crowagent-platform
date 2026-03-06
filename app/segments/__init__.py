@@ -5,25 +5,11 @@ if TYPE_CHECKING:
     from app.segments.base import SegmentHandler
 
 SEGMENT_LABELS = {
-    "university_he": "University / Higher Education",
-    "smb_landlord": "Commercial Landlord",
-    "smb_industrial": "SMB Industrial",
-    "individual_selfbuild": "Individual Self-Build",
+    "university_he": "🏛️ University / Higher Education",
+    "smb_landlord": "🏢 Commercial Landlord",
+    "smb_industrial": "🏭 SMB Industrial",
+    "individual_selfbuild": "🏠 Individual Self-Build"
 }
-
-SEGMENT_ICONS = {
-    "university_he": "🏛️",
-    "smb_landlord": "🏢",
-    "smb_industrial": "🏭",
-    "individual_selfbuild": "🏠",
-}
-
-
-def get_segment_display_label(segment_id: str) -> str:
-    """Returns a text label prefixed with the segment icon."""
-    icon = SEGMENT_ICONS.get(segment_id, "📁")
-    label = SEGMENT_LABELS.get(segment_id, segment_id)
-    return f"{icon} {label}"
 
 SEGMENT_IDS = list(SEGMENT_LABELS.keys())
 

@@ -27,7 +27,7 @@ from config.scenarios import SCENARIOS, SEGMENT_SCENARIOS
 
 from services.report_generator import generate_portfolio_report
 from app.session import switch_segment_with_defaults
-from app.segments import SEGMENT_LABELS, get_segment_display_label
+from app.segments import SEGMENT_LABELS
 
 
 @st.dialog("Switch User Profile")
@@ -40,8 +40,10 @@ def switch_profile_dialog():
 
     # Use a dictionary to map segment IDs to their labels for the buttons
     other_segments = {
-        segment_id: get_segment_display_label(segment_id)
-        for segment_id in SEGMENT_LABELS
+        "university_he": "🏛️ University / HE",
+        "smb_landlord": "🏢 Commercial Landlord",
+        "smb_industrial": "🏭 SMB Industrial",
+        "individual_selfbuild": "🏠 Individual Self-Build"
     }
     # Remove the current segment from the options
     if current_segment in other_segments:
@@ -292,17 +294,17 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
         )
         _w_wind = html_mod.escape(str(weather.get("wind_speed_mph", "—")))
         _w_hum  = html_mod.escape(str(weather.get("humidity_pct", "—")))
-        _display_desc = _w_desc if _w_desc != "—" else "Overcast"
         branding.render_html(f"""
-<div role="status" aria-label="Weather: {_w_temp}°C, {_display_desc}"
-     class="weather-card-overcast">
-  <div class="weather-card-header">☁️ Overcast Style Weather</div>
-  <div class="weather-card-main-row">
-    <div class="weather-card-temp">{_w_temp}°C</div>
-    <div class="weather-card-desc">{_display_desc}</div>
+<div role="status" aria-label="Weather: {_w_temp}°C, {_w_desc}"
+     style="background:#0D2640;border:1px solid #1A3A5C;border-radius:6px;
+            padding:12px;margin-bottom:10px;">
+  <div style="font-size:0.72rem;color:#8AACBF;margin-bottom:5px;">🌡️ Live Weather</div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+    <div style="font-size:1.9rem;font-weight:700;color:#F0F4F8;">{_w_temp}°C</div>
+    <div style="font-size:0.76rem;color:#CBD8E6;text-align:right;">{_w_desc}</div>
   </div>
-  <div class="weather-card-loc">📍 {_w_loc}</div>
-  <div class="weather-card-stats">
+  <div style="font-size:0.75rem;color:#8AACBF;margin-bottom:6px;">📍 {_w_loc}</div>
+  <div style="font-size:0.75rem;color:#8AACBF;display:flex;gap:10px;">
     <span>💨 {_w_wind} mph</span><span>💧 {_w_hum}%</span>
   </div>
 </div>
