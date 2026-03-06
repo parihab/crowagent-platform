@@ -254,3 +254,13 @@ def calculate_thermal_load(
     # We return a dict copy to ensure the cached result is not mutated by the caller
     result = _calculate_thermal_load_cached(*key)
     return dict(result)
+
+
+# Legacy compatibility exports used by older agent/tests
+try:
+    from config.scenarios import SCENARIOS  # noqa: F401
+    from app.segments.university_he import BUILDINGS  # noqa: F401
+except Exception:
+    SCENARIOS = {}
+    BUILDINGS = {}
+

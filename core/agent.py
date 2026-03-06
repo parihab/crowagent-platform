@@ -238,6 +238,7 @@ def execute_tool(
     args: dict,
     buildings: dict,
     scenarios: dict,
+    calculate_fn=None,
     tariff: float = constants.DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH,
 ) -> dict[str, Any]:
     """
@@ -247,6 +248,7 @@ def execute_tool(
     """
     temp = float(args.get("temperature_c", 10.5))
     weather = {"temperature_c": temp, "wind_speed_mph": 9.2}
+    calc = calculate_fn or physics.calculate_thermal_load
 
     # ── Tool: run_scenario ────────────────────────────────────────────────────
     if name == "run_scenario":
@@ -259,7 +261,7 @@ def execute_tool(
             return {"error": f"Scenario '{sname}' not found. "
                     f"Available: {list(scenarios.keys())}"}
         try:
-            result = physics.calculate_thermal_load(
+            result = calc(
                 buildings[bname], scenarios[sname], weather, tariff
             )
         except Exception as exc:
@@ -283,7 +285,7 @@ def execute_tool(
         rows = []
         for bname, bdata in buildings.items():
             try:
-                r = physics.calculate_thermal_load(
+                r = calc(
                     bdata, scenarios[sname], weather, tariff
                 )
             except Exception:
@@ -315,7 +317,7 @@ def execute_tool(
                 if sdata["install_cost_gbp"] > budget:
                     continue
                 try:
-                    r = physics.calculate_thermal_load(
+                    r = calc(
                         bdata, sdata, weather, tariff
                     )
                 except Exception:
@@ -364,7 +366,7 @@ def execute_tool(
             "baseline_cost_gbp_yr":  round(b["baseline_energy_mwh"] * 1000 * constants.DEFAULT_ELECTRICITY_TARIFF_GBP_PER_KWH, 0),
             "occupancy_hours_yr":    b["occupancy_hours"],
             "built_year":            b["built_year"],
-            "description":           b["description"],
+            "description":           b.get("description", ""),
         }
 
     # ── Tool: rank_all_scenarios ──────────────────────────────────────────────
@@ -376,7 +378,7 @@ def execute_tool(
         rows = []
         for sname, sdata in scenarios.items():
             try:
-                r = physics.calculate_thermal_load(
+                r = calc(
                     buildings[bname], sdata, weather, tariff
                 )
             except Exception:
@@ -405,6 +407,9 @@ def execute_tool(
             "ranked_by": rank_by,
             "scenarios": rows,
         }
+
+    elif name == "list_buildings":
+        return {"buildings": sorted(list(buildings.keys()))}
 
     return {"error": f"Unknown tool: {name}"}
 
@@ -598,7 +603,7 @@ def run_agent_turn(
 
     while loops < MAX_AGENT_LOOPS:
         loops += 1
-        response = _call_gemini(api_key, messages, system_prompt, use_tools=True)
+        response = _invoke_gemini_with_compat(api_key, messages, system_prompt, use_tools=True)
 
         # Handle API error
         if "error" in response:
@@ -632,7 +637,12 @@ def run_agent_turn(
 
                 # Execute the tool
                 result = execute_tool(
-                    name, fargs, building_registry, scenario_registry, tariff
+                    name=name,
+                    args=fargs,
+                    buildings=building_registry,
+                    scenarios=scenario_registry,
+                    calculate_fn=physics.calculate_thermal_load,
+                    tariff=tariff,
                 )
 
                 tool_calls_log.append({
@@ -678,7 +688,7 @@ def run_agent_turn(
         "role": "user",
         "parts": [{"text": "Please summarise your findings so far in 3 sentences."}]
     })
-    final_resp = _call_gemini(api_key, messages, system_prompt, use_tools=False)
+    final_resp = _invoke_gemini_with_compat(api_key, messages, system_prompt, use_tools=False)
     summarisation_error = final_resp.get("error")
     if not summarisation_error:
         parts = final_resp.get("candidates", [{}])[0].get("content", {}).get("parts", [])
