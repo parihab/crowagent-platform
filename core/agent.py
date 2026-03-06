@@ -27,7 +27,6 @@ GEMINI_URL           = "https://generativelanguage.googleapis.com/v1/models/gemi
 GEMINI_FALLBACK_URLS = [
     GEMINI_URL,
     "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent",
 ]
 MAX_OUTPUT_TOKENS    = 2000
 MAX_AGENT_LOOPS      = 10
@@ -83,9 +82,9 @@ def build_system_prompt(segment: str, portfolio: list) -> str:
     # 3. Segment Lock & Core Instructions
     instructions = f"""**CRITICAL INSTRUCTIONS:**
 1.  **Segment Focus:** Your advice **MUST** be strictly tailored to the user's active segment: **'{segment}'**. All compliance rules, regulations, and recommendations must be relevant to this segment only. Do not discuss rules for other segments.
-2.  **2026 UK Compliance Baseline:** Follow current UK guidance with a **fabric-first** approach. Prioritise insulation and glazing upgrades before recommending mechanical systems (e.g., heat pumps), unless tool evidence proves a different order for a specific building.
+2.  **2026 UK Compliance Baseline:** Follow current UK guidance with a **fabric-first** approach. Prioritise insulation and glazing upgrades (Part L alignment) before recommending mechanical systems (e.g., heat pumps), unless tool evidence proves a different order for a specific building.
 3.  **MEES Cost Cap:** For PRS/MEES upgrade planning, cite and use the **£10,000** cost cap (not £3,500).
-4.  **Regulatory Links:** When discussing UK regulation, include official references. Prioritise these links where relevant:
+4.  **Regulatory Links (Mandatory):** When providing UK compliance advice, you **MUST** include relevant official references. Include these links when relevant:
     - EPC register: https://www.gov.uk/find-energy-certificate
     - MEES landlord guidance: https://www.gov.uk/guidance/domestic-private-rented-property-minimum-energy-efficiency-standard-landlord-guidance
     - Part L approved document: https://www.gov.uk/government/publications/conservation-of-fuel-and-power-approved-document-l
@@ -442,21 +441,6 @@ def _call_gemini(
     Single Gemini API call with schema fallbacks for API-version differences.
     messages format: [{"role": "user"|"model", "parts": [...]}]
     """
-    payload: dict = {
-        "systemInstruction": {"parts": [{"text": system_prompt}]},
-        "contents": messages,
-        "generationConfig": {
-            "maxOutputTokens": MAX_OUTPUT_TOKENS,
-            "temperature": 0.2,   # low = consistent, factual answers
-            "topP": 0.8,
-        },
-    }
-    if use_tools:
-        payload["tools"] = [{"functionDeclarations": AGENT_TOOLS}]
-        payload["toolConfig"] = {
-            "functionCallingConfig": {"mode": "AUTO"}
-        }
-
     # API Key validation and sanitization for debugging
     if not api_key or not isinstance(api_key, str):
         print("--- GEMINI API DEBUG ---")
