@@ -23,7 +23,12 @@ from config.scenarios import SCENARIOS
 # ─────────────────────────────────────────────────────────────────────────────
 # API & MODEL CONSTANTS
 # ─────────────────────────────────────────────────────────────────────────────
-GEMINI_URL           = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent"
+GEMINI_URL           = "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent"
+GEMINI_FALLBACK_URLS = [
+    GEMINI_URL,
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent",
+]
 MAX_OUTPUT_TOKENS    = 2000
 MAX_AGENT_LOOPS      = 10
 
@@ -509,46 +514,57 @@ def _call_gemini(
     attempts = [payload_camel, payload_minimal]
     last_error = None
 
-    for idx, payload in enumerate(attempts, start=1):
-        try:
-            resp = requests.post(
-                GEMINI_URL,
-                timeout=30,
-                headers={"Content-Type": "application/json", "x-goog-api-key": clean_api_key},
-                json=payload,
+    for url in GEMINI_FALLBACK_URLS:
+        for idx, payload in enumerate(attempts, start=1):
+            try:
+                resp = requests.post(
+                    url,
+                    timeout=30,
+                    headers={"Content-Type": "application/json", "x-goog-api-key": clean_api_key},
+                    json=payload,
+                )
+            except requests.exceptions.Timeout:
+                last_error = "Gemini API request timed out (30 s). Check your connection and retry."
+                continue
+            except requests.exceptions.ConnectionError:
+                last_error = "Could not connect to Gemini API. Check your internet connection."
+                continue
+            except requests.exceptions.RequestException as exc:
+                last_error = f"Gemini API request failed: {exc}"
+                continue
+
+            if resp.status_code == 200:
+                return resp.json()
+
+            # Parse error and decide whether to retry schema or fallback endpoint/model.
+            try:
+                error_data = resp.json()
+                error_msg = error_data.get("error", {}).get("message", resp.text[:200])
+            except Exception:
+                error_msg = resp.text[:200]
+
+            last_error = f"Gemini API error {resp.status_code} ({url}): {error_msg}"
+            lower = error_msg.lower()
+            schema_mismatch = (
+                "unknown name" in lower
+                or "cannot find field" in lower
+                or "invalid json payload" in lower
             )
-        except requests.exceptions.Timeout:
-            last_error = "Gemini API request timed out (30 s). Check your connection and retry."
-            continue
-        except requests.exceptions.ConnectionError:
-            last_error = "Could not connect to Gemini API. Check your internet connection."
-            continue
-        except requests.exceptions.RequestException as exc:
-            last_error = f"Gemini API request failed: {exc}"
-            continue
+            model_not_found = (
+                resp.status_code == 404
+                and ("is not found" in lower or "not supported for generatecontent" in lower)
+            )
 
-        if resp.status_code == 200:
-            return resp.json()
+            if schema_mismatch and idx < len(attempts):
+                continue
 
-        # parse error and decide whether retry next schema variant
-        try:
-            error_data = resp.json()
-            error_msg = error_data.get("error", {}).get("message", resp.text[:200])
-        except Exception:
-            error_msg = resp.text[:200]
+            # Try next model/endpoint if this one is unavailable.
+            if model_not_found:
+                break
 
-        last_error = f"Gemini API error {resp.status_code}: {error_msg}"
-        lower = error_msg.lower()
-        schema_mismatch = (
-            "unknown name" in lower
-            or "cannot find field" in lower
-            or "invalid json payload" in lower
-        )
+            return {"error": last_error}
 
-        if not schema_mismatch or idx == len(attempts):
-            break
-
-    return {"error": last_error or "Gemini API request failed."}
+    return {"error": last_error or "Gemini API request failed across all endpoint/model fallbacks."}
 
 
 def _invoke_gemini_with_compat(
