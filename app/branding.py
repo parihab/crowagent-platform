@@ -573,9 +573,9 @@ def render_page_logo() -> None:
             f"""
             <div class="page-logo-bar" role="banner">
                 <img src="{logo_uri}" 
-                     style="height: 40px; 
-                            opacity: 0.95; 
-                            filter: drop-shadow(0 1px 2px rgba(0,0,0,0.1));"
+                     style="height: 56px; 
+                            opacity: 0.98; 
+                            filter: drop-shadow(0 1px 2px rgba(0,0,0,0.12));"
                      alt="CrowAgent™ Platform Logo">
                 <div class="platform-name">CrowAgent™</div>
             </div>
@@ -593,7 +593,7 @@ def render_footer() -> None:
     logo_uri = get_logo_uri()
     logo_img = (
         f'<img src="{logo_uri}" '
-        f'style="height:32px; margin-bottom:16px; opacity:0.9;" '
+        f'style="height:44px; margin-bottom:16px; opacity:0.95;" '
         f'alt="CrowAgent™">'
         if logo_uri
         else ""
