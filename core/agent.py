@@ -42,6 +42,10 @@ def build_system_prompt(segment: str, portfolio: list) -> str:
     if isinstance(segment, list) and isinstance(portfolio, str):
         segment, portfolio = portfolio, segment
 
+    # Ensure prompt always contains direct JSON context for deterministic grounding.
+    segment_json = json.dumps(segment, ensure_ascii=False)
+    portfolio_json = json.dumps(portfolio, ensure_ascii=False, default=str, indent=2)
+
     # 1. Dashboard Aggregation: Calculate totals from the portfolio.
     total_area = sum(b.get("floor_area_m2", 0) or 0 for b in portfolio)
     total_energy = sum(b.get("baseline_energy_mwh", 0) or 0 for b in portfolio)
@@ -74,14 +78,17 @@ def build_system_prompt(segment: str, portfolio: list) -> str:
     # 3. Segment Lock & Core Instructions
     instructions = f"""**CRITICAL INSTRUCTIONS:**
 1.  **Segment Focus:** Your advice **MUST** be strictly tailored to the user's active segment: **'{segment}'**. All compliance rules, regulations, and recommendations must be relevant to this segment only. Do not discuss rules for other segments.
-2.  **Regulatory Links:** When discussing UK regulation, include official references. Prioritise these links where relevant:
+2.  **2026 UK Compliance Baseline:** Follow current UK guidance with a **fabric-first** approach. Prioritise insulation and glazing upgrades before recommending mechanical systems (e.g., heat pumps), unless tool evidence proves a different order for a specific building.
+3.  **MEES Cost Cap:** For PRS/MEES upgrade planning, cite and use the **£10,000** cost cap (not £3,500).
+4.  **Regulatory Links:** When discussing UK regulation, include official references. Prioritise these links where relevant:
     - EPC register: https://www.gov.uk/find-energy-certificate
     - MEES landlord guidance: https://www.gov.uk/guidance/domestic-private-rented-property-minimum-energy-efficiency-standard-landlord-guidance
     - Part L approved document: https://www.gov.uk/government/publications/conservation-of-fuel-and-power-approved-document-l
     Always prefer `gov.uk` or other official regulatory bodies.
-3.  **No Assumptions (Guardrail):** You **MUST NOT** invent, estimate, or assume any quantitative data (costs, energy savings, performance metrics). Your primary function is to execute the available tools to gather real data. If a user asks a question that requires a calculation, run the appropriate tool. If you cannot answer without a tool, state that you need to run a tool first.
-4.  **Tool-First Workflow:** Always use your tools to gather evidence *before* formulating an answer. Your response should be a synthesis of the data returned by the tools.
-5.  **Honesty and Transparency:** If a tool fails or the data is unavailable, state it clearly. Do not attempt to fill in the gaps.
+5.  **Building-by-Building Analysis:** Analyse the portfolio asset-by-asset and clearly separate findings for each building before giving portfolio-level recommendations.
+6.  **No Assumptions (Guardrail):** You **MUST NOT** invent, estimate, or assume any quantitative data (costs, energy savings, performance metrics). Your primary function is to execute the available tools to gather real data. If a user asks a question that requires a calculation, run the appropriate tool. If you cannot answer without a tool, state that you need to run a tool first.
+7.  **Tool-First Workflow:** Always use your tools to gather evidence *before* formulating an answer. Your response should be a synthesis of the data returned by the tools.
+8.  **Honesty and Transparency:** If a tool fails or the data is unavailable, state it clearly. Do not attempt to fill in the gaps.
 """
 
     # Combine all parts into the final system prompt
@@ -89,6 +96,9 @@ def build_system_prompt(segment: str, portfolio: list) -> str:
         "You are CrowAgent™, a world-class, physics-informed AI sustainability consultant for the UK built environment.\n\n"
         "## User Context\n"
         f"The user is operating in the **'{segment}'** segment. Your advice and analysis must be strictly confined to the regulations and commercial drivers of this sector.\n\n"
+        "## Raw Runtime Context (JSON)\n"
+        f"- segment: `{segment_json}`\n"
+        f"- portfolio:\n```json\n{portfolio_json}\n```\n\n"
         f"## Portfolio Snapshot\n{portfolio_summary}\n\n"
         "## AI Capabilities\n"
         "You have the following capabilities:\n"
@@ -461,23 +471,7 @@ def _call_gemini(
         print(f"Key prefix: '{clean_api_key[:4]}'")
         print("--- END DEBUG ---")
 
-    # Preferred payload (Generative Language API, snake_case)
-    payload_snake: dict = {
-        "system_instruction": {"parts": [{"text": system_prompt}]},
-        "contents": messages,
-        "generationConfig": {
-            "maxOutputTokens": MAX_OUTPUT_TOKENS,
-            "temperature": 0.2,
-            "topP": 0.8,
-        },
-    }
-    if use_tools:
-        payload_snake["tools"] = [{"function_declarations": AGENT_TOOLS}]
-        payload_snake["tool_config"] = {
-            "function_calling_config": {"mode": "AUTO"}
-        }
-
-    # Alternate payload (camelCase variants seen in some SDK/docs)
+    # Primary payload for REST API (camelCase keys required)
     payload_camel: dict = {
         "systemInstruction": {"parts": [{"text": system_prompt}]},
         "contents": messages,
@@ -512,7 +506,7 @@ def _call_gemini(
         },
     }
 
-    attempts = [payload_snake, payload_camel, payload_minimal]
+    attempts = [payload_camel, payload_minimal]
     last_error = None
 
     for idx, payload in enumerate(attempts, start=1):
