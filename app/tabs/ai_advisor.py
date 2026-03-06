@@ -120,7 +120,7 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
 4. Paste it into the **API Keys** section in the **Settings** tab.
 """)
             st.caption("Free tier · 1,500 requests/day · No credit card required.")
-            st.image("assets/CrowAgent_Logo_Horizontal_Dark.svg", width=200)
+            st.image("assets/CrowAgent_Logo_Horizontal_Dark.svg", width=320)
         return
 
     # ── BLOCK 5: ACTIVE CHAT STATE ────────────────────────────────────────────
