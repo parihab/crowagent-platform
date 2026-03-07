@@ -59,29 +59,29 @@ class TestScenarioOptionFiltering:
         from app import main as app_main
         opts = app_main._segment_scenario_options("university_he")
         assert len(opts) == 5
-        assert "Solar Glass Installation" in opts
-        assert "Green Roof Installation" in opts
+        assert "Glazing Upgrade" in opts
+        assert "Fabric Upgrade (Insulation)" in opts
 
     def test_smb_landlord_excludes_solar_glass(self):
         from app import main as app_main
         opts = app_main._segment_scenario_options("smb_landlord")
-        assert "Solar Glass Installation" not in opts
+        assert "Solar Glass Installation" not in opts  # retired scenario name
 
     def test_smb_landlord_excludes_green_roof(self):
         from app import main as app_main
         opts = app_main._segment_scenario_options("smb_landlord")
-        assert "Green Roof Installation" not in opts
+        assert "Green Roof Installation" not in opts  # retired scenario name
 
     def test_smb_industrial_includes_solar_glass(self):
         from app import main as app_main
         opts = app_main._segment_scenario_options("smb_industrial")
-        assert "Solar Glass Installation" in opts
+        assert "Glazing Upgrade" in opts
 
     def test_individual_selfbuild_subset(self):
         from app import main as app_main
         opts = app_main._segment_scenario_options("individual_selfbuild")
-        assert "Solar Glass Installation" not in opts
-        assert "Enhanced Insulation Upgrade" in opts
+        assert "Solar Glass Installation" not in opts  # retired scenario name
+        assert "Fabric Upgrade (Insulation)" in opts
 
     def test_unknown_segment_returns_all_scenarios(self):
         from app import main as app_main

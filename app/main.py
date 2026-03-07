@@ -39,12 +39,30 @@ import core.about as about_page
 import services.weather as weather_service
 from app.segments import SEGMENT_IDS, SEGMENT_LABELS, get_segment_handler
 from app.session import ensure_portfolio_defaults
-from config.scenarios import SCENARIOS
+from config.scenarios import SCENARIOS, SEGMENT_SCENARIOS, SEGMENT_DEFAULT_SCENARIOS
 from app.segments.university_he import BUILDINGS
 from core.physics import calculate_thermal_load
 
+# Re-export helpers used by legacy tests
+from app.session import _get_secret          # noqa: F401
+from app.utils import _extract_uk_postcode   # noqa: F401
+
 # Re-export for any legacy caller that does `from app.main import _card`
 _card = branding.render_card
+
+
+def _segment_scenario_options(segment: str) -> list[str]:
+    """Return the list of scenario names available for a given segment."""
+    if segment in SEGMENT_SCENARIOS:
+        return list(SEGMENT_SCENARIOS[segment])
+    return list(SCENARIOS.keys())
+
+
+def _segment_default_scenarios(segment: str | None) -> list[str]:
+    """Return the default pre-selected scenario names for a given segment."""
+    if segment and segment in SEGMENT_DEFAULT_SCENARIOS:
+        return list(SEGMENT_DEFAULT_SCENARIOS[segment])
+    return [list(SCENARIOS.keys())[0]]  # fallback: first scenario only
 
 # ── Compliance page title map ────────────────────────────────────────────────
 _COMPLIANCE_TITLES: dict[str, str] = {
