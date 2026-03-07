@@ -44,6 +44,7 @@ def init_session() -> None:
     defaults = {
         # Onboarding / segment
         "user_segment": None,
+        "current_segment_name": None,
         "onboarding_complete": False,
 
         # Portfolio
