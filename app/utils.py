@@ -72,10 +72,9 @@ def validate_gemini_key(key: str) -> tuple[bool, str, bool]:
 
     # Live API check via POST to confirm the key works
     try:
-        resp = requests.post(
+        resp = requests.get(
             GEMINI_VALIDATION_URL,
             headers={"x-goog-api-key": key},
-            json={},
             timeout=10,
         )
         if resp.status_code == 200:
