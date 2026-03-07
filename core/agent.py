@@ -505,12 +505,12 @@ def _call_gemini(
             try:
                 resp = requests.post(
                     url,
-                    timeout=30,
+                    timeout=15,
                     headers={"Content-Type": "application/json", "x-goog-api-key": clean_api_key},
                     json=payload,
                 )
             except requests.exceptions.Timeout:
-                last_error = "Gemini API request timed out (30 s). Check your connection and retry."
+                last_error = "Gemini API request timed out (15 s). Check your connection and retry."
                 continue
             except requests.exceptions.ConnectionError:
                 last_error = "Could not connect to Gemini API. Check your internet connection."

@@ -20,6 +20,7 @@ if str(ROOT) not in sys.path:
 import logging
 import os
 import sys
+import time
 
 import streamlit as st
 
@@ -332,7 +333,13 @@ def run() -> None:
         _render_segment_gate()
         return
 
-    st.session_state["_current_weather"] = _fetch_weather_silently()
+    _WEATHER_TTL_S = 600  # re-fetch at most once every 10 minutes
+    _now = time.monotonic()
+    _last_fetch = st.session_state.get("_weather_fetch_time", 0.0)
+    if st.session_state.get("force_weather_refresh") or (_now - _last_fetch) > _WEATHER_TTL_S:
+        st.session_state["_current_weather"] = _fetch_weather_silently()
+        st.session_state["_weather_fetch_time"] = _now
+        st.session_state["force_weather_refresh"] = False
 
     # 7. Route to active page — _page_setup() inside each wrapper handles
     # CSS injection, logo bar, and the nav button row.
