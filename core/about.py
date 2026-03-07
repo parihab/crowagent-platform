@@ -40,8 +40,8 @@ def render():
         
         st.subheader("🛠 Build Information")
         st.markdown("""
-        **Version:** v2.0.0
-        **Released:** 21 February 2026
+        **Version:** v2.1.0
+        **Released:** 7 March 2026
         **Status:** 🚧 Working Prototype
         **Weather:** ● Live — Open-Meteo API
         **Cache TTL:** 60 min (weather)

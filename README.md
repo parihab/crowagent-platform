@@ -266,4 +266,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*v2.0.0 · 28 February 2026 · Working Prototype*
+*v2.1.0 · 7 March 2026 · Working Prototype*

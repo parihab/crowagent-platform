@@ -84,7 +84,7 @@ def render(weather_data: Dict[str, Any]):
 
     # Section 6 — Collapsible Legal
     with st.expander("Legal & Model Disclosure"):
-        st.caption("CrowAgent™ Platform v2.0.0")
+        st.caption("CrowAgent™ Platform v2.1.0")
         st.caption("Physics: Raissi et al. (2019) J. Comp. Physics")
         st.caption("Weather: Open-Meteo API + Met Office DataPoint")
         st.caption("Carbon: BEIS 2023")
