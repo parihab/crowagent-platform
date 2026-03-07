@@ -3,7 +3,6 @@ Utility functions for the Streamlit application.
 """
 import re
 import streamlit as st
-import time
 from typing import Any
 import requests
 
@@ -12,12 +11,6 @@ import requests
 # Modern keys are 39 chars total.
 GEMINI_API_KEY_RE = re.compile(r"^AIza[A-Za-z0-9\-_]{35}$")
 GEMINI_VALIDATION_URL = "https://generativelanguage.googleapis.com/v1/models"
-
-def show_congratulations():
-    """Displays a congratulations message and balloons."""
-    st.success("Congratulations! You've successfully run the script.")
-    time.sleep(1)
-    st.balloons()
 
 def _extract_uk_postcode(text: str) -> str:
     """

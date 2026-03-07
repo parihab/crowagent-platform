@@ -7,7 +7,7 @@
 
 ---
 
-## Overview
+## Project Overview
 
 CrowAgent™ Platform is a physics-informed campus thermal intelligence system that helps university estate managers and sustainability professionals make evidence-based, cost-effective decisions for achieving Net Zero targets.
 
@@ -16,28 +16,87 @@ The platform combines:
 - **Agentic AI Advisor** powered by Google Gemini 1.5 Flash
 - **Live Weather Integration** via Open-Meteo API and Met Office DataPoint
 - **Structured Scenario Comparison** across retrofit interventions
+- **Multi-segment support** for universities, commercial landlords, SMB industrial, and individual self-builds
+
+**Key Features:**
+- 📊 **Dashboard** — Energy, carbon, and financial KPIs for multiple building scenarios
+- 📈 **Financial Analysis** — Payback period, ROI, and cost-per-tonne CO₂ comparisons
+- 🤖 **AI Advisor** — Agentic LLM with physics tool-use for expert recommendations
+- 🌤 **Live Weather** — Real-time temperature integration for accurate thermal calculations
+- 🏢 **Multi-Building Portfolio** — Compare interventions across your campus estate
+- 📋 **Compliance Hub** — MEES, EPC, SECR, Part L 2021, and Future Homes Standard tracking
 
 ---
 
-## Features
+## Architecture
 
-- 📊 **Dashboard** — Energy, carbon, and financial KPIs for multiple building scenarios  
-- 📈 **Financial Analysis** — Payback period, ROI, and cost-per-tonne CO₂ comparisons  
-- 🤖 **AI Advisor** — Agentic LLM with physics tool‑use for expert recommendations  
-- 🌤 **Live Weather** — Real-time temperature integration for accurate thermal calculations  
-- 🏢 **Multi-Building Portfolio** — Compare interventions across your campus estate  
-- 🎨 **Branding & Layout** — consistent CrowAgent™ logo in both header and footer, centrally aligned  
-- 🏷 **Robust asset loading** — logo/icon files are looked up relative to the working directory so they still render when Streamlit copies the script (no more emoji fallback)  
-- ✏️ **Customisation** — use the “➕ Add building” control under the Building section and the “➕ Add scenario” control under Scenarios; enter simple JSON objects (session‑only)
+```
+crowagent-platform/
+├── app/                    # Streamlit UI layer
+│   ├── main.py             # Application orchestrator and navigation
+│   ├── session.py          # Session state initialisation
+│   ├── sidebar.py          # Sidebar controls
+│   ├── branding.py         # Brand colours, fonts, logo assets
+│   ├── compliance.py       # Compliance data processing helpers
+│   ├── visualization_3d.py # 3-D building heat-loss visualisation
+│   ├── components/         # Reusable UI components
+│   │   └── portfolio_manager.py
+│   ├── segments/           # Segment-specific default configurations
+│   │   ├── base.py
+│   │   ├── university_he.py
+│   │   ├── commercial_landlord.py
+│   │   ├── smb_industrial.py
+│   │   └── individual_selfbuild.py
+│   └── tabs/               # Individual page-tab renderers
+│       ├── dashboard.py
+│       ├── financial.py
+│       ├── compliance_hub.py
+│       ├── ai_advisor.py
+│       └── settings.py
+├── core/                   # Core business logic (no Streamlit dependencies)
+│   ├── agent.py            # Gemini AI agent and tool-use loop
+│   ├── physics.py          # PINN thermal model
+│   ├── orchestrator.py     # ESG agent orchestrator
+│   ├── finance_agent.py    # Financial modelling agent
+│   ├── retrofit_agent.py   # Retrofit recommendation agent
+│   ├── risk_agent.py       # Climate risk assessment agent
+│   └── about.py            # About / provenance content
+├── services/               # External integrations
+│   ├── epc.py              # EPC Open Data Communities API client
+│   ├── weather.py          # Weather provider abstraction
+│   ├── location.py         # OSM / geocoding helpers
+│   ├── report_generator.py # PDF report export
+│   └── audit.py            # In-session audit log
+├── config/                 # Constants and scenario definitions
+│   ├── constants.py        # Physical, energy, and compliance constants
+│   └── scenarios.py        # Retrofit scenario definitions
+├── assets/                 # SVG brand assets
+├── tests/                  # Pytest test suite (24 files)
+├── docs/                   # Extended documentation and guides
+├── governance/             # Architecture governance documents
+├── streamlit_app.py        # Entry point wrapper
+├── security_check.py       # Pre-deployment security verification
+├── requirements.txt
+└── .env.example
+```
+
+**Data flow:**
+1. User selects segment and building via Streamlit UI (`app/`)
+2. `app/session.py` initialises session state and loads defaults
+3. Physics calculations run in `core/physics.py` (no external calls)
+4. Weather data is fetched from `services/weather.py` and injected into the physics model
+5. AI Advisor (`core/agent.py`) uses Gemini with tool-use to call the physics engine
+6. Results are rendered in tab modules under `app/tabs/`
 
 ---
 
-## Quick Start
+## Setup Instructions
 
 ### Prerequisites
 
-- Python 3.11+
-- A free [Gemini API key](https://aistudio.google.com) (for AI Advisor)
+- Python 3.11 or 3.12
+- A free [Gemini API key](https://aistudio.google.com) (for the AI Advisor tab)
+- Optionally, a free [EPC Open Data Communities key](https://epc.opendatacommunities.org) (for live EPC lookups)
 - Optionally, a free [Met Office DataPoint key](https://www.metoffice.gov.uk/services/data/datapoint)
 
 ### Installation
@@ -47,35 +106,55 @@ git clone https://github.com/WonderApri/crowagent-platform.git
 cd crowagent-platform
 ```
 
-1. (optional) create and activate a virtualenv:
+1. Create and activate a virtual environment (recommended):
 
    ```bash
    python -m venv .venv
-   source .venv/bin/activate
+   source .venv/bin/activate      # Linux / macOS
+   .venv\Scripts\activate.bat     # Windows
    ```
 
-2. install dependencies:
+2. Install dependencies:
 
    ```bash
    pip install -r requirements.txt
    ```
 
-3. configure environment variables:
+3. Configure environment variables (see next section).
 
-   ```bash
-   cp .env.example .env
-   # or create .streamlit/secrets.toml with the same values
-   ```
+---
 
-   Edit the file with your own keys; never commit real secrets.
+## Environment Variables
 
-### Running the App
+Copy the template and fill in your own keys:
 
 ```bash
-streamlit run app/main.py
-# or, thanks to the helper wrapper included at the repository root:
-# streamlit run streamlit_app.py
+cp .env.example .env
 ```
+
+| Variable | Required | Description |
+|---|---|---|
+| `GEMINI_KEY` | ✅ For AI Advisor | Google Gemini API key from [aistudio.google.com](https://aistudio.google.com) |
+| `EPC_API_KEY` | ❌ Optional | EPC Open Data Communities API key |
+| `MET_OFFICE_KEY` | ❌ Optional | Met Office DataPoint API key |
+
+API keys are **never stored server-side**. They live in your browser session only and are cleared when the tab is closed.
+
+The application looks for secrets in `.streamlit/secrets.toml` first, then falls back to a `.env` file loaded via `python-dotenv`. Use `.env.example` as a template — never commit real secrets.
+
+---
+
+## Running the Application
+
+```bash
+# Primary entry point
+streamlit run app/main.py
+
+# Convenience wrapper at repository root
+streamlit run streamlit_app.py
+```
+
+Then open http://localhost:8501 in your browser.
 
 ### Running Tests
 
@@ -83,32 +162,38 @@ streamlit run app/main.py
 pytest tests/ -v
 ```
 
-The test suite now includes startup and validation checks that exercise
-key parts of the application logic without launching a browser.  They use
-monkeypatching to simulate network responses so you can run them offline.
----
+The test suite covers the physics engine, compliance logic, EPC service, weather service, location service, AI advisor history, and visualisation cache. Tests use monkeypatching to simulate network responses so they run fully offline.
 
-## API Keys
+### Security Check (before sharing publicly)
 
-API keys are **never stored server-side**. They live in your browser session only.
-
-| Key                  | Required | Where to get                                                    |
-|----------------------|----------|-----------------------------------------------------------------|
-| Gemini API key       | ✅        | [aistudio.google.com](https://aistudio.google.com)              |
-| Met Office DataPoint | ❌        | [metoffice.gov.uk/services/data/datapoint](https://www.metoffice.gov.uk/services/data/datapoint) |
-
-### Additional environment variables
-
-The application looks for secrets (GEMINI_KEY, MET_OFFICE_KEY) in
-`.streamlit/secrets.toml` or, as a fallback, in `.env` loaded via
-`python-dotenv`. Use `.env.example` as a template.
+```bash
+python security_check.py
+```
 
 ---
 
+## Repository Structure
 
-## Module Compatibility
+```
+.
+├── app/            UI layer (Streamlit pages, tabs, components, segments)
+├── core/           Business logic (physics, AI agent, ESG orchestrator)
+├── services/       External integrations (EPC, weather, location, reports)
+├── config/         Physical constants and scenario definitions
+├── assets/         SVG brand logos
+├── tests/          Pytest test suite (24 test files)
+├── docs/           Extended documentation and guides
+├── governance/     Architecture freeze and governance records
+├── .streamlit/     Streamlit theme and server configuration
+├── .github/        CI/CD workflows (GitHub Actions)
+├── streamlit_app.py   Entry-point wrapper
+├── security_check.py  Pre-deployment security verification script
+├── requirements.txt
+├── .env.example
+└── README.md
+```
 
-To maintain backwards compatibility with older integrations, the repository now includes import shims for legacy paths such as `core.agents.*`, `orchestrator`, `financial_agent`, `location`, and `visualization_3d`. New development should prefer the canonical modules under `core/`, `app/`, and `services/`.
+---
 
 ## Data Sources & Citations
 
@@ -121,6 +206,7 @@ To maintain backwards compatibility with older integrations, the repository now 
 | Raissi, Perdikaris & Karniadakis (2019) | PINN thermal methodology |
 | Open-Meteo API | Free live weather data |
 | Met Office DataPoint | Optional UK weather data |
+| EPC Open Data Communities | Energy Performance Certificate data (England & Wales) |
 
 ---
 
@@ -153,6 +239,19 @@ For licensing enquiries: crowagent.platform@gmail.com
 
 ---
 
+## Contributing
+
+Before submitting a pull request, run the security verification script and ensure all tests pass:
+
+```bash
+python security_check.py
+pytest tests/ -v
+```
+
+See `SECURITY_GUIDE.md` for safe handling of API keys and configuration.
+
+---
+
 ## Contact
 
 - **Email:** crowagent.platform@gmail.com
@@ -161,12 +260,10 @@ For licensing enquiries: crowagent.platform@gmail.com
 
 ---
 
-*v2.0.0 · 28 February 2026 · Working Prototype*
-
-## Contributing
-
-Before submitting a pull request, make sure the `security_check.py` script runs cleanly (it will fail if `.env` or `.streamlit/secrets.toml` is missing or contains placeholder values).  See the SECURITY_GUIDE.md for details on safe handling of API keys and configuration.
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+*v2.0.0 · 28 February 2026 · Working Prototype*

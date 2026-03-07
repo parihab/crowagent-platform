@@ -19,7 +19,6 @@ if str(ROOT) not in sys.path:
 
 import logging
 import os
-import sys
 
 import streamlit as st
 
