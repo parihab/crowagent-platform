@@ -24,7 +24,7 @@ from typing import Any
 
 try:
     from fpdf import FPDF
-except ImportError:
+except BaseException:
     FPDF = None  # type: ignore[assignment,misc]
 
 # ── Brand colours (hex without #) ────────────────────────────────────────────

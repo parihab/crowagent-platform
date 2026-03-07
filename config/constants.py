@@ -31,12 +31,17 @@ PART_L_2021_ND_U_WALL = 0.26
 PART_L_2021_ND_U_ROOF = 0.18
 PART_L_2021_ND_U_GLAZING = 1.6
 
-FHS_MAX_PRIMARY_ENERGY = 45.0  # kWh/m2/yr
+FHS_MAX_PRIMARY_ENERGY = 35.0  # kWh/m2/yr (Future Homes Standard 2025)
 
-EPC_BANDS = {
-    "A": (92, 100), "B": (81, 91), "C": (69, 80), "D": (55, 68),
-    "E": (39, 54), "F": (21, 38), "G": (1, 20)
-}
+EPC_BANDS = [
+    {"threshold": 92, "band": "A", "colour": "#00873D"},
+    {"threshold": 81, "band": "B", "colour": "#2ECC40"},
+    {"threshold": 69, "band": "C", "colour": "#85C226"},
+    {"threshold": 55, "band": "D", "colour": "#F0B429"},
+    {"threshold": 39, "band": "E", "colour": "#F06623"},
+    {"threshold": 21, "band": "F", "colour": "#E84C4C"},
+    {"threshold":  1, "band": "G", "colour": "#C0392B"},
+]
 MEES_CURRENT_MIN_BAND = "E"
 MEES_2028_TARGET_BAND = "C"
 MEES_2030_TARGET_BAND = "B"

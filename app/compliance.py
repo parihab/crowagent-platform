@@ -55,13 +55,7 @@ from config.constants import (
 # while using the thresholds from config.
 
 _EPC_BANDS_LIST: list[tuple[int, str, str]] = [
-    (EPC_BANDS["A"][0], "A", "#00873D"),
-    (EPC_BANDS["B"][0], "B", "#2ECC40"),
-    (EPC_BANDS["C"][0], "C", "#85C226"),
-    (EPC_BANDS["D"][0], "D", "#F0B429"),
-    (EPC_BANDS["E"][0], "E", "#F06623"),
-    (EPC_BANDS["F"][0], "F", "#E84C4C"),
-    (EPC_BANDS["G"][0], "G", "#C0392B"),
+    (b["threshold"], b["band"], b["colour"]) for b in EPC_BANDS
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
