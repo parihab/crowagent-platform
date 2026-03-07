@@ -18,8 +18,6 @@ from urllib.parse import quote
 import requests
 from requests import Response
 
-import streamlit as st
-
 class EPCFetchError(RuntimeError):
     """Raised when EPC lookup fails and stub data cannot be generated."""
 
@@ -29,7 +27,7 @@ logger = logging.getLogger(__name__)
 EPC_API_URL_ENV = "EPC_API_URL"
 EPC_API_KEY_ENV = "EPC_API_KEY"
 EPC_USERNAME_ENV = "EPC_USERNAME"
-EPC_USERNAME_DEFAULT = ""
+EPC_USERNAME_DEFAULT = "apikey"
 # Keep EPC_USERNAME for backward compatibility; call sites now read from env dynamically.
 EPC_USERNAME = EPC_USERNAME_DEFAULT
 EPC_STRICT_NO_RECORDS_ENV = "EPC_STRICT_NO_RECORDS"
@@ -109,7 +107,6 @@ def _stub(reason: str) -> dict[str, Any]:
     }
 
 
-@st.cache_data(ttl=86400, show_spinner=False)
 def fetch_epc_data(
     postcode: str,
     timeout_s: int = 10,
@@ -185,44 +182,97 @@ def fetch_epc_data(
     return _stub(f"No EPC records found for postcode: {postcode}; using deterministic estimate.")
 
 
-def search_addresses(postcode: str) -> list[dict]:
+def search_addresses(postcode: str, limit: int = 10) -> list[dict]:
     """
     Search for addresses at a UK postcode.
-    Returns list of dicts: {address, postcode, source,
-                            floor_area_m2, epc_rating,
-                            built_year, property_type}
+    Returns list of dicts: {label, postcode, lat, lon}
 
     Attempt order:
-    1. UK EPC Open Data API (api.opendatasoft.com) — free, no key
-    2. Nominatim OSM geocoding as address fallback
-    3. If both fail: return generate_stub_addresses(postcode)
+    1. EPC Open Data Communities API (epc.opendatacommunities.org) — when API key set
+    2. findthatpostcode.uk geocoding fallback
+    3. Empty list if both fail.
 
-    Wraps ALL network calls in try/except.
-    Timeout: 6 seconds for EPC, 5 seconds for Nominatim.
-    Never raises. Always returns a list (may be stubs).
+    Wraps ALL network calls in try/except. Never raises.
     """
     normalized = _normalize_postcode(str(postcode or "").strip())
     if not normalized:
         return []
 
-    # ── Attempt 1: opendatasoft.com EPC open dataset (no key required) ────────
+    # ── Attempt 1: EPC Open Data Communities API ──────────────────────────────
+    api_key = os.getenv(EPC_API_KEY_ENV, "")
+    if api_key:
+        try:
+            results = _search_epc_communities(normalized, api_key, limit)
+            if results:
+                return results
+        except Exception:
+            pass
+
+    # ── Attempt 2: findthatpostcode.uk geocoding ──────────────────────────────
     try:
-        results = _search_ods_epc(normalized, timeout_s=6)
+        results = _search_findthatpostcode(normalized)
         if results:
             return results
     except Exception:
         pass
 
-    # ── Attempt 2: Nominatim OSM geocoding ────────────────────────────────────
-    try:
-        results = _search_nominatim(normalized, timeout_s=5)
-        if results:
-            return results
-    except Exception:
-        pass
+    return []
 
-    # ── Attempt 3: Stub fallback ───────────────────────────────────────────────
-    return generate_stub_addresses(normalized)
+
+def _search_epc_communities(postcode: str, api_key: str, limit: int = 10) -> list[dict]:
+    """Call epc.opendatacommunities.org to search for addresses in a postcode."""
+    base = os.getenv(EPC_API_URL_ENV, "https://epc.opendatacommunities.org/api/v1").rstrip("/")
+    out: list[dict] = []
+    for path in ("domestic/search", "non-domestic/search"):
+        url = f"{base}/{path}"
+        try:
+            resp = requests.get(
+                url,
+                timeout=10,
+                params={"postcode": postcode, "size": max(1, min(limit, 50))},
+                headers={"Accept": "application/json"},
+                auth=(_get_epc_username(), api_key),
+            )
+            resp.raise_for_status()
+            payload = resp.json() if resp.content else {}
+            rows = payload.get("rows", []) if isinstance(payload, dict) else []
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                parts = [
+                    str(row.get("address1") or "").strip(),
+                    str(row.get("address2") or "").strip(),
+                    str(row.get("postcode") or postcode).strip().upper(),
+                ]
+                label = ", ".join(p for p in parts if p)
+                pc = _normalize_postcode(str(row.get("postcode") or postcode))
+                out.append({
+                    "label": label,
+                    "postcode": pc or postcode,
+                    "lat": _to_float(row.get("latitude"), None),
+                    "lon": _to_float(row.get("longitude"), None),
+                })
+                if len(out) >= limit:
+                    return out
+        except Exception:
+            continue
+    return out
+
+
+def _search_findthatpostcode(postcode: str) -> list[dict]:
+    """Use findthatpostcode.uk as a geocoding fallback."""
+    resp = requests.get(
+        f"https://api.findthatpostcode.uk/postcodes/{quote(postcode)}.json",
+        timeout=6,
+        headers={"Accept": "application/json"},
+    )
+    resp.raise_for_status()
+    payload = resp.json() if resp.content else {}
+    data = payload.get("data", {}) if isinstance(payload, dict) else {}
+    pc = str(data.get("postcode") or postcode).strip().upper()
+    lat = data.get("lat")
+    lon = data.get("lon")
+    return [{"label": f"{pc}, UK", "lat": lat, "lon": lon, "postcode": pc}]
 
 
 def _search_ods_epc(postcode: str, timeout_s: int = 6) -> list[dict]:

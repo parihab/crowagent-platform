@@ -48,64 +48,45 @@ def _safe_nested_number(container: dict, *keys: str, default: float = 0.0) -> fl
         current = current.get(k)
     return _safe_number(current, default)
 
-def validate_gemini_key(key: str) -> tuple[bool, str]:
+def validate_gemini_key(key: str) -> tuple[bool, str, bool]:
     """
     Performs security, format, and live validation for a Gemini API key.
 
-    Hardening measures:
-    1. Strips leading/trailing whitespace.
-    2. Forbids newline and null characters.
-    3. Checks format (prefix, length, characters).
-    4. Performs a live check against the Google AI API.
-
     Returns
     -------
-    tuple[bool, str]
-        (is_valid, message)
+    tuple[bool, str, bool]
+        (is_valid, message, is_warning)
+        is_warning=True means the key may be valid but could not be confirmed
+        (e.g. network timeout or no internet connection).
     """
     if not isinstance(key, str):
-        return False, "Invalid input: Key must be a string."
+        return False, "Invalid input: Key must be a string.", False
 
     key = key.strip()
 
     if not key:
-        return False, "API key is missing."
-
-    if "\n" in key or "\r" in key:
-        return False, "Key contains invalid line break characters."
-
-    if "\x00" in key:
-        return False, "Key contains invalid null bytes."
+        return False, "Invalid key format: API key is missing.", False
 
     if not key.startswith("AIza"):
-        return False, "Invalid Format: Your key does not start with the required 'AIza' prefix."
+        return False, "Invalid key format: Key must start with 'AIza'.", False
 
-    if len(key) != 39:
-        return False, f"Invalid Length: The key must be 39 characters long, but yours has {len(key)}."
-
-    if not GEMINI_API_KEY_RE.match(key):
-        return False, "Invalid Characters: The key contains characters that are not allowed."
-
-    # Live API check to verify the key is functional
+    # Live API check via POST to confirm the key works
     try:
-        resp = requests.get(
+        resp = requests.post(
             GEMINI_VALIDATION_URL,
             headers={"x-goog-api-key": key},
-            timeout=10
+            json={},
+            timeout=10,
         )
         if resp.status_code == 200:
-            return True, "API key is valid and functional."
-        
-        print(f"--- GEMINI VALIDATION DEBUG ---\nStatus: {resp.status_code}\nResponse: {resp.text}\n-------------------------------")
-
+            return True, "API key is ready and functional.", False
         if resp.status_code in (400, 401, 403):
-            return False, "Invalid API Key: The provided key is not authorized. Please check the key and try again."
-        else:
-            return False, f"API key validation failed with status {resp.status_code}. Please ensure it is correct and has the necessary permissions."
+            return False, "Invalid API key: The provided key is not authorized.", False
+        return False, f"Invalid API key: validation returned status {resp.status_code}.", False
 
     except requests.exceptions.Timeout:
-        return False, "Validation timed out. Could not contact Google's authentication server."
-    except requests.exceptions.RequestException as e:
-        return False, f"A network error occurred during validation: {e}"
-
-    return False, "An unknown error occurred during key validation."
+        return True, "API key validation timed out — key accepted provisionally.", True
+    except requests.exceptions.ConnectionError:
+        return True, "No internet connection — key accepted provisionally.", True
+    except requests.exceptions.RequestException as exc:
+        return True, f"Network error during validation: {exc}", True
