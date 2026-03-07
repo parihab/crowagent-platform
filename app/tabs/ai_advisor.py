@@ -2,9 +2,10 @@
 # CrowAgent™ Platform — AI Advisor Tab
 # © 2026 Aparajita Parihar. All rights reserved.
 #
-# Independent research project. Not affiliated with any institution.
+ # CrowAgent™ Platform is an independent research and development project created by Aparajita Parihar.
+ # It is not endorsed by, affiliated with, or sponsored by the University of Reading or any other institution.
 # Not licensed for commercial use without written permission of the author.
-# Trademark rights reserved pending UK IPO registration — Class 42.
+ # CrowAgent™ is a trademark of Aparajita Parihar. Trademark application filed with the UK Intellectual Property Office (UK IPO), Class 42. Registration pending.
 # ═══════════════════════════════════════════════════════════════════════════════
 
 import streamlit as st

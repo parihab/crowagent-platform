@@ -615,7 +615,7 @@ def render_footer() -> None:
             <div class="footer-links">
                 © 2026 CrowAgent™. All rights reserved.
                 &nbsp;·&nbsp;
-                CrowAgent™ is an unregistered trademark.
+                CrowAgent™ is a trademark of Aparajita Parihar. Registration pending.
                 &nbsp;·&nbsp;
                 Not licensed for commercial use.
             </div>
@@ -640,7 +640,9 @@ PAGE_CONFIG = {
             "© 2026 Aparajita Parihar. All rights reserved.\n\n"
             "⚠️ PROTOTYPE: Results are indicative only and based on simplified "
             "physics models. Not for use as the sole basis for investment decisions.\n\n"
-            "CrowAgent™ is an unregistered trademark · UK IPO Class 42 pending"
+            "CrowAgent™ is a trademark of Aparajita Parihar.\n"
+            "Trademark application filed with the UK Intellectual Property Office (UK IPO), Class 42.\n"
+            "Registration pending."
         ),
     },
 }

@@ -98,7 +98,7 @@ def render():
             
         with st.expander("🔒 Data Usage Notice"):
             st.markdown("""
-            User queries submitted to the AI Advisor may be processed by third-party AI services (e.g., Google Gemini).
+            User queries submitted to the AI Advisor may be processed by third-party AI services (such as Google Gemini).
             Users should avoid submitting confidential or sensitive information.
             """)
             

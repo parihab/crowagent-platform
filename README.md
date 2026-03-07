@@ -140,9 +140,12 @@ Results **must not** be used as the sole basis for any capital investment, procu
 
 CrowAgent™ Platform — including all source code, physics models, UI design, and brand assets — is the original work of Aparajita Parihar.
 
-**CrowAgent™** is an unregistered trademark of Aparajita Parihar. A UK Intellectual Property Office (UK IPO) Class 42 trademark application is currently pending. Use of the CrowAgent name or logo without permission is prohibited.
+CrowAgent™ is a trademark of Aparajita Parihar.
+Trademark application filed with the UK Intellectual Property Office (UK IPO), Class 42.
+Registration pending.
 
-This project is an **independent research project** and is **not affiliated with the University of Reading** or any other institution.
+CrowAgent™ Platform is an independent research and development project created by Aparajita Parihar.
+It is not endorsed by, affiliated with, or sponsored by the University of Reading or any other institution.
 
 This software is **not licensed for commercial use** without written permission of the author. Redistribution, modification, and non-commercial use for research and educational purposes are permitted provided this copyright notice and trademark statement are retained.
 
