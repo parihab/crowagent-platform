@@ -93,7 +93,7 @@ def init_session() -> None:
         "wx_lat": _DEFAULT_LAT,
         "wx_lon": _DEFAULT_LON,
         "wx_location_name": "Reading, Berkshire, UK",
-        "wx_provider": "open_meteo",
+        "weather_provider": "open_meteo",
         "wx_enable_fallback": True,
         "manual_temp": 10.5,
         "force_weather_refresh": False,

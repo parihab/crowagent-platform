@@ -4,10 +4,13 @@ Portfolio Management Modal Component
 Renders the 'Manage Portfolio' dialog overlay.
 Handles postcode search, asset addition, and portfolio management.
 """
+import logging
 import streamlit as st
 from app.utils import _extract_uk_postcode
 from services.epc import fetch_epc_data
 from app.portfolio_utils import init_portfolio_entry
+
+logger = logging.getLogger(__name__)
 
 @st.dialog("📂 Manage Portfolio")
 def render_portfolio_modal():
@@ -54,7 +57,8 @@ def render_portfolio_modal():
                 else:
                     st.warning("Invalid postcode format.")
             except Exception as e:
-                st.error(f"Failed to add: {str(e)}")
+                logger.error("Portfolio add failed for postcode %r: %s", pc_input, e, exc_info=True)
+                st.error("Failed to add asset. Please check the postcode and try again.")
 
     # --- List Section ---
     st.markdown("### Active Assets")

@@ -235,4 +235,5 @@ def render_ai_advisor(handler, weather_data: Dict[str, Any]):
                     st.session_state.agent_history = result["updated_history"]
                 st.rerun()
             except Exception as e:
-                st.error(f"AI Error: {str(e)}")
+                logger.error("AI advisor error: %s", e, exc_info=True)
+                st.error("An error occurred while contacting the AI advisor. Please try again.")

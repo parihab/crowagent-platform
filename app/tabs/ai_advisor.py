@@ -9,6 +9,7 @@
 
 import streamlit as st
 import logging
+from app.session import MAX_CHAT_HISTORY
 
 try:
     import concurrent.futures
@@ -171,6 +172,7 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
             ):
                 # Add starter to history and rerun to trigger agent
                 st.session_state["chat_history"].append({"role": "user", "content": prompt})
+                st.session_state["chat_history"] = st.session_state["chat_history"][-MAX_CHAT_HISTORY:]
                 st.session_state["ai_chat_history"] = st.session_state["chat_history"]
                 st.session_state["ai_chat_history_by_segment"][segment] = st.session_state["chat_history"]
                 st.rerun()
@@ -243,6 +245,7 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
                     st.markdown(response)
                     # Add the response to history and rerun to clear the spinner
                     st.session_state["chat_history"].append({"role": "assistant", "content": response})
+                    st.session_state["chat_history"] = st.session_state["chat_history"][-MAX_CHAT_HISTORY:]
                     st.session_state["ai_chat_history"] = st.session_state["chat_history"]
                     st.session_state["ai_chat_history_by_segment"][segment] = st.session_state["chat_history"]
                     st.rerun()
@@ -250,6 +253,7 @@ def render(handler, weather: dict, portfolio: list[dict]) -> None:
         # The chat input is in the right column, but *outside* the scrollable container
         if user_input := st.chat_input("Ask about your portfolio, energy, or compliance..."):
             st.session_state["chat_history"].append({"role": "user", "content": user_input})
+            st.session_state["chat_history"] = st.session_state["chat_history"][-MAX_CHAT_HISTORY:]
             st.session_state["ai_chat_history"] = st.session_state["chat_history"]
             st.session_state["ai_chat_history_by_segment"][segment] = st.session_state["chat_history"]
             st.rerun()

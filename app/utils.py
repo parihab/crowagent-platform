@@ -3,7 +3,6 @@ Utility functions for the Streamlit application.
 """
 import re
 import streamlit as st
-import time
 from typing import Any
 import requests
 
@@ -16,7 +15,6 @@ GEMINI_VALIDATION_URL = "https://generativelanguage.googleapis.com/v1/models"
 def show_congratulations():
     """Displays a congratulations message and balloons."""
     st.success("Congratulations! You've successfully run the script.")
-    time.sleep(1)
     st.balloons()
 
 def _extract_uk_postcode(text: str) -> str:
