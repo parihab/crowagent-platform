@@ -12,6 +12,9 @@ def _irr(cash_flows: list) -> float | None:
     Returns IRR as a decimal (e.g. 0.18 = 18%), or None if no valid solution.
     No external dependencies — uses only built-in Python arithmetic.
     """
+    # Guard: if savings are zero or negative the solver will never converge
+    if sum(cash_flows[1:]) <= 0:
+        return None
     rate = 0.1  # initial guess: 10%
     for _ in range(1000):
         npv = sum(cf / (1.0 + rate) ** t for t, cf in enumerate(cash_flows))
