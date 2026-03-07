@@ -203,23 +203,40 @@ def _calculate_thermal_load_impl(
     cpt = round(install_cost / max(baseline_carbon - scenario_carbon, 0.01), 1) \
           if install_cost > 0 else None
 
+    _energy_saving   = round(known_baseline_mwh - final_mwh, 1)
+    _base_carbon     = round(baseline_carbon, 1)
+    _scen_carbon     = round(scenario_carbon, 1)
+    _carbon_saving   = round(baseline_carbon - scenario_carbon, 1)
+    _annual_saving   = round(annual_saving, 0)
+    _payback         = round(payback, 1) if payback else None
+    _renewable_mwh   = round(renewable_mwh, 1)
+
     return {
+        # Primary keys (used by the live application)
         "baseline_energy_mwh": round(known_baseline_mwh, 1),
         "scenario_energy_mwh": round(final_mwh, 1),
-        "energy_saving_mwh":   round(known_baseline_mwh - final_mwh, 1),
+        "energy_saving_mwh":   _energy_saving,
         "energy_saving_pct":   round((known_baseline_mwh - final_mwh)
                                      / (known_baseline_mwh if known_baseline_mwh > 0 else 1.0) * 100.0, 1),
-        "baseline_carbon_t":   round(baseline_carbon, 1),
-        "scenario_carbon_t":   round(scenario_carbon, 1),
-        "carbon_saving_t":     round(baseline_carbon - scenario_carbon, 1),
-        "annual_saving_gbp":   round(annual_saving, 0),
+        "baseline_carbon_t":   _base_carbon,
+        "scenario_carbon_t":   _scen_carbon,
+        "carbon_saving_t":     _carbon_saving,
+        "annual_saving_gbp":   _annual_saving,
         "install_cost_gbp":    install_cost,
-        "payback_years":       round(payback, 1) if payback else None,
+        "payback_years":       _payback,
         "cost_per_tonne_co2":  cpt,
-        "renewable_mwh":       round(renewable_mwh, 1),
+        "renewable_mwh":       _renewable_mwh,
         "u_wall":              round(u_wall, 2),
         "u_roof":              round(u_roof, 2),
         "u_glazing":           round(u_glazing, 2),
+        # Legacy alias keys — match field names used in older tests
+        "annual_energy_mwh":    round(final_mwh, 1),
+        "baseline_carbon_tco2": _base_carbon,
+        "scenario_carbon_tco2": _scen_carbon,
+        "carbon_saving_tco2":   _carbon_saving,
+        "cost_saving_gbp":      _annual_saving,
+        "simple_payback_yrs":   _payback,
+        "renewable_kwh":        round(_renewable_mwh * 1000.0, 1),
     }
 
 

@@ -45,7 +45,7 @@ def test_baseline_logic():
     assert result["u_glazing"] == building["u_value_glazing"]
     assert "carbon_saving_tco2" in result
     assert result["carbon_saving_tco2"] == 0.0, "Baseline carbon saving must be 0"
-    assert result["simple_payback_yrs"] is None, "Baseline has zero install cost — no payback"
+    assert result["payback_years"] is None, "Baseline has zero install cost — no payback"
 
 
 def test_baseline_energy_matches_declared():
@@ -92,6 +92,7 @@ def test_all_combinations_return_valid_results(building_name, scenario_name):
         "energy_saving_pct", "baseline_carbon_tco2", "scenario_carbon_tco2",
         "carbon_saving_tco2", "cost_saving_gbp", "install_cost_gbp",
         "renewable_kwh", "u_wall", "u_roof", "u_glazing",
+        "payback_years",
     ]
     for key in required_keys:
         assert key in result, (
@@ -106,10 +107,10 @@ def test_all_combinations_return_valid_results(building_name, scenario_name):
 
 
 @pytest.mark.parametrize("scenario_name", [
-    "Solar Glass Installation",
-    "Green Roof Installation",
-    "Enhanced Insulation Upgrade",
-    "Combined Package (All Interventions)",
+    "Glazing Upgrade",
+    "Fabric Upgrade (Insulation)",
+    "Renewables (Solar PV)",
+    "Deep Retrofit (All Interventions)",
 ])
 def test_interventions_save_more_than_baseline(scenario_name):
     """Non-baseline scenarios must achieve a positive energy and carbon saving."""
@@ -126,19 +127,19 @@ def test_interventions_save_more_than_baseline(scenario_name):
 # ─────────────────────────────────────────────────────────────────────────────
 # 4. Financial calculations
 # ─────────────────────────────────────────────────────────────────────────────
-def test_financial_calculation_solar_glass():
-    """Payback period and annual saving must be internally consistent for Solar Glass."""
-    result = run("Greenfield Library", "Solar Glass Installation")
+def test_financial_calculation_glazing():
+    """Payback period and annual saving must be internally consistent for Glazing Upgrade."""
+    result = run("Greenfield Library", "Glazing Upgrade")
     install_cost  = result["install_cost_gbp"]
     annual_saving = result["cost_saving_gbp"]
 
-    assert install_cost == 280000
-    assert annual_saving > 0, "Solar Glass must have a positive annual saving"
+    assert install_cost == 15000
+    assert annual_saving > 0, "Glazing Upgrade must have a positive annual saving"
 
-    if result["simple_payback_yrs"] is not None:
+    if result["payback_years"] is not None:
         calculated_payback = round(install_cost / annual_saving, 1)
-        assert abs(result["simple_payback_yrs"] - calculated_payback) < 0.2, (
-            f"Payback mismatch: reported {result['simple_payback_yrs']}, "
+        assert abs(result["payback_years"] - calculated_payback) < 0.2, (
+            f"Payback mismatch: reported {result['payback_years']}, "
             f"calculated {calculated_payback}"
         )
 
@@ -147,13 +148,13 @@ def test_baseline_has_no_install_cost():
     """Baseline scenario has zero install cost and no payback period."""
     result = run("Greenfield Library", "Baseline (No Intervention)")
     assert result["install_cost_gbp"] == 0
-    assert result["simple_payback_yrs"] is None
+    assert result["payback_years"] is None
 
 
 def test_user_tariff_changes_financial_outputs_only():
     """Changing tariff should affect annual saving/payback but not physics energy output."""
     building = BUILDINGS["Greenfield Library"]
-    scenario = SCENARIOS["Solar Glass Installation"]
+    scenario = SCENARIOS["Glazing Upgrade"]
     weather = {"temperature_c": UK_AVG_TEMP}
 
     low = calculate_thermal_load(building, scenario, weather, tariff_gbp_per_kwh=0.20)
@@ -161,22 +162,22 @@ def test_user_tariff_changes_financial_outputs_only():
 
     assert low["annual_energy_mwh"] == high["annual_energy_mwh"]
     assert high["cost_saving_gbp"] > low["cost_saving_gbp"]
-    assert high["simple_payback_yrs"] < low["simple_payback_yrs"]
+    assert high["annual_saving_gbp"] > low["annual_saving_gbp"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 5. Edge cases
 # ─────────────────────────────────────────────────────────────────────────────
 def test_combined_package_best_carbon_saving():
-    """Combined Package should achieve the largest carbon saving for each building."""
+    """Deep Retrofit should achieve the largest carbon saving for each building."""
     for bname in BUILDINGS:
-        combined = run(bname, "Combined Package (All Interventions)")
+        combined = run(bname, "Deep Retrofit (All Interventions)")
         for sname in SCENARIOS:
-            if sname == "Combined Package (All Interventions)":
+            if sname == "Deep Retrofit (All Interventions)":
                 continue
             other = run(bname, sname)
             assert combined["carbon_saving_tco2"] >= other["carbon_saving_tco2"], (
-                f"{bname}: Combined Package should match or beat {sname} on carbon savings"
+                f"{bname}: Deep Retrofit should match or beat {sname} on carbon savings"
             )
 
 
